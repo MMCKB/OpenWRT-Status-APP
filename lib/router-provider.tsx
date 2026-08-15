@@ -12,7 +12,7 @@ import {
 } from "@/lib/router-storage";
 import type { RouterProfile, RouterSettings, RouterStatus } from "@/shared/router-types";
 
-type RouterDraft = Pick<RouterProfile, "name" | "baseUrl" | "username">;
+type RouterDraft = Pick<RouterProfile, "name" | "baseUrl" | "username" | "sshPort">;
 
 interface RouterContextValue {
   profiles: RouterProfile[];
@@ -125,6 +125,9 @@ export function RouterProvider({ children }: { children: ReactNode }) {
       name: draft.name.trim() || "我的 OpenWrt",
       baseUrl: normalizeRouterEndpoint(draft.baseUrl),
       username: draft.username.trim() || "root",
+      sshPort: Number.isInteger(draft.sshPort) && (draft.sshPort ?? 0) > 0 && (draft.sshPort ?? 0) <= 65535
+        ? draft.sshPort
+        : existing?.sshPort ?? 22,
       createdAt: existing?.createdAt ?? new Date().toISOString(),
       lastConnectedAt: existing?.lastConnectedAt,
     };

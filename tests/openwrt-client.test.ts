@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import { buildRouterStatus, formatBytes, formatUptime, memoryUsagePercent, normalizeRouterEndpoint } from "../lib/openwrt-client";
+import { getSshTarget, makeSshUri } from "../lib/ssh-client";
 
 describe("OpenWrt 数据转换", () => {
   it("规范化没有 /ubus 的管理地址", () => {
@@ -27,5 +28,12 @@ describe("OpenWrt 数据转换", () => {
     expect(formatBytes(1048576)).toBe("1.0 MB");
     expect(formatUptime(90061)).toBe("1 天 1 小时");
     expect(memoryUsagePercent({ hostname: "a", model: "b", firmware: "c", uptimeSeconds: 1, load: null, memoryTotal: 100, memoryAvailable: 40 })).toBe(60);
+  });
+
+  it("从路由器资料生成不含密码的 SSH 交接地址", () => {
+    const profile = { id: "router-1", name: "主路由", baseUrl: "http://192.168.1.1/ubus", username: "root", sshPort: 22022, createdAt: "2026-08-15" };
+    expect(getSshTarget(profile)).toBe("root@192.168.1.1:22022");
+    expect(makeSshUri(profile)).toBe("ssh://root@192.168.1.1:22022");
+    expect(makeSshUri({ ...profile, baseUrl: "http://[fd00::1]/ubus", sshPort: 22 })).toBe("ssh://root@[fd00::1]:22");
   });
 });

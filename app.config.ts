@@ -54,7 +54,8 @@ const config: ExpoConfig = {
       "ITSAppUsesNonExemptEncryption": false,
       "NSAppTransportSecurity": {
         "NSAllowsArbitraryLoads": true
-      }
+      },
+      "LSApplicationQueriesSchemes": ["ssh"]
     }
   },
   android: {

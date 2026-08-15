@@ -1,11 +1,13 @@
 import MaterialIcons from "@expo/vector-icons/MaterialIcons";
+import * as Linking from "expo-linking";
 import { useFocusEffect, useRouter } from "expo-router";
 import { useCallback } from "react";
-import { ActivityIndicator, Pressable, RefreshControl, ScrollView, StyleSheet, Text, View } from "react-native";
+import { ActivityIndicator, Alert, Pressable, RefreshControl, ScrollView, StyleSheet, Text, View } from "react-native";
 
 import { EmptyState, MetricTile, SectionCard, sharedStyles, StatusPill } from "@/components/status-ui";
 import { formatBytes, formatLoad, formatUptime, memoryUsagePercent } from "@/lib/openwrt-client";
 import { useRouterStore } from "@/lib/router-provider";
+import { getSshTarget, makeSshUri } from "@/lib/ssh-client";
 
 function formatUpdateTime(timestamp?: string) {
   if (!timestamp) return "尚未刷新";
@@ -39,6 +41,21 @@ export default function StatusScreen() {
   const system = selectedStatus?.system;
   const memoryPercent = memoryUsagePercent(system ?? null);
   const isOnline = selectedStatus?.online === true;
+  const sshTarget = getSshTarget(selectedProfile!);
+
+  async function openSshClient() {
+    try {
+      const sshUri = makeSshUri(selectedProfile!);
+      const supported = await Linking.canOpenURL(sshUri);
+      if (!supported) {
+        Alert.alert("未检测到 SSH 客户端", "请安装支持 ssh:// 链接的 SSH 终端应用，然后重新尝试。为保护凭证，本应用不会在链接中传递密码。");
+        return;
+      }
+      await Linking.openURL(sshUri);
+    } catch (error) {
+      Alert.alert("无法打开 SSH", error instanceof Error ? error.message : "请检查路由器地址与已安装的 SSH 客户端。");
+    }
+  }
   return (
     <View style={sharedStyles.screen}>
       <ScrollView
@@ -65,11 +82,19 @@ export default function StatusScreen() {
           </View>
         </View>
 
+        <Pressable accessibilityRole="button" accessibilityLabel={`在 SSH 客户端中打开 ${sshTarget}`} onPress={() => void openSshClient()} style={({ pressed }) => [styles.sshCard, pressed && styles.sshCardPressed]}>
+          <View style={styles.sshIcon}><MaterialIcons name="terminal" size={22} color="#007E7A" /></View>
+          <View style={styles.sshContent}><Text style={styles.sshTitle}>打开 SSH 终端</Text><Text style={styles.sshTarget} numberOfLines={1}>{sshTarget}</Text></View>
+          <MaterialIcons name="chevron-right" size={23} color="#6B7C93" />
+        </Pressable>
+
         {selectedStatus?.error ? <View style={styles.errorBox}><MaterialIcons name="info-outline" size={19} color="#A43131" /><Text style={styles.errorText}>{selectedStatus.error}</Text></View> : null}
 
-        <View style={styles.metricGrid}>
+        <View style={styles.metricRow}>
           <MetricTile icon="timer" label="运行时间" value={formatUptime(system?.uptimeSeconds ?? null)} tone="success" />
           <MetricTile icon="speed" label="系统负载" value={formatLoad(system?.load ?? null)} caption="1 / 5 / 15 分钟" />
+        </View>
+        <View style={styles.metricRow}>
           <MetricTile icon="memory" label="内存" value={memoryPercent === null ? "未报告" : `${memoryPercent}% 已用`} caption={system ? `${formatBytes(system.memoryAvailable)} 可用` : undefined} tone={memoryPercent !== null && memoryPercent > 85 ? "warning" : "normal"} />
           <MetricTile icon="system-update-alt" label="固件" value={system?.firmware ?? "未报告"} tone="normal" />
         </View>
@@ -117,9 +142,15 @@ const styles = StyleSheet.create({
   heroContent: { flex: 1, minWidth: 0, gap: 6 },
   hostname: { color: "#102A43", fontSize: 18, fontWeight: "800" },
   model: { color: "#5B6B7D", fontSize: 13, lineHeight: 19 },
+  sshCard: { flexDirection: "row", alignItems: "center", gap: 12, backgroundColor: "#FFFFFF", borderRadius: 18, borderWidth: 1, borderColor: "#CDE7E5", padding: 14 },
+  sshCardPressed: { opacity: 0.74, transform: [{ scale: 0.99 }] },
+  sshIcon: { width: 42, height: 42, borderRadius: 13, alignItems: "center", justifyContent: "center", backgroundColor: "#E6F5F4" },
+  sshContent: { flex: 1, minWidth: 0 },
+  sshTitle: { color: "#203B55", fontSize: 15, fontWeight: "800" },
+  sshTarget: { color: "#60758B", fontSize: 12, marginTop: 3, fontVariant: ["tabular-nums"] },
   errorBox: { flexDirection: "row", alignItems: "flex-start", gap: 9, backgroundColor: "#FDEBEC", borderRadius: 14, padding: 13 },
   errorText: { color: "#A43131", flex: 1, fontSize: 13, lineHeight: 19 },
-  metricGrid: { flexDirection: "row", flexWrap: "wrap", gap: 10 },
+  metricRow: { flexDirection: "row", gap: 10 },
   sectionMeta: { color: "#6B7C93", fontSize: 13, fontWeight: "600" },
   listRow: { minHeight: 63, flexDirection: "row", alignItems: "center", gap: 11, paddingHorizontal: 15 },
   rowDivider: { borderTopWidth: 1, borderTopColor: "#EEF2F4" },

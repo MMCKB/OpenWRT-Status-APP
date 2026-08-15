@@ -3,6 +3,7 @@ export interface RouterProfile {
   name: string;
   baseUrl: string;
   username: string;
+  sshPort?: number;
   createdAt: string;
   lastConnectedAt?: string;
 }
