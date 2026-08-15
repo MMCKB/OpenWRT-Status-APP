@@ -65,12 +65,6 @@ export default function StatusScreen() {
           </View>
         </View>
 
-        <Pressable accessibilityRole="button" accessibilityLabel="打开应用内 SSH 控制台" onPress={() => router.push("/control" as never)} style={({ pressed }) => [styles.sshCard, pressed && styles.sshCardPressed]}>
-          <View style={styles.sshIcon}><MaterialIcons name="terminal" size={22} color="#007E7A" /></View>
-          <View style={styles.sshContent}><Text style={styles.sshTitle}>应用内 SSH 控制台</Text><Text style={styles.sshTarget} numberOfLines={1}>终端命令与已安装软件包</Text></View>
-          <MaterialIcons name="chevron-right" size={23} color="#6B7C93" />
-        </Pressable>
-
         {selectedStatus?.error ? <View style={styles.errorBox}><MaterialIcons name="info-outline" size={19} color="#A43131" /><Text style={styles.errorText}>{selectedStatus.error}</Text></View> : null}
 
         <View style={styles.metricRow}>
@@ -125,12 +119,6 @@ const styles = StyleSheet.create({
   heroContent: { flex: 1, minWidth: 0, gap: 6 },
   hostname: { color: "#102A43", fontSize: 18, fontWeight: "800" },
   model: { color: "#5B6B7D", fontSize: 13, lineHeight: 19 },
-  sshCard: { flexDirection: "row", alignItems: "center", gap: 12, backgroundColor: "#FFFFFF", borderRadius: 18, borderWidth: 1, borderColor: "#CDE7E5", padding: 14 },
-  sshCardPressed: { opacity: 0.74, transform: [{ scale: 0.99 }] },
-  sshIcon: { width: 42, height: 42, borderRadius: 13, alignItems: "center", justifyContent: "center", backgroundColor: "#E6F5F4" },
-  sshContent: { flex: 1, minWidth: 0 },
-  sshTitle: { color: "#203B55", fontSize: 15, fontWeight: "800" },
-  sshTarget: { color: "#60758B", fontSize: 12, marginTop: 3, fontVariant: ["tabular-nums"] },
   errorBox: { flexDirection: "row", alignItems: "flex-start", gap: 9, backgroundColor: "#FDEBEC", borderRadius: 14, padding: 13 },
   errorText: { color: "#A43131", flex: 1, fontSize: 13, lineHeight: 19 },
   metricRow: { flexDirection: "row", gap: 10 },

@@ -25,3 +25,8 @@
 - [x] 获取第二次 Run gradlew 阶段的首个错误行并完成针对性修复
 - [x] 为 JSch 与 jspecify 的重复 META-INF 清单添加 Android 打包规则
 - [x] 以项目内 Android SSH 桥接模块替换缺失源码的第三方依赖
+- [x] 参考 HavenX 的终端交互完成控制页重构设计
+- [x] 删除 OpenWrt 已安装软件包查询与相关数据逻辑
+- [x] 删除状态页应用内 SSH 控制台入口
+- [x] 实现专注的应用内 Android SSH 终端页面
+- [x] 验证终端重构和 Android 打包配置

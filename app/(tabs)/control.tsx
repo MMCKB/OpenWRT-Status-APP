@@ -1,144 +1,174 @@
 import MaterialIcons from "@expo/vector-icons/MaterialIcons";
-import { useEffect, useState } from "react";
-import { ActivityIndicator, FlatList, KeyboardAvoidingView, Platform, Pressable, StyleSheet, Text, TextInput, View } from "react-native";
+import { useEffect, useRef, useState } from "react";
+import { ActivityIndicator, KeyboardAvoidingView, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from "react-native";
 
-import { EmptyState, SectionCard, sharedStyles, StatusPill } from "@/components/status-ui";
-import { fetchInstalledPackages } from "@/lib/openwrt-client";
+import { EmptyState, StatusPill } from "@/components/status-ui";
 import { connectInAppSsh, disconnectInAppSsh, getInAppSshTarget, isInAppSshSupported, runInAppSshCommand } from "@/lib/native-ssh";
 import { useRouterStore } from "@/lib/router-provider";
-import type { InstalledPackage } from "@/shared/router-types";
 
-const quickCommands = [
-  { label: "系统摘要", command: "ubus call system board" },
-  { label: "接口状态", command: "ip addr" },
-  { label: "磁盘空间", command: "df -h" },
-  { label: "最近日志", command: "logread | tail -n 40" },
-];
+type ConnectionState = "idle" | "connecting" | "connected" | "error";
+
+const WELCOME_OUTPUT = "OpenWrt SSH Terminal\n输入命令后点击发送或使用键盘发送键执行。\n\n";
+const MAX_OUTPUT_LENGTH = 24000;
+
+function trimTerminalOutput(value: string) {
+  return value.length > MAX_OUTPUT_LENGTH ? `… 已隐藏较早输出 …\n${value.slice(-MAX_OUTPUT_LENGTH)}` : value;
+}
 
 export default function ControlScreen() {
   const { selectedProfile, getSelectedCredentials } = useRouterStore();
-  const [connection, setConnection] = useState<"idle" | "connecting" | "connected" | "error">("idle");
-  const [terminalOutput, setTerminalOutput] = useState("欢迎使用 OpenWrt 控制台。连接后可运行 SSH 命令。\n");
+  const terminalRef = useRef<ScrollView>(null);
+  const [connection, setConnection] = useState<ConnectionState>("idle");
+  const [terminalOutput, setTerminalOutput] = useState(WELCOME_OUTPUT);
   const [command, setCommand] = useState("");
   const [isRunning, setIsRunning] = useState(false);
-  const [packages, setPackages] = useState<InstalledPackage[]>([]);
-  const [isLoadingPackages, setIsLoadingPackages] = useState(false);
-  const [packageError, setPackageError] = useState<string | null>(null);
+  const [history, setHistory] = useState<string[]>([]);
+  const [historyIndex, setHistoryIndex] = useState(-1);
 
   useEffect(() => () => disconnectInAppSsh(), []);
 
   const profile = selectedProfile;
   if (!profile) {
-    return <View style={sharedStyles.screen}><View style={styles.header}><Text style={styles.title}>控制</Text></View><EmptyState icon="terminal" title="还没有可控制的路由器" description="请先在“路由器”中保存 OpenWrt 的 LuCI 与 SSH 连接资料。" /></View>;
+    return (
+      <View style={styles.emptyScreen}>
+        <View style={styles.emptyHeader}><Text style={styles.emptyTitle}>终端</Text></View>
+        <EmptyState icon="terminal" title="还没有可连接的路由器" description="请先在“路由器”中保存 OpenWrt 的 LuCI 与 SSH 连接资料。" />
+      </View>
+    );
   }
 
   const target = getInAppSshTarget(profile);
+  const stateLabel = connection === "connected" ? "已连接" : connection === "connecting" ? "连接中" : connection === "error" ? "连接失败" : "未连接";
+  const stateTone = connection === "connected" ? "success" : connection === "error" ? "danger" : "normal";
+
+  function appendOutput(value: string) {
+    setTerminalOutput((current) => trimTerminalOutput(`${current}${current.endsWith("\n") ? "" : "\n"}${value}`));
+    requestAnimationFrame(() => terminalRef.current?.scrollToEnd({ animated: true }));
+  }
 
   async function connect() {
     setConnection("connecting");
+    appendOutput(`正在连接 ${target}…\n`);
     try {
       const credentials = await getSelectedCredentials();
       if (!credentials) throw new Error("未找到本机保存的 SSH 密码，请编辑路由器资料后再试。");
       const result = await connectInAppSsh(profile!, credentials.sshPassword);
       setConnection("connected");
-      setTerminalOutput((current) => `${current}\n已连接 ${result.target}\n${result.banner}`);
+      appendOutput(`已连接 ${result.target}\n`);
     } catch (error) {
       setConnection("error");
-      setTerminalOutput((current) => `${current}\n连接失败：${error instanceof Error ? error.message : "未知错误"}\n`);
+      appendOutput(`连接失败：${error instanceof Error ? error.message : "未知错误"}\n`);
     }
   }
 
-  async function execute(nextCommand = command) {
+  async function execute() {
+    const nextCommand = command.trim();
+    if (!nextCommand || connection !== "connected" || isRunning) return;
     setIsRunning(true);
+    setHistory((current) => current[current.length - 1] === nextCommand ? current : [...current, nextCommand].slice(-40));
+    setHistoryIndex(-1);
+    setCommand("");
+    appendOutput(`$ ${nextCommand}\n`);
     try {
       const output = await runInAppSshCommand(nextCommand);
-      setTerminalOutput((current) => `${current}\n$ ${nextCommand.trim()}\n${output}`);
-      setCommand("");
+      appendOutput(`${output || "命令已完成，无输出。"}\n`);
     } catch (error) {
-      setTerminalOutput((current) => `${current}\n执行失败：${error instanceof Error ? error.message : "未知错误"}\n`);
+      appendOutput(`执行失败：${error instanceof Error ? error.message : "未知错误"}\n`);
     } finally {
       setIsRunning(false);
     }
   }
 
-  async function loadPackages() {
-    setIsLoadingPackages(true); setPackageError(null);
-    try {
-      const credentials = await getSelectedCredentials();
-      if (!credentials) throw new Error("未找到 LuCI 凭证，请编辑路由器资料后再试。");
-      const result = await fetchInstalledPackages(profile!.baseUrl, profile!.username, credentials.luciPassword);
-      setPackages(result);
-    } catch (error) {
-      setPackageError(error instanceof Error ? error.message : "无法读取软件包清单。");
-    } finally { setIsLoadingPackages(false); }
+  function recallCommand(direction: -1 | 1) {
+    if (!history.length) return;
+    const currentIndex = historyIndex === -1 ? history.length : historyIndex;
+    const nextIndex = Math.min(history.length, Math.max(0, currentIndex + direction));
+    setHistoryIndex(nextIndex === history.length ? -1 : nextIndex);
+    setCommand(nextIndex === history.length ? "" : history[nextIndex]);
+  }
+
+  function disconnect() {
+    disconnectInAppSsh();
+    setConnection("idle");
+    appendOutput("会话已断开。\n");
   }
 
   return (
-    <KeyboardAvoidingView style={sharedStyles.screen} behavior={Platform.OS === "ios" ? "padding" : undefined}>
-      <FlatList
-        data={packages}
-        keyExtractor={(item) => item.name}
-        contentContainerStyle={styles.listContent}
-        ListHeaderComponent={<View style={styles.headerContent}>
-          <View><Text style={styles.title}>控制</Text><Text style={styles.subtitle}>应用内 SSH 与软件包清单</Text></View>
-          <SectionCard title="应用内 SSH 终端">
-            <View style={styles.terminalCard}>
-              <View style={styles.terminalTop}><View><Text style={styles.terminalTarget}>{target}</Text><Text style={styles.terminalHint}>命令直接在当前 Android 应用内执行</Text></View><StatusPill label={connection === "connected" ? "已连接" : connection === "connecting" ? "连接中" : connection === "error" ? "失败" : "未连接"} tone={connection === "connected" ? "success" : connection === "error" ? "danger" : "normal"} /></View>
-              {!isInAppSshSupported() ? <Text style={styles.platformNote}>该原生终端随 Android APK 提供；Web 与 iOS 预览中不可用。</Text> : null}
-              <View style={styles.outputBox}><Text selectable style={styles.outputText}>{terminalOutput}</Text></View>
-              <View style={styles.commandRow}><TextInput accessibilityLabel="SSH 命令" style={styles.commandInput} value={command} onChangeText={setCommand} placeholder="输入 OpenWrt 命令" placeholderTextColor="#88A0B2" autoCapitalize="none" autoCorrect={false} editable={connection === "connected" && !isRunning} returnKeyType="send" onSubmitEditing={() => void execute()} /><Pressable accessibilityRole="button" accessibilityLabel="执行 SSH 命令" disabled={connection !== "connected" || isRunning} onPress={() => void execute()} style={({ pressed }) => [styles.runButton, (connection !== "connected" || isRunning) && styles.disabled, pressed && styles.buttonPressed]}>{isRunning ? <ActivityIndicator size="small" color="#FFFFFF" /> : <MaterialIcons name="send" size={18} color="#FFFFFF" />}</Pressable></View>
-              <View style={styles.quickGrid}>{quickCommands.map((item) => <Pressable key={item.label} accessibilityRole="button" disabled={connection !== "connected" || isRunning} onPress={() => void execute(item.command)} style={({ pressed }) => [styles.quickButton, (connection !== "connected" || isRunning) && styles.disabled, pressed && styles.buttonPressed]}><Text style={styles.quickText}>{item.label}</Text></Pressable>)}</View>
-              <View style={styles.terminalActions}>{connection !== "connected" ? <Pressable accessibilityRole="button" disabled={connection === "connecting" || !isInAppSshSupported()} onPress={() => void connect()} style={({ pressed }) => [sharedStyles.primaryButton, styles.actionButton, (connection === "connecting" || !isInAppSshSupported()) && styles.disabled, pressed && sharedStyles.primaryButtonPressed]}>{connection === "connecting" ? <ActivityIndicator color="#FFFFFF" /> : <Text style={sharedStyles.primaryButtonText}>连接 SSH</Text>}</Pressable> : <Pressable accessibilityRole="button" onPress={() => { disconnectInAppSsh(); setConnection("idle"); setTerminalOutput((current) => `${current}\n会话已断开。\n`); }} style={({ pressed }) => [sharedStyles.secondaryButton, styles.actionButton, pressed && sharedStyles.primaryButtonPressed]}><Text style={sharedStyles.secondaryButtonText}>断开连接</Text></Pressable>}</View>
-              <Text style={styles.securityNote}>SSH 密码仅保存于本机安全存储。命令会立即以 SSH 用户权限执行，请仅管理您拥有或获授权的路由器。</Text>
-            </View>
-          </SectionCard>
-          <SectionCard title="已安装软件包" action={<Text style={styles.packageCount}>{packages.length ? `${packages.length} 个` : ""}</Text>}>
-            <View style={styles.packageIntro}><Text style={styles.packageText}>通过已认证的 LuCI rpc-sys 接口读取完整包清单，不会执行安装、升级或卸载操作。</Text><Pressable accessibilityRole="button" onPress={() => void loadPackages()} disabled={isLoadingPackages} style={({ pressed }) => [styles.loadPackages, isLoadingPackages && styles.disabled, pressed && styles.buttonPressed]}>{isLoadingPackages ? <ActivityIndicator color="#007E7A" /> : <Text style={styles.loadPackagesText}>{packages.length ? "刷新清单" : "读取软件包"}</Text>}</Pressable></View>
-            {packageError ? <Text style={styles.packageError}>{packageError}</Text> : null}
-          </SectionCard>
-        </View>}
-        renderItem={({ item, index }) => <View style={[styles.packageRow, index === 0 && styles.packageRowFirst]}><View style={styles.packageIcon}><MaterialIcons name="inventory-2" size={17} color="#007E7A" /></View><View style={styles.packageInfo}><Text style={styles.packageName}>{item.name}</Text><Text style={styles.packageVersion}>{item.version}</Text></View></View>}
-        ListEmptyComponent={packages.length === 0 && !isLoadingPackages && !packageError ? <Text style={styles.emptyPackages}>点击“读取软件包”后，已安装的软件包会显示在这里。</Text> : null}
-      />
+    <KeyboardAvoidingView style={styles.screen} behavior={Platform.OS === "ios" ? "padding" : undefined}>
+      <View style={styles.topBar}>
+        <View style={styles.identityWrap}>
+          <View style={styles.terminalBadge}><MaterialIcons name="terminal" size={19} color="#7FE5D4" /></View>
+          <View style={styles.identity}><Text style={styles.target} numberOfLines={1}>{target}</Text><Text style={styles.context} numberOfLines={1}>OpenWrt · 应用内 SSH 会话</Text></View>
+        </View>
+        <StatusPill label={stateLabel} tone={stateTone} />
+      </View>
+
+      {!isInAppSshSupported() ? <View style={styles.platformBanner}><MaterialIcons name="info-outline" size={17} color="#E6B05A" /><Text style={styles.platformText}>内嵌 SSH 终端仅在新版 Android APK 中可用，Web 与 iOS 预览不会加载该原生组件。</Text></View> : null}
+
+      <ScrollView ref={terminalRef} style={styles.terminalScroll} contentContainerStyle={styles.terminalContent} onContentSizeChange={() => terminalRef.current?.scrollToEnd({ animated: false })}>
+        <Text selectable style={styles.terminalText}>{terminalOutput}</Text>
+        {isRunning ? <View style={styles.runningLine}><ActivityIndicator size="small" color="#7FE5D4" /><Text style={styles.runningText}>正在执行命令…</Text></View> : null}
+      </ScrollView>
+
+      <View style={styles.toolStrip}>
+        <Pressable accessibilityRole="button" accessibilityLabel="显示上一条命令" onPress={() => recallCommand(-1)} disabled={!history.length || isRunning} style={({ pressed }) => [styles.toolButton, (!history.length || isRunning) && styles.disabled, pressed && styles.toolPressed]}><MaterialIcons name="keyboard-arrow-up" size={21} color="#C4D8D6" /></Pressable>
+        <Pressable accessibilityRole="button" accessibilityLabel="显示下一条命令" onPress={() => recallCommand(1)} disabled={!history.length || isRunning} style={({ pressed }) => [styles.toolButton, (!history.length || isRunning) && styles.disabled, pressed && styles.toolPressed]}><MaterialIcons name="keyboard-arrow-down" size={21} color="#C4D8D6" /></Pressable>
+        <Pressable accessibilityRole="button" accessibilityLabel="清除终端输出" onPress={() => setTerminalOutput(WELCOME_OUTPUT)} disabled={isRunning} style={({ pressed }) => [styles.clearButton, isRunning && styles.disabled, pressed && styles.toolPressed]}><MaterialIcons name="delete-outline" size={18} color="#C4D8D6" /><Text style={styles.clearText}>清屏</Text></Pressable>
+        {connection === "connected" ? <Pressable accessibilityRole="button" accessibilityLabel="断开 SSH 连接" onPress={disconnect} style={({ pressed }) => [styles.disconnectButton, pressed && styles.toolPressed]}><Text style={styles.disconnectText}>断开</Text></Pressable> : <Pressable accessibilityRole="button" accessibilityLabel="连接 SSH" disabled={connection === "connecting" || !isInAppSshSupported()} onPress={() => void connect()} style={({ pressed }) => [styles.connectButton, (connection === "connecting" || !isInAppSshSupported()) && styles.disabled, pressed && styles.toolPressed]}>{connection === "connecting" ? <ActivityIndicator size="small" color="#041C1A" /> : <><MaterialIcons name="power" size={17} color="#041C1A" /><Text style={styles.connectText}>连接</Text></>}</Pressable>}
+      </View>
+
+      <View style={styles.composer}>
+        <Text style={styles.prompt}>$</Text>
+        <TextInput
+          accessibilityLabel="SSH 命令"
+          style={styles.commandInput}
+          value={command}
+          onChangeText={setCommand}
+          placeholder={connection === "connected" ? "输入 OpenWrt 命令" : "请先连接 SSH"}
+          placeholderTextColor="#719390"
+          autoCapitalize="none"
+          autoCorrect={false}
+          editable={connection === "connected" && !isRunning}
+          returnKeyType="send"
+          onSubmitEditing={() => void execute()}
+        />
+        <Pressable accessibilityRole="button" accessibilityLabel="执行 SSH 命令" disabled={connection !== "connected" || isRunning || !command.trim()} onPress={() => void execute()} style={({ pressed }) => [styles.sendButton, (connection !== "connected" || isRunning || !command.trim()) && styles.sendDisabled, pressed && styles.toolPressed]}>{isRunning ? <ActivityIndicator size="small" color="#041C1A" /> : <MaterialIcons name="arrow-upward" size={20} color="#041C1A" />}</Pressable>
+      </View>
     </KeyboardAvoidingView>
   );
 }
 
 const styles = StyleSheet.create({
-  listContent: { padding: 20, paddingBottom: 34 },
-  headerContent: { gap: 20 },
-  header: { paddingHorizontal: 20, paddingTop: 26 },
-  title: { color: "#102A43", fontSize: 28, fontWeight: "800" },
-  subtitle: { color: "#60758B", fontSize: 14, marginTop: 5 },
-  terminalCard: { padding: 14, gap: 12 },
-  terminalTop: { flexDirection: "row", alignItems: "flex-start", justifyContent: "space-between", gap: 12 },
-  terminalTarget: { color: "#203B55", fontSize: 15, fontWeight: "800", fontVariant: ["tabular-nums"] },
-  terminalHint: { color: "#718398", fontSize: 12, marginTop: 3 },
-  platformNote: { color: "#8B5A00", fontSize: 12, lineHeight: 18, padding: 10, backgroundColor: "#FFF4DD", borderRadius: 10 },
-  outputBox: { minHeight: 146, maxHeight: 230, borderRadius: 12, backgroundColor: "#102A43", padding: 12 },
-  outputText: { color: "#D7F1ED", fontSize: 12, lineHeight: 18, fontFamily: Platform.select({ ios: "Menlo", android: "monospace", default: "monospace" }) },
-  commandRow: { flexDirection: "row", gap: 8 },
-  commandInput: { flex: 1, minHeight: 46, borderRadius: 11, borderWidth: 1, borderColor: "#D8E2E8", backgroundColor: "#FBFCFD", paddingHorizontal: 12, color: "#102A43", fontSize: 14, fontFamily: Platform.select({ ios: "Menlo", android: "monospace", default: "monospace" }) },
-  runButton: { width: 48, minHeight: 46, alignItems: "center", justifyContent: "center", borderRadius: 11, backgroundColor: "#007E7A" },
-  quickGrid: { flexDirection: "row", flexWrap: "wrap", gap: 8 },
-  quickButton: { minWidth: "47%", flexGrow: 1, alignItems: "center", borderRadius: 10, backgroundColor: "#EAF5F4", paddingVertical: 10, paddingHorizontal: 8 },
-  quickText: { color: "#006F6B", fontSize: 12, fontWeight: "700" },
-  terminalActions: { flexDirection: "row" },
-  actionButton: { flex: 1 },
-  securityNote: { color: "#60758B", fontSize: 12, lineHeight: 18 },
-  disabled: { opacity: 0.5 },
-  buttonPressed: { opacity: 0.72 },
-  packageCount: { color: "#6B7C93", fontSize: 13, fontWeight: "600" },
-  packageIntro: { padding: 14, gap: 12 },
-  packageText: { color: "#5B6B7D", fontSize: 13, lineHeight: 19 },
-  loadPackages: { minHeight: 42, borderRadius: 11, backgroundColor: "#E6F5F4", alignItems: "center", justifyContent: "center" },
-  loadPackagesText: { color: "#006F6B", fontSize: 14, fontWeight: "800" },
-  packageError: { color: "#A43131", fontSize: 13, lineHeight: 19, paddingHorizontal: 14, paddingBottom: 14 },
-  packageRow: { minHeight: 60, flexDirection: "row", alignItems: "center", gap: 11, marginHorizontal: 0, paddingHorizontal: 14, borderBottomWidth: 1, borderBottomColor: "#E8EEF1", backgroundColor: "#FFFFFF" },
-  packageRowFirst: { marginTop: 12, borderTopLeftRadius: 16, borderTopRightRadius: 16, borderTopWidth: 1, borderTopColor: "#E4EAEE" },
-  packageIcon: { width: 32, height: 32, borderRadius: 10, backgroundColor: "#E6F5F4", alignItems: "center", justifyContent: "center" },
-  packageInfo: { flex: 1, minWidth: 0 },
-  packageName: { color: "#203B55", fontSize: 14, fontWeight: "800" },
-  packageVersion: { color: "#718398", fontSize: 12, marginTop: 3 },
-  emptyPackages: { color: "#718398", fontSize: 13, lineHeight: 19, paddingVertical: 16, textAlign: "center" },
+  screen: { flex: 1, backgroundColor: "#081211" },
+  emptyScreen: { flex: 1, backgroundColor: "#F6F8FA" },
+  emptyHeader: { paddingHorizontal: 20, paddingTop: 26 },
+  emptyTitle: { color: "#102A43", fontSize: 28, fontWeight: "800" },
+  topBar: { minHeight: 76, paddingHorizontal: 16, paddingVertical: 14, borderBottomWidth: 1, borderBottomColor: "#1C3431", flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 10 },
+  identityWrap: { flex: 1, minWidth: 0, flexDirection: "row", alignItems: "center", gap: 11 },
+  terminalBadge: { width: 38, height: 38, borderRadius: 11, alignItems: "center", justifyContent: "center", backgroundColor: "#11302C" },
+  identity: { flex: 1, minWidth: 0 },
+  target: { color: "#F0FBF9", fontSize: 15, fontWeight: "800", fontVariant: ["tabular-nums"] },
+  context: { color: "#8EAAA7", fontSize: 11, marginTop: 3 },
+  platformBanner: { flexDirection: "row", alignItems: "flex-start", gap: 8, paddingHorizontal: 16, paddingVertical: 10, backgroundColor: "#2A2111", borderBottomWidth: 1, borderBottomColor: "#4C3A1C" },
+  platformText: { flex: 1, color: "#E6C481", fontSize: 12, lineHeight: 18 },
+  terminalScroll: { flex: 1 },
+  terminalContent: { flexGrow: 1, padding: 16, paddingBottom: 28 },
+  terminalText: { color: "#D8F1ED", fontSize: 13, lineHeight: 20, fontFamily: Platform.select({ ios: "Menlo", android: "monospace", default: "monospace" }) },
+  runningLine: { flexDirection: "row", alignItems: "center", gap: 8, marginTop: 12 },
+  runningText: { color: "#7FE5D4", fontSize: 12, fontFamily: Platform.select({ ios: "Menlo", android: "monospace", default: "monospace" }) },
+  toolStrip: { minHeight: 52, paddingHorizontal: 12, gap: 7, flexDirection: "row", alignItems: "center", backgroundColor: "#0D1C1A", borderTopWidth: 1, borderTopColor: "#1C3431" },
+  toolButton: { width: 36, height: 34, alignItems: "center", justifyContent: "center", borderRadius: 8, backgroundColor: "#17322F" },
+  clearButton: { height: 34, paddingHorizontal: 10, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 5, borderRadius: 8, backgroundColor: "#17322F" },
+  clearText: { color: "#C4D8D6", fontSize: 12, fontWeight: "700" },
+  connectButton: { marginLeft: "auto", minWidth: 76, height: 34, paddingHorizontal: 10, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 5, borderRadius: 8, backgroundColor: "#7FE5D4" },
+  connectText: { color: "#041C1A", fontSize: 12, fontWeight: "800" },
+  disconnectButton: { marginLeft: "auto", minWidth: 58, height: 34, paddingHorizontal: 10, alignItems: "center", justifyContent: "center", borderRadius: 8, borderWidth: 1, borderColor: "#46625E" },
+  disconnectText: { color: "#B9CDC9", fontSize: 12, fontWeight: "800" },
+  composer: { minHeight: 62, paddingHorizontal: 12, paddingVertical: 10, flexDirection: "row", alignItems: "center", gap: 9, backgroundColor: "#102421", borderTopWidth: 1, borderTopColor: "#294640" },
+  prompt: { color: "#7FE5D4", fontSize: 20, fontWeight: "800", fontFamily: Platform.select({ ios: "Menlo", android: "monospace", default: "monospace" }) },
+  commandInput: { flex: 1, minHeight: 40, color: "#F0FBF9", fontSize: 14, fontFamily: Platform.select({ ios: "Menlo", android: "monospace", default: "monospace" }), paddingVertical: 5 },
+  sendButton: { width: 38, height: 38, alignItems: "center", justifyContent: "center", borderRadius: 19, backgroundColor: "#7FE5D4" },
+  sendDisabled: { backgroundColor: "#294640" },
+  disabled: { opacity: 0.45 },
+  toolPressed: { opacity: 0.72, transform: [{ scale: 0.96 }] },
 });

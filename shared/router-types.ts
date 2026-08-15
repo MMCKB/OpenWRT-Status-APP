@@ -50,8 +50,3 @@ export interface RouterStatus {
   warnings: string[];
   error?: string;
 }
-
-export interface InstalledPackage {
-  name: string;
-  version: string;
-}
