@@ -5,6 +5,7 @@ import { HapticTab } from "@/components/haptic-tab";
 import { IconSymbol } from "@/components/ui/icon-symbol";
 import { Platform } from "react-native";
 import { useColors } from "@/hooks/use-colors";
+import { RouterProvider } from "@/lib/router-provider";
 
 export default function TabLayout() {
   const colors = useColors();
@@ -13,6 +14,7 @@ export default function TabLayout() {
   const tabBarHeight = 56 + bottomPadding;
 
   return (
+    <RouterProvider>
     <Tabs
       screenOptions={{
         tabBarActiveTintColor: colors.tint,
@@ -31,10 +33,15 @@ export default function TabLayout() {
       <Tabs.Screen
         name="index"
         options={{
-          title: "Home",
-          tabBarIcon: ({ color }) => <IconSymbol size={28} name="house.fill" color={color} />,
+          title: "状态",
+          tabBarIcon: ({ color }) => <IconSymbol size={25} name="gauge.with.dots.needle.50percent" color={color} />,
         }}
       />
+      <Tabs.Screen name="routers" options={{ title: "路由器", tabBarIcon: ({ color }) => <IconSymbol size={25} name="wifi" color={color} /> }} />
+      <Tabs.Screen name="details" options={{ title: "详情", tabBarIcon: ({ color }) => <IconSymbol size={25} name="list.bullet.rectangle" color={color} /> }} />
+      <Tabs.Screen name="settings" options={{ title: "设置", tabBarIcon: ({ color }) => <IconSymbol size={25} name="gearshape.fill" color={color} /> }} />
+      <Tabs.Screen name="router-form" options={{ href: null }} />
     </Tabs>
+    </RouterProvider>
   );
 }

@@ -28,11 +28,11 @@ const schemeFromBundleId = `manus${timestamp}`;
 
 const env = {
   // App branding - update these values directly (do not use env vars)
-  appName: "OpenWrt 路由器状态",
+  appName: "OpenWrt 状态",
   appSlug: "openwrt-status-app",
   // S3 URL of the app logo - set this to the URL returned by generate_image when creating custom logo
   // Leave empty to use the default icon from assets/images/icon.png
-  logoUrl: "",
+  logoUrl: "/manus-storage/openwrt-status-icon_d7e040e2.png",
   scheme: schemeFromBundleId,
   iosBundleId: bundleId,
   androidPackage: bundleId,
@@ -51,8 +51,11 @@ const config: ExpoConfig = {
     supportsTablet: true,
     bundleIdentifier: env.iosBundleId,
     "infoPlist": {
-        "ITSAppUsesNonExemptEncryption": false
+      "ITSAppUsesNonExemptEncryption": false,
+      "NSAppTransportSecurity": {
+        "NSAllowsArbitraryLoads": true
       }
+    }
   },
   android: {
     adaptiveIcon: {
@@ -87,6 +90,12 @@ const config: ExpoConfig = {
   plugins: [
     "expo-router",
     [
+      "expo-secure-store",
+      {
+        "configureAndroidBackup": true
+      }
+    ],
+    [
       "expo-audio",
       {
         microphonePermission: "Allow $(PRODUCT_NAME) to access your microphone.",
@@ -117,6 +126,7 @@ const config: ExpoConfig = {
         android: {
           buildArchs: ["armeabi-v7a", "arm64-v8a"],
           minSdkVersion: 24,
+          usesCleartextTraffic: true,
         },
       },
     ],
