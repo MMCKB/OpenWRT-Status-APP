@@ -7,6 +7,7 @@ import type { RouterProfile, RouterSettings } from "@/shared/router-types";
 const PROFILES_KEY = "openwrt.router-profiles.v1";
 const SETTINGS_KEY = "openwrt.router-settings.v1";
 const PASSWORD_PREFIX = "openwrt.router-password.";
+const SSH_PASSWORD_PREFIX = "openwrt.router-ssh-password.";
 
 const defaultSettings: RouterSettings = {
   selectedRouterId: null,
@@ -15,6 +16,10 @@ const defaultSettings: RouterSettings = {
 
 function passwordKey(routerId: string) {
   return `${PASSWORD_PREFIX}${routerId}`;
+}
+
+function sshPasswordKey(routerId: string) {
+  return `${SSH_PASSWORD_PREFIX}${routerId}`;
 }
 
 async function setSecret(key: string, value: string) {
@@ -86,4 +91,16 @@ export async function loadPassword(routerId: string) {
 
 export async function removePassword(routerId: string) {
   await removeSecret(passwordKey(routerId));
+}
+
+export async function saveSshPassword(routerId: string, password: string) {
+  await setSecret(sshPasswordKey(routerId), password);
+}
+
+export async function loadSshPassword(routerId: string) {
+  return getSecret(sshPasswordKey(routerId));
+}
+
+export async function removeSshPassword(routerId: string) {
+  await removeSecret(sshPasswordKey(routerId));
 }

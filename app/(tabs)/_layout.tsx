@@ -39,6 +39,7 @@ export default function TabLayout() {
       />
       <Tabs.Screen name="routers" options={{ title: "路由器", tabBarIcon: ({ color }) => <IconSymbol size={25} name="wifi" color={color} /> }} />
       <Tabs.Screen name="details" options={{ title: "详情", tabBarIcon: ({ color }) => <IconSymbol size={25} name="list.bullet.rectangle" color={color} /> }} />
+      <Tabs.Screen name="control" options={{ title: "控制", tabBarIcon: ({ color }) => <IconSymbol size={25} name="terminal.fill" color={color} /> }} />
       <Tabs.Screen name="settings" options={{ title: "设置", tabBarIcon: ({ color }) => <IconSymbol size={25} name="gearshape.fill" color={color} /> }} />
       <Tabs.Screen name="router-form" options={{ href: null }} />
     </Tabs>

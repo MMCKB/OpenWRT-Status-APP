@@ -22,6 +22,7 @@ const MAPPING = {
   "wifi": "wifi",
   "list.bullet.rectangle": "format-list-bulleted",
   "gearshape.fill": "settings",
+  "terminal.fill": "terminal",
 } as IconMapping;
 
 /**

@@ -3,6 +3,7 @@ export interface RouterProfile {
   name: string;
   baseUrl: string;
   username: string;
+  sshUsername?: string;
   sshPort?: number;
   createdAt: string;
   lastConnectedAt?: string;
@@ -48,4 +49,9 @@ export interface RouterStatus {
   wireless: WirelessStatus[];
   warnings: string[];
   error?: string;
+}
+
+export interface InstalledPackage {
+  name: string;
+  version: string;
 }

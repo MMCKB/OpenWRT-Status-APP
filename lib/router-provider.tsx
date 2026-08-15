@@ -5,14 +5,17 @@ import {
   loadPassword,
   loadProfiles,
   loadSettings,
+  loadSshPassword,
   removePassword,
+  removeSshPassword,
   savePassword,
   saveProfiles,
   saveSettings,
+  saveSshPassword,
 } from "@/lib/router-storage";
 import type { RouterProfile, RouterSettings, RouterStatus } from "@/shared/router-types";
 
-type RouterDraft = Pick<RouterProfile, "name" | "baseUrl" | "username" | "sshPort">;
+type RouterDraft = Pick<RouterProfile, "name" | "baseUrl" | "username" | "sshUsername" | "sshPort">;
 
 interface RouterContextValue {
   profiles: RouterProfile[];
@@ -22,11 +25,12 @@ interface RouterContextValue {
   isReady: boolean;
   isRefreshing: boolean;
   setSelectedRouter: (routerId: string) => Promise<void>;
-  saveProfile: (draft: RouterDraft, password: string, id?: string) => Promise<RouterProfile>;
+  saveProfile: (draft: RouterDraft, password: string, sshPassword: string, id?: string) => Promise<RouterProfile>;
   deleteProfile: (routerId: string) => Promise<void>;
   testConnection: (draft: RouterDraft, password: string, routerId?: string) => Promise<RouterStatus>;
   refreshStatus: () => Promise<RouterStatus | null>;
   updateRefreshInterval: (seconds: number) => Promise<void>;
+  getSelectedCredentials: () => Promise<{ luciPassword: string; sshPassword: string } | null>;
 }
 
 const RouterContext = createContext<RouterContextValue | null>(null);
@@ -118,13 +122,14 @@ export function RouterProvider({ children }: { children: ReactNode }) {
     await saveSettings(next);
   }, [settings]);
 
-  const saveProfile = useCallback(async (draft: RouterDraft, password: string, id?: string) => {
+  const saveProfile = useCallback(async (draft: RouterDraft, password: string, sshPassword: string, id?: string) => {
     const existing = id ? profiles.find((profile) => profile.id === id) : undefined;
     const profile: RouterProfile = {
       id: existing?.id ?? makeId(),
       name: draft.name.trim() || "我的 OpenWrt",
       baseUrl: normalizeRouterEndpoint(draft.baseUrl),
       username: draft.username.trim() || "root",
+      sshUsername: draft.sshUsername?.trim() || draft.username.trim() || "root",
       sshPort: Number.isInteger(draft.sshPort) && (draft.sshPort ?? 0) > 0 && (draft.sshPort ?? 0) <= 65535
         ? draft.sshPort
         : existing?.sshPort ?? 22,
@@ -137,6 +142,11 @@ export function RouterProvider({ children }: { children: ReactNode }) {
     setProfiles(nextProfiles);
     await saveProfiles(nextProfiles);
     if (password) await savePassword(profile.id, password);
+    if (sshPassword) {
+      await saveSshPassword(profile.id, sshPassword);
+    } else if (!existing && password) {
+      await saveSshPassword(profile.id, password);
+    }
     if (!settings.selectedRouterId || settings.selectedRouterId === profile.id) {
       const nextSettings = { ...settings, selectedRouterId: profile.id };
       setSettings(nextSettings);
@@ -154,7 +164,7 @@ export function RouterProvider({ children }: { children: ReactNode }) {
     setProfiles(nextProfiles);
     setSettings(nextSettings);
     if (settings.selectedRouterId === routerId) setSelectedStatus(null);
-    await Promise.all([saveProfiles(nextProfiles), saveSettings(nextSettings), removePassword(routerId)]);
+    await Promise.all([saveProfiles(nextProfiles), saveSettings(nextSettings), removePassword(routerId), removeSshPassword(routerId)]);
   }, [profiles, settings]);
 
   const testConnection = useCallback(async (draft: RouterDraft, password: string, routerId = "test") => {
@@ -167,6 +177,16 @@ export function RouterProvider({ children }: { children: ReactNode }) {
     setSettings(next);
     await saveSettings(next);
   }, [settings]);
+
+  const getSelectedCredentials = useCallback(async () => {
+    if (!selectedProfile) return null;
+    const [luciPassword, sshPassword] = await Promise.all([
+      loadPassword(selectedProfile.id),
+      loadSshPassword(selectedProfile.id),
+    ]);
+    if (!luciPassword) return null;
+    return { luciPassword, sshPassword: sshPassword ?? luciPassword };
+  }, [selectedProfile]);
 
   const value = useMemo<RouterContextValue>(() => ({
     profiles,
@@ -181,7 +201,8 @@ export function RouterProvider({ children }: { children: ReactNode }) {
     testConnection,
     refreshStatus,
     updateRefreshInterval,
-  }), [profiles, settings, selectedProfile, selectedStatus, isReady, isRefreshing, setSelectedRouter, saveProfile, deleteProfile, testConnection, refreshStatus, updateRefreshInterval]);
+    getSelectedCredentials,
+  }), [profiles, settings, selectedProfile, selectedStatus, isReady, isRefreshing, setSelectedRouter, saveProfile, deleteProfile, testConnection, refreshStatus, updateRefreshInterval, getSelectedCredentials]);
 
   return <RouterContext.Provider value={value}>{children}</RouterContext.Provider>;
 }

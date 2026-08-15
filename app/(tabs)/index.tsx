@@ -1,13 +1,11 @@
 import MaterialIcons from "@expo/vector-icons/MaterialIcons";
-import * as Linking from "expo-linking";
 import { useFocusEffect, useRouter } from "expo-router";
 import { useCallback } from "react";
-import { ActivityIndicator, Alert, Pressable, RefreshControl, ScrollView, StyleSheet, Text, View } from "react-native";
+import { ActivityIndicator, Pressable, RefreshControl, ScrollView, StyleSheet, Text, View } from "react-native";
 
 import { EmptyState, MetricTile, SectionCard, sharedStyles, StatusPill } from "@/components/status-ui";
 import { formatBytes, formatLoad, formatUptime, memoryUsagePercent } from "@/lib/openwrt-client";
 import { useRouterStore } from "@/lib/router-provider";
-import { getSshTarget, makeSshUri } from "@/lib/ssh-client";
 
 function formatUpdateTime(timestamp?: string) {
   if (!timestamp) return "尚未刷新";
@@ -41,21 +39,6 @@ export default function StatusScreen() {
   const system = selectedStatus?.system;
   const memoryPercent = memoryUsagePercent(system ?? null);
   const isOnline = selectedStatus?.online === true;
-  const sshTarget = getSshTarget(selectedProfile!);
-
-  async function openSshClient() {
-    try {
-      const sshUri = makeSshUri(selectedProfile!);
-      const supported = await Linking.canOpenURL(sshUri);
-      if (!supported) {
-        Alert.alert("未检测到 SSH 客户端", "请安装支持 ssh:// 链接的 SSH 终端应用，然后重新尝试。为保护凭证，本应用不会在链接中传递密码。");
-        return;
-      }
-      await Linking.openURL(sshUri);
-    } catch (error) {
-      Alert.alert("无法打开 SSH", error instanceof Error ? error.message : "请检查路由器地址与已安装的 SSH 客户端。");
-    }
-  }
   return (
     <View style={sharedStyles.screen}>
       <ScrollView
@@ -82,9 +65,9 @@ export default function StatusScreen() {
           </View>
         </View>
 
-        <Pressable accessibilityRole="button" accessibilityLabel={`在 SSH 客户端中打开 ${sshTarget}`} onPress={() => void openSshClient()} style={({ pressed }) => [styles.sshCard, pressed && styles.sshCardPressed]}>
+        <Pressable accessibilityRole="button" accessibilityLabel="打开应用内 SSH 控制台" onPress={() => router.push("/control" as never)} style={({ pressed }) => [styles.sshCard, pressed && styles.sshCardPressed]}>
           <View style={styles.sshIcon}><MaterialIcons name="terminal" size={22} color="#007E7A" /></View>
-          <View style={styles.sshContent}><Text style={styles.sshTitle}>打开 SSH 终端</Text><Text style={styles.sshTarget} numberOfLines={1}>{sshTarget}</Text></View>
+          <View style={styles.sshContent}><Text style={styles.sshTitle}>应用内 SSH 控制台</Text><Text style={styles.sshTarget} numberOfLines={1}>终端命令与已安装软件包</Text></View>
           <MaterialIcons name="chevron-right" size={23} color="#6B7C93" />
         </Pressable>
 

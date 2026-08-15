@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { buildRouterStatus, formatBytes, formatUptime, memoryUsagePercent, normalizeRouterEndpoint } from "../lib/openwrt-client";
+import { buildRouterStatus, formatBytes, formatUptime, memoryUsagePercent, normalizeRouterEndpoint, parseInstalledPackages } from "../lib/openwrt-client";
 import { getSshTarget, makeSshUri } from "../lib/ssh-client";
 
 describe("OpenWrt 数据转换", () => {
@@ -28,6 +28,13 @@ describe("OpenWrt 数据转换", () => {
     expect(formatBytes(1048576)).toBe("1.0 MB");
     expect(formatUptime(90061)).toBe("1 天 1 小时");
     expect(memoryUsagePercent({ hostname: "a", model: "b", firmware: "c", uptimeSeconds: 1, load: null, memoryTotal: 100, memoryAvailable: 40 })).toBe(60);
+  });
+
+  it("解析 rpc-sys 返回的完整已安装软件包清单", () => {
+    expect(parseInstalledPackages({ packages: { "luci-base": "25.199.123", busybox: "1.37.0", ignored: 42 } })).toEqual([
+      { name: "busybox", version: "1.37.0" },
+      { name: "luci-base", version: "25.199.123" },
+    ]);
   });
 
   it("从路由器资料生成不含密码的 SSH 交接地址", () => {

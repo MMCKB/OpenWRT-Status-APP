@@ -20,6 +20,7 @@
   },
   "dependencies": {
     "@expo/vector-icons": "^15.0.3",
+    "@marcomueglich/react-native-ssh-client": "^1.0.0",
     "@react-native-async-storage/async-storage": "^2.2.0",
     "@react-navigation/bottom-tabs": "^7.8.12",
     "@react-navigation/elements": "^2.9.2",

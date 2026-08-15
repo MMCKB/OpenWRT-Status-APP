@@ -14,8 +14,10 @@ export default function RouterFormScreen() {
   const [name, setName] = useState("");
   const [address, setAddress] = useState("");
   const [username, setUsername] = useState("root");
+  const [sshUsername, setSshUsername] = useState("root");
   const [sshPort, setSshPort] = useState("22");
   const [password, setPassword] = useState("");
+  const [sshPassword, setSshPassword] = useState("");
   const [isSaving, setIsSaving] = useState(false);
   const [isTesting, setIsTesting] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
@@ -26,10 +28,11 @@ export default function RouterFormScreen() {
     setName(existing.name);
     setAddress(existing.baseUrl);
     setUsername(existing.username);
+    setSshUsername(existing.sshUsername ?? existing.username);
     setSshPort(String(existing.sshPort ?? 22));
   }, [existing]);
 
-  const draft = { name, baseUrl: address, username, sshPort: Number(sshPort) };
+  const draft = { name, baseUrl: address, username, sshUsername, sshPort: Number(sshPort) };
 
   async function handleTest() {
     setIsTesting(true); setMessage(null); setTested(null);
@@ -46,7 +49,7 @@ export default function RouterFormScreen() {
   async function handleSave() {
     setIsSaving(true); setMessage(null);
     try {
-      await saveProfile(draft, password, existing?.id);
+      await saveProfile(draft, password, sshPassword ?? "", existing?.id);
       router.replace("/");
     } catch (error) {
       setTested("error");
@@ -72,9 +75,11 @@ export default function RouterFormScreen() {
           <Text style={styles.fieldLabel}>LuCI 管理地址</Text><TextInput style={styles.input} value={address} onChangeText={setAddress} placeholder="http://192.168.1.1 或完整 /ubus 地址" placeholderTextColor="#93A1AF" autoCapitalize="none" autoCorrect={false} keyboardType="url" returnKeyType="next" />
           <Text style={styles.helpText}>若只填写主机地址，应用会自动补全为 /ubus。</Text>
           <Text style={styles.fieldLabel}>用户名</Text><TextInput style={styles.input} value={username} onChangeText={setUsername} placeholder="root" placeholderTextColor="#93A1AF" autoCapitalize="none" autoCorrect={false} returnKeyType="next" />
+          <Text style={styles.fieldLabel}>SSH 用户名</Text><TextInput style={styles.input} value={sshUsername} onChangeText={setSshUsername} placeholder="root" placeholderTextColor="#93A1AF" autoCapitalize="none" autoCorrect={false} returnKeyType="next" />
           <Text style={styles.fieldLabel}>SSH 端口</Text><TextInput style={styles.input} value={sshPort} onChangeText={setSshPort} placeholder="22" placeholderTextColor="#93A1AF" keyboardType="number-pad" returnKeyType="next" />
-          <Text style={styles.helpText}>SSH 使用上方用户名和 LuCI 地址中的主机名；终端应用会单独要求输入 SSH 密码或密钥。</Text>
+          <Text style={styles.helpText}>应用内终端使用 LuCI 地址中的主机名，以及这里设置的 SSH 账户与端口。</Text>
           <Text style={styles.fieldLabel}>密码{existing ? "（留空以保留原密码）" : ""}</Text><TextInput style={styles.input} value={password} onChangeText={setPassword} placeholder={existing ? "输入新密码以替换" : "LuCI 密码"} placeholderTextColor="#93A1AF" secureTextEntry autoCapitalize="none" autoCorrect={false} returnKeyType="done" onSubmitEditing={() => void handleSave()} />
+          <Text style={styles.fieldLabel}>SSH 密码{existing ? "（留空以保留原密码）" : "（留空则使用 LuCI 密码）"}</Text><TextInput style={styles.input} value={sshPassword} onChangeText={setSshPassword} placeholder="SSH 密码" placeholderTextColor="#93A1AF" secureTextEntry autoCapitalize="none" autoCorrect={false} returnKeyType="done" onSubmitEditing={() => void handleSave()} />
         </View>
         {message ? <View style={[styles.message, tested === "error" ? styles.errorMessage : styles.successMessage]}><StatusPill label={tested === "error" ? "连接失败" : "连接成功"} tone={tested === "error" ? "danger" : "success"} /><Text style={styles.messageText}>{message}</Text></View> : null}
         <Pressable accessibilityRole="button" accessibilityLabel="测试连接" disabled={isTesting || isSaving} onPress={() => void handleTest()} style={({ pressed }) => [sharedStyles.secondaryButton, (isTesting || isSaving) && styles.disabled, pressed && sharedStyles.primaryButtonPressed]}>{isTesting ? <ActivityIndicator color="#007E7A" /> : <Text style={sharedStyles.secondaryButtonText}>测试连接</Text>}</Pressable>

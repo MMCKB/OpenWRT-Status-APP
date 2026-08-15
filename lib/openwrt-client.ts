@@ -1,5 +1,6 @@
 import type {
   InterfaceStatus,
+  InstalledPackage,
   RouterStatus,
   SystemStatus,
   WirelessStatus,
@@ -213,6 +214,31 @@ export async function fetchRouterStatus(
     return {};
   });
   return buildRouterStatus(routerId, required[0], required[1], interfaces, wireless, warnings);
+}
+
+export function parseInstalledPackages(payload: unknown): InstalledPackage[] {
+  const root = asRecord(payload);
+  const packages = asRecord(root.packages ?? payload);
+  return Object.entries(packages)
+    .filter(([name, version]) => name.trim().length > 0 && typeof version === "string" && version.trim().length > 0)
+    .map(([name, version]) => ({ name, version: version as string }))
+    .sort((left, right) => left.name.localeCompare(right.name));
+}
+
+export async function fetchInstalledPackages(
+  rawEndpoint: string,
+  username: string,
+  password: string,
+): Promise<InstalledPackage[]> {
+  const endpoint = normalizeRouterEndpoint(rawEndpoint);
+  const token = await login(endpoint, username, password);
+  let response: unknown;
+  try {
+    response = await ubusCall(endpoint, token, "rpc-sys", "packagelist", { all: true });
+  } catch {
+    throw new OpenWrtConnectionError("无法读取软件包清单。请确认路由器安装并授权 rpcd-mod-rpcsys（rpc-sys）。");
+  }
+  return parseInstalledPackages(response);
 }
 
 export function formatBytes(value: number | null) {
