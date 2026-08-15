@@ -129,6 +129,9 @@ const config: ExpoConfig = {
           buildArchs: ["armeabi-v7a", "arm64-v8a"],
           minSdkVersion: 24,
           usesCleartextTraffic: true,
+          packagingOptions: {
+            pickFirst: ["META-INF/versions/9/OSGI-INF/MANIFEST.MF"],
+          },
         },
       },
     ],

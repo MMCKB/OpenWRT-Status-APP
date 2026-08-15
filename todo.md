@@ -22,4 +22,6 @@
 - [x] 收集 Android Gradle 构建日志并定位原生 SSH 集成失败原因
 - [x] 修复 Android 构建兼容性并完成 Expo 预构建验证
 - [ ] 通过发布流程重新构建 APK 以验证云端 Gradle 结果
+- [x] 获取第二次 Run gradlew 阶段的首个错误行并完成针对性修复
+- [x] 为 JSch 与 jspecify 的重复 META-INF 清单添加 Android 打包规则
 - [x] 以项目内 Android SSH 桥接模块替换缺失源码的第三方依赖
