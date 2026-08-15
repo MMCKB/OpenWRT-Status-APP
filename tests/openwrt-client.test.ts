@@ -24,6 +24,17 @@ describe("OpenWrt 数据转换", () => {
     expect(status.wireless[0]).toMatchObject({ ssid: "Home", clients: 1, up: true });
   });
 
+  it("兼容嵌套 wireless 对象、对象型接口和数值信道", () => {
+    const status = buildRouterStatus(
+      "router-2",
+      { hostname: "gateway", model: "Router", release: { description: "OpenWrt" } },
+      { uptime: 1, load: [0, 0, 0], memory: { total: 1, free: 1 } },
+      { interface: [] },
+      { wireless: { radio0: { channel: 149, up: true, interfaces: { primary: { ifname: "phy0-ap0", ssid: "Guest", stations: [{}, {}] } } } } },
+    );
+    expect(status.wireless).toEqual([{ name: "phy0-ap0", ssid: "Guest", up: true, channel: "149", clients: 2 }]);
+  });
+
   it("格式化仪表盘中的数字", () => {
     expect(formatBytes(1048576)).toBe("1.0 MB");
     expect(formatUptime(90061)).toBe("1 天 1 小时");

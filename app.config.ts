@@ -90,6 +90,7 @@ const config: ExpoConfig = {
   },
   plugins: [
     "expo-router",
+    "expo-document-picker",
     "./plugins/with-openwrt-ssh",
     [
       "expo-secure-store",

@@ -5,6 +5,7 @@ import type { RouterProfile } from "@/shared/router-types";
 interface OpenWrtSshBridge {
   connect(host: string, port: number, username: string, password: string, key: string): Promise<void>;
   execute(key: string, command: string): Promise<string>;
+  uploadFile(key: string, localUri: string, remotePath: string): Promise<void>;
   disconnect(key: string): void;
 }
 
@@ -45,6 +46,7 @@ export function getInAppSshTarget(profile: RouterProfile) {
 
 export async function connectInAppSsh(profile: RouterProfile, password: string) {
   const nativeBridge = bridge();
+  if (activeSession) disconnectInAppSsh();
   const host = hostFromProfile(profile);
   const username = profile.sshUsername || profile.username;
   const port = profile.sshPort ?? 22;
@@ -60,6 +62,13 @@ export async function runInAppSshCommand(command: string) {
   const normalized = command.trim();
   if (!normalized) throw new Error("请输入要执行的命令。");
   return nativeBridge.execute(activeSession.key, normalized);
+}
+
+export async function uploadInAppSshFile(localUri: string, remotePath: string) {
+  const nativeBridge = bridge();
+  if (!activeSession) throw new Error("尚未连接 SSH。请先建立会话。");
+  if (!localUri || !remotePath.startsWith("/tmp/")) throw new Error("固件上传路径无效。");
+  await nativeBridge.uploadFile(activeSession.key, localUri, remotePath);
 }
 
 export function disconnectInAppSsh() {

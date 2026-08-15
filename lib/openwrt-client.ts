@@ -24,6 +24,12 @@ function asString(value: unknown, fallback = "—") {
   return typeof value === "string" && value.trim() ? value : fallback;
 }
 
+function asDisplayValue(value: unknown, fallback = "—") {
+  if (typeof value === "string" && value.trim()) return value;
+  if (typeof value === "number" && Number.isFinite(value)) return String(value);
+  return fallback;
+}
+
 function asNumber(value: unknown): number | null {
   return typeof value === "number" && Number.isFinite(value) ? value : null;
 }
@@ -136,20 +142,29 @@ function mapInterfaces(payload: unknown): InterfaceStatus[] {
 }
 
 function mapWireless(payload: unknown): WirelessStatus[] {
-  const radios = asRecord(payload);
-  return Object.entries(radios).flatMap(([radioName, radioValue]) => {
+  const root = asRecord(payload);
+  const radios = root.radios ?? root.wireless ?? payload;
+  const radioEntries = Array.isArray(radios)
+    ? radios.map((value, index) => [`radio${index}`, value] as const)
+    : Object.entries(asRecord(radios));
+  return radioEntries.flatMap(([radioName, radioValue]) => {
     const radio = asRecord(radioValue);
-    const interfaces = Array.isArray(radio.interfaces) ? radio.interfaces : [];
-    return interfaces.map((entry, index) => {
+    const rawInterfaces = radio.interfaces ?? radio.interface;
+    const interfaces = Array.isArray(rawInterfaces)
+      ? rawInterfaces
+      : Object.values(asRecord(rawInterfaces));
+    const entries = interfaces.length ? interfaces : [radio];
+    return entries.map((entry, index) => {
       const item = asRecord(entry);
       const config = asRecord(item.config);
       const assoclist = asRecord(item.assoclist);
+      const stations = Array.isArray(item.stations) ? item.stations : Array.isArray(item.clients) ? item.clients : [];
       return {
         name: asString(item.ifname ?? item.name, `${radioName} · ${index + 1}`),
-        ssid: asString(config.ssid, "未广播 SSID"),
+        ssid: asString(config.ssid ?? item.ssid ?? asRecord(radio.config).ssid, "未广播 SSID"),
         up: item.up === true || radio.up === true,
-        channel: asString(item.channel ?? radio.channel, "自动"),
-        clients: Object.keys(assoclist).length || null,
+        channel: asDisplayValue(item.channel ?? radio.channel, "自动"),
+        clients: stations.length || Object.keys(assoclist).length || null,
       };
     });
   });

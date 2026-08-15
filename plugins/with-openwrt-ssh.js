@@ -39,9 +39,13 @@ import com.facebook.react.bridge.ReactApplicationContext;
 import com.facebook.react.bridge.ReactContextBaseJavaModule;
 import com.facebook.react.bridge.ReactMethod;
 import com.jcraft.jsch.ChannelExec;
+import com.jcraft.jsch.ChannelSftp;
 import com.jcraft.jsch.JSch;
 import com.jcraft.jsch.Session;
+import android.net.Uri;
 import java.io.ByteArrayOutputStream;
+import java.io.File;
+import java.io.FileInputStream;
 import java.io.InputStream;
 import java.util.Properties;
 import java.util.concurrent.ConcurrentHashMap;
@@ -142,6 +146,37 @@ public class OpenWrtSshModule extends ReactContextBaseJavaModule {
   @ReactMethod
   public void disconnect(String key) {
     executor.execute(() -> disconnectInternal(key));
+  }
+
+  @ReactMethod
+  public void uploadFile(String key, String localUri, String remotePath, Promise promise) {
+    executor.execute(() -> {
+      Session session = sessions.get(key);
+      if (session == null || !session.isConnected()) {
+        promise.reject("SSH_NOT_CONNECTED", "SSH 会话未连接。");
+        return;
+      }
+      ChannelSftp channel = null;
+      InputStream input = null;
+      try {
+        Uri uri = Uri.parse(localUri);
+        if ("file".equals(uri.getScheme())) {
+          input = new FileInputStream(new File(uri.getPath()));
+        } else {
+          input = getReactApplicationContext().getContentResolver().openInputStream(uri);
+        }
+        if (input == null) throw new Exception("无法读取所选固件文件。");
+        channel = (ChannelSftp) session.openChannel("sftp");
+        channel.connect(15000);
+        channel.put(input, remotePath);
+        promise.resolve(null);
+      } catch (Exception error) {
+        promise.reject("SSH_UPLOAD_FAILED", error.getMessage(), error);
+      } finally {
+        try { if (input != null) input.close(); } catch (Exception ignored) { }
+        if (channel != null) channel.disconnect();
+      }
+    });
   }
 
   private void disconnectInternal(String key) {

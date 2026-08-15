@@ -1,4 +1,5 @@
 import MaterialIcons from "@expo/vector-icons/MaterialIcons";
+import { useRouter } from "expo-router";
 import { Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
 
 import { SectionCard, sharedStyles } from "@/components/status-ui";
@@ -13,6 +14,7 @@ const intervals = [
 
 export default function SettingsScreen() {
   const { settings, updateRefreshInterval } = useRouterStore();
+  const router = useRouter();
   return (
     <View style={sharedStyles.screen}>
       <ScrollView contentContainerStyle={sharedStyles.content}>
@@ -27,6 +29,13 @@ export default function SettingsScreen() {
         <SectionCard title="数据与隐私">
           <View style={styles.infoRow}><View style={styles.infoIcon}><MaterialIcons name="vpn-key" size={19} color="#007E7A" /></View><View style={styles.infoText}><Text style={styles.infoTitle}>凭证仅存储在本机</Text><Text style={styles.infoDescription}>LuCI 密码会保存在设备安全存储中；配置资料保存在本地，不会同步至云端。</Text></View></View>
           <View style={[styles.infoRow, styles.infoDivider]}><View style={styles.infoIcon}><MaterialIcons name="wifi" size={19} color="#007E7A" /></View><View style={styles.infoText}><Text style={styles.infoTitle}>仅访问已保存的路由器</Text><Text style={styles.infoDescription}>状态读取通过 OpenWrt 的 LuCI ubus 接口完成。请在可信局域网内使用。</Text></View></View>
+        </SectionCard>
+        <SectionCard title="维护">
+          <Pressable accessibilityRole="button" accessibilityLabel="打开固件升级" onPress={() => router.push("/firmware" as never)} style={({ pressed }) => [styles.maintenanceRow, pressed && styles.intervalPressed]}>
+            <View style={styles.infoIcon}><MaterialIcons name="system-update" size={19} color="#C77A00" /></View>
+            <View style={styles.infoText}><Text style={styles.infoTitle}>固件升级</Text><Text style={styles.infoDescription}>选择 sysupgrade 镜像，经 SSH 上传和校验后再确认升级。</Text></View>
+            <MaterialIcons name="chevron-right" size={20} color="#718398" />
+          </Pressable>
         </SectionCard>
         <View style={styles.note}><MaterialIcons name="info-outline" size={18} color="#60758B" /><Text style={styles.noteText}>若使用 HTTP 管理地址，账户和状态数据在本地网络中并未加密。建议优先使用可信网络与 HTTPS。</Text></View>
       </ScrollView>
@@ -46,6 +55,7 @@ const styles = StyleSheet.create({
   intervalTextSelected: { color: "#FFFFFF" },
   infoRow: { flexDirection: "row", alignItems: "flex-start", gap: 12, padding: 15 },
   infoDivider: { borderTopWidth: 1, borderTopColor: "#EEF2F4" },
+  maintenanceRow: { minHeight: 74, flexDirection: "row", alignItems: "center", gap: 12, padding: 15 },
   infoIcon: { width: 34, height: 34, borderRadius: 10, alignItems: "center", justifyContent: "center", backgroundColor: "#E6F5F4" },
   infoText: { flex: 1 },
   infoTitle: { color: "#203B55", fontSize: 14, fontWeight: "800" },

@@ -77,7 +77,7 @@ export default function StatusScreen() {
         </View>
 
         <SectionCard title="网络接口" action={<Text style={styles.sectionMeta}>{selectedStatus?.interfaces.length ?? 0} 个</Text>}>
-          {selectedStatus?.interfaces.length ? selectedStatus.interfaces.slice(0, 3).map((item, index) => (
+          {selectedStatus?.interfaces.length ? selectedStatus.interfaces.map((item, index) => (
             <View key={`${item.name}-${index}`} style={[styles.listRow, index > 0 && styles.rowDivider]}>
               <View style={[styles.rowStatus, { backgroundColor: item.up ? "#1B9A6A" : "#C53B3B" }]} />
               <View style={styles.rowMain}><Text style={styles.rowTitle}>{item.name}</Text><Text style={styles.rowSubtitle}>{item.ipv4[0] ?? item.device}</Text></View>
@@ -87,7 +87,7 @@ export default function StatusScreen() {
         </SectionCard>
 
         <SectionCard title="无线网络" action={<Text style={styles.sectionMeta}>{selectedStatus?.wireless.length ?? 0} 个</Text>}>
-          {selectedStatus?.wireless.length ? selectedStatus.wireless.slice(0, 3).map((item, index) => (
+          {selectedStatus?.wireless.length ? selectedStatus.wireless.map((item, index) => (
             <View key={`${item.name}-${index}`} style={[styles.listRow, index > 0 && styles.rowDivider]}>
               <MaterialIcons name="wifi" size={20} color={item.up ? "#007E7A" : "#7A8998"} />
               <View style={styles.rowMain}><Text style={styles.rowTitle}>{item.ssid}</Text><Text style={styles.rowSubtitle}>{item.name} · 信道 {item.channel}</Text></View>
