@@ -44,6 +44,7 @@ import com.jcraft.jsch.JSch;
 import com.jcraft.jsch.Session;
 import android.net.Uri;
 import java.io.ByteArrayOutputStream;
+import java.io.ByteArrayInputStream;
 import java.io.File;
 import java.io.FileInputStream;
 import java.io.InputStream;
@@ -172,6 +173,31 @@ public class OpenWrtSshModule extends ReactContextBaseJavaModule {
         promise.resolve(null);
       } catch (Exception error) {
         promise.reject("SSH_UPLOAD_FAILED", error.getMessage(), error);
+      } finally {
+        try { if (input != null) input.close(); } catch (Exception ignored) { }
+        if (channel != null) channel.disconnect();
+      }
+    });
+  }
+
+  @ReactMethod
+  public void writeTextFile(String key, String content, String remotePath, Promise promise) {
+    executor.execute(() -> {
+      Session session = sessions.get(key);
+      if (session == null || !session.isConnected()) {
+        promise.reject("SSH_NOT_CONNECTED", "SSH 会话未连接。");
+        return;
+      }
+      ChannelSftp channel = null;
+      InputStream input = null;
+      try {
+        input = new ByteArrayInputStream(content.getBytes("UTF-8"));
+        channel = (ChannelSftp) session.openChannel("sftp");
+        channel.connect(15000);
+        channel.put(input, remotePath);
+        promise.resolve(null);
+      } catch (Exception error) {
+        promise.reject("SSH_TEXT_WRITE_FAILED", error.getMessage(), error);
       } finally {
         try { if (input != null) input.close(); } catch (Exception ignored) { }
         if (channel != null) channel.disconnect();

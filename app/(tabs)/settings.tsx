@@ -31,9 +31,14 @@ export default function SettingsScreen() {
           <View style={[styles.infoRow, styles.infoDivider]}><View style={styles.infoIcon}><MaterialIcons name="wifi" size={19} color="#007E7A" /></View><View style={styles.infoText}><Text style={styles.infoTitle}>仅访问已保存的路由器</Text><Text style={styles.infoDescription}>状态读取通过 OpenWrt 的 LuCI ubus 接口完成。请在可信局域网内使用。</Text></View></View>
         </SectionCard>
         <SectionCard title="维护">
+          <Pressable accessibilityRole="button" accessibilityLabel="打开文件管理" onPress={() => router.push("/files" as never)} style={({ pressed }) => [styles.maintenanceRow, pressed && styles.intervalPressed]}>
+            <View style={styles.infoIcon}><MaterialIcons name="folder-open" size={19} color="#007E7A" /></View>
+            <View style={styles.infoText}><Text style={styles.infoTitle}>文件管理</Text><Text style={styles.infoDescription}>通过应用内 SSH 浏览、上传、编辑、复制、移动与管理路由器文件。</Text></View>
+            <MaterialIcons name="chevron-right" size={20} color="#718398" />
+          </Pressable>
           <Pressable accessibilityRole="button" accessibilityLabel="打开固件升级" onPress={() => router.push("/firmware" as never)} style={({ pressed }) => [styles.maintenanceRow, pressed && styles.intervalPressed]}>
             <View style={styles.infoIcon}><MaterialIcons name="system-update" size={19} color="#C77A00" /></View>
-            <View style={styles.infoText}><Text style={styles.infoTitle}>固件升级</Text><Text style={styles.infoDescription}>选择 sysupgrade 镜像，经 SSH 上传和校验后再确认升级。</Text></View>
+            <View style={styles.infoText}><Text style={styles.infoTitle}>固件升级</Text><Text style={styles.infoDescription}>选择 sysupgrade 镜像，经 SSH 上传后确认执行升级。</Text></View>
             <MaterialIcons name="chevron-right" size={20} color="#718398" />
           </Pressable>
         </SectionCard>

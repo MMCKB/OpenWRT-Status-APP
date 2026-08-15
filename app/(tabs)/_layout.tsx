@@ -42,6 +42,7 @@ export default function TabLayout() {
       <Tabs.Screen name="control" options={{ title: "控制", tabBarIcon: ({ color }) => <IconSymbol size={25} name="terminal.fill" color={color} /> }} />
       <Tabs.Screen name="settings" options={{ title: "设置", tabBarIcon: ({ color }) => <IconSymbol size={25} name="gearshape.fill" color={color} /> }} />
       <Tabs.Screen name="firmware" options={{ href: null }} />
+      <Tabs.Screen name="files" options={{ href: null }} />
       <Tabs.Screen name="router-form" options={{ href: null }} />
     </Tabs>
     </RouterProvider>
