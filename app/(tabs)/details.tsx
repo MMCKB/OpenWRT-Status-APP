@@ -10,6 +10,12 @@ function DetailRow({ label, value, last }: { label: string; value: string; last?
   return <View style={[styles.detailRow, !last && styles.rowDivider]}><Text style={styles.label}>{label}</Text><Text style={styles.value} numberOfLines={2}>{value}</Text></View>;
 }
 
+function interfaceAddressSummary(ipv4: string[], ipv6: string[], device: string) {
+  const ipv4Summary = ipv4.length ? ipv4.join(", ") : "未分配";
+  const ipv6Summary = ipv6.length ? ipv6.join(", ") : "未分配";
+  return `IPv4: ${ipv4Summary}\nIPv6: ${ipv6Summary}\n设备: ${device}`;
+}
+
 export default function DetailsScreen() {
   const router = useRouter();
   const { selectedProfile, selectedStatus, refreshStatus, isRefreshing } = useRouterStore();
@@ -35,7 +41,7 @@ export default function DetailsScreen() {
           <DetailRow label="可用内存" value={formatBytes(system?.memoryAvailable ?? null)} last />
         </SectionCard>
         <SectionCard title="网络接口">
-          {selectedStatus?.interfaces.length ? selectedStatus.interfaces.map((item, index, all) => <DetailRow key={`${item.name}-${index}`} label={`${item.name} · ${item.up ? "已连接" : "未连接"}`} value={item.ipv4.join(", ") || item.device} last={index === all.length - 1} />) : <Text style={styles.unavailable}>路由器未报告接口数据。</Text>}
+          {selectedStatus?.interfaces.length ? selectedStatus.interfaces.map((item, index, all) => <DetailRow key={`${item.name}-${index}`} label={`${item.name} · ${item.up ? "已连接" : "未连接"}`} value={interfaceAddressSummary(item.ipv4, item.ipv6, item.device)} last={index === all.length - 1} />) : <Text style={styles.unavailable}>路由器未报告接口数据。</Text>}
         </SectionCard>
         <SectionCard title="无线网络">
           {selectedStatus?.wireless.length ? selectedStatus.wireless.map((item, index, all) => <DetailRow key={`${item.name}-${index}`} label={`${item.ssid} · ${item.up ? "已启用" : "未启用"}`} value={`接口 ${item.name} · 信道 ${item.channel} · ${item.clients === null ? "客户端未报告" : `${item.clients} 台客户端`}`} last={index === all.length - 1} />) : <Text style={styles.unavailable}>路由器未报告无线数据。</Text>}

@@ -14,13 +14,14 @@ describe("OpenWrt 数据转换", () => {
       "router-1",
       { hostname: "gateway", model: "GL.iNet MT3000", release: { description: "OpenWrt 24.10" } },
       { uptime: 90061, load: [6553, 13107, 19660], memory: { total: 268435456, free: 120000000, buffered: 20000000, cached: 30000000 } },
-      { interface: [{ interface: "wan", l3_device: "eth0", up: true, "ipv4-address": [{ address: "203.0.113.8" }], uptime: 3600 }] },
+      { interface: [{ interface: "wan", l3_device: "eth0", up: true, "ipv4-address": [{ address: "203.0.113.8" }], "ipv6-address": [{ address: "2001:db8::8" }], uptime: 3600 }] },
       { radio0: { up: true, channel: 36, interfaces: [{ ifname: "wlan0", up: true, config: { ssid: "Home" }, assoclist: { stationA: {} } }] } },
     );
     expect(status.online).toBe(true);
     expect(status.system?.hostname).toBe("gateway");
     expect(status.system?.load).toEqual([0.09999237048905166, 0.2, 0.29999237048905164]);
     expect(status.interfaces[0]).toMatchObject({ name: "wan", device: "eth0", ipv4: ["203.0.113.8"], up: true });
+    expect(status.interfaces[0]?.ipv6).toEqual(["2001:db8::8"]);
     expect(status.wireless[0]).toMatchObject({ ssid: "Home", clients: 1, up: true });
   });
 

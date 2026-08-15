@@ -1,11 +1,14 @@
 import MaterialIcons from "@expo/vector-icons/MaterialIcons";
 import * as DocumentPicker from "expo-document-picker";
+import * as FileSystem from "expo-file-system/legacy";
+import * as Sharing from "expo-sharing";
 import { useRouter } from "expo-router";
 import { useEffect, useState } from "react";
 import { ActivityIndicator, Alert, FlatList, KeyboardAvoidingView, Modal, Platform, Pressable, RefreshControl, StyleSheet, Text, TextInput, View } from "react-native";
 
 import { EmptyState } from "@/components/status-ui";
-import { connectInAppSsh, disconnectInAppSsh, getInAppSshTarget, isInAppSshSupported, runInAppSshCommand, uploadInAppSshFile, writeInAppSshTextFile } from "@/lib/native-ssh";
+import { filterFileEntries, sortFileEntries, type FileSortMode } from "@/lib/file-manager-utils";
+import { connectInAppSsh, disconnectInAppSsh, downloadInAppSshFile, getInAppSshTarget, isInAppSshSupported, runInAppSshCommand, uploadInAppSshFile, writeInAppSshTextFile } from "@/lib/native-ssh";
 import {
   buildChmodCommand,
   buildCopyCommand,
@@ -29,7 +32,7 @@ import {
 import { useRouterStore } from "@/lib/router-provider";
 
 type ConnectionState = "idle" | "connecting" | "connected" | "error";
-type ClipboardState = { entry: RemoteFileEntry; mode: "copy" | "move" } | null;
+type ClipboardState = { entries: RemoteFileEntry[]; mode: "copy" | "move" } | null;
 type PromptKind = "folder" | "rename" | "permissions" | null;
 type EditorState = { entry: RemoteFileEntry; content: string } | null;
 
@@ -56,7 +59,11 @@ export default function FilesScreen() {
   const [pathInput, setPathInput] = useState("/");
   const [entries, setEntries] = useState<RemoteFileEntry[]>([]);
   const [selected, setSelected] = useState<RemoteFileEntry | null>(null);
+  const [isMultiSelecting, setIsMultiSelecting] = useState(false);
+  const [multiSelected, setMultiSelected] = useState<RemoteFileEntry[]>([]);
   const [clipboard, setClipboard] = useState<ClipboardState>(null);
+  const [searchTerm, setSearchTerm] = useState("");
+  const [sortMode, setSortMode] = useState<FileSortMode>("name");
   const [isLoading, setIsLoading] = useState(false);
   const [notice, setNotice] = useState("连接后即可浏览和管理路由器上的文件。");
   const [promptKind, setPromptKind] = useState<PromptKind>(null);
@@ -90,6 +97,7 @@ export default function FilesScreen() {
       setCurrentPath(normalized);
       setPathInput(normalized);
       setSelected(null);
+      setMultiSelected([]);
       setNotice(`${normalized} · 已加载 ${parseDirectoryEntries(output, normalized).length} 项`);
     } catch (error) {
       setNotice(error instanceof Error ? error.message : "无法读取路由器目录。");
@@ -119,6 +127,8 @@ export default function FilesScreen() {
     setConnection("idle");
     setEntries([]);
     setSelected(null);
+    setMultiSelected([]);
+    setIsMultiSelecting(false);
     setClipboard(null);
     setNotice("SSH 会话已断开。");
   }
@@ -233,24 +243,74 @@ export default function FilesScreen() {
     }
   }
 
+  async function downloadAndShare(entry: RemoteFileEntry) {
+    if (!isConnected || isBusy || entry.kind !== "file") return;
+    setIsLoading(true);
+    setNotice(`正在下载 ${entry.name}…`);
+    try {
+      const cacheDirectory = FileSystem.cacheDirectory;
+      if (!cacheDirectory) throw new Error("手机缓存目录不可用，无法保存下载文件。");
+      const downloadDirectory = `${cacheDirectory}openwrt-downloads/`;
+      const safeName = entry.name.replace(/[^a-zA-Z0-9._-]/g, "_") || "openwrt-file";
+      const localUri = `${downloadDirectory}${Date.now()}-${safeName}`;
+      await FileSystem.makeDirectoryAsync(downloadDirectory, { intermediates: true });
+      await downloadInAppSshFile(entry.path, localUri);
+      setNotice(`已下载 ${entry.name}，正在打开系统分享面板。`);
+      if (!(await Sharing.isAvailableAsync())) {
+        Alert.alert("文件已下载", `已保存到应用缓存：${entry.name}。当前设备无法打开系统分享面板。`);
+        return;
+      }
+      await Sharing.shareAsync(localUri, { dialogTitle: `保存或分享 ${entry.name}` });
+      setNotice(`已完成 ${entry.name} 的下载。`);
+    } catch (error) {
+      setNotice(error instanceof Error ? error.message : "文件下载失败。");
+    } finally {
+      setIsLoading(false);
+    }
+  }
+
+  function cycleSortMode() {
+    setSortMode((current) => current === "name" ? "size" : current === "size" ? "modified" : "name");
+  }
+
+  const activeSelection = isMultiSelecting ? multiSelected : selected ? [selected] : [];
+
+  function toggleMultiSelection(entry: RemoteFileEntry) {
+    setMultiSelected((current) => current.some((item) => item.path === entry.path)
+      ? current.filter((item) => item.path !== entry.path)
+      : [...current, entry]);
+  }
+
+  function clearSelection() {
+    setSelected(null);
+    setMultiSelected([]);
+    setIsMultiSelecting(false);
+  }
+
   function stageClipboard(mode: "copy" | "move") {
-    if (!selected) return;
-    setClipboard({ entry: selected, mode });
-    setNotice(mode === "copy" ? `已复制 ${selected.name}，请进入目标文件夹后粘贴。` : `已剪切 ${selected.name}，请进入目标文件夹后粘贴。`);
+    if (!activeSelection.length) return;
+    setClipboard({ entries: activeSelection, mode });
+    const countLabel = activeSelection.length === 1 ? activeSelection[0].name : `${activeSelection.length} 项`;
+    setNotice(mode === "copy" ? `已复制 ${countLabel}，请进入目标文件夹后粘贴。` : `已剪切 ${countLabel}，请进入目标文件夹后粘贴。`);
   }
 
   async function pasteClipboard() {
     if (!clipboard || isBusy) return;
-    if (parentRemotePath(clipboard.entry.path) === currentPath) {
-      Alert.alert("无需粘贴", "当前已经是该文件或文件夹所在的位置。");
+    const eligibleEntries = clipboard.entries.filter((entry) => parentRemotePath(entry.path) !== currentPath);
+    if (!eligibleEntries.length) {
+      Alert.alert("无需粘贴", "当前已经是所选内容所在的位置。");
       return;
     }
     setIsLoading(true);
     try {
-      const command = clipboard.mode === "copy" ? buildCopyCommand(clipboard.entry.path, currentPath) : buildMoveCommand(clipboard.entry.path, currentPath);
-      await runInAppSshCommand(command);
-      setNotice(clipboard.mode === "copy" ? `已复制 ${clipboard.entry.name}。` : `已移动 ${clipboard.entry.name}。`);
+      for (const entry of eligibleEntries) {
+        const command = clipboard.mode === "copy" ? buildCopyCommand(entry.path, currentPath) : buildMoveCommand(entry.path, currentPath);
+        await runInAppSshCommand(command);
+      }
+      const countLabel = eligibleEntries.length === 1 ? eligibleEntries[0].name : `${eligibleEntries.length} 项`;
+      setNotice(clipboard.mode === "copy" ? `已复制 ${countLabel}。` : `已移动 ${countLabel}。`);
       setClipboard(null);
+      clearSelection();
       await refreshDirectory();
     } catch (error) {
       Alert.alert("粘贴失败", error instanceof Error ? error.message : "无法将文件放入当前文件夹。");
@@ -260,23 +320,27 @@ export default function FilesScreen() {
   }
 
   function confirmDelete() {
-    if (!selected || isBusy) return;
-    Alert.alert("确认删除？", `将永久删除 ${selected.path}${selected.kind === "directory" ? " 及其全部内容" : ""}。此操作无法撤销。`, [
+    if (!activeSelection.length || isBusy) return;
+    const description = activeSelection.length === 1
+      ? `将永久删除 ${activeSelection[0].path}${activeSelection[0].kind === "directory" ? " 及其全部内容" : ""}。此操作无法撤销。`
+      : `将永久删除所选的 ${activeSelection.length} 个文件或文件夹。此操作无法撤销。`;
+    Alert.alert("确认删除？", description, [
       { text: "取消", style: "cancel" },
       {
         text: "删除",
         style: "destructive",
-        onPress: () => void deleteSelected(),
+        onPress: () => void deleteSelection(),
       },
     ]);
   }
 
-  async function deleteSelected() {
-    if (!selected) return;
+  async function deleteSelection() {
+    if (!activeSelection.length) return;
     setIsLoading(true);
     try {
-      await runInAppSshCommand(buildDeleteCommand(selected.path));
-      setNotice(`已删除 ${selected.name}。`);
+      for (const entry of activeSelection) await runInAppSshCommand(buildDeleteCommand(entry.path));
+      setNotice(activeSelection.length === 1 ? `已删除 ${activeSelection[0].name}。` : `已删除 ${activeSelection.length} 项。`);
+      clearSelection();
       await refreshDirectory();
     } catch (error) {
       Alert.alert("删除失败", error instanceof Error ? error.message : "无法删除此文件。\n");
@@ -295,6 +359,8 @@ export default function FilesScreen() {
 
   const promptTitle = promptKind === "folder" ? "新建文件夹" : promptKind === "rename" ? "重命名" : "修改权限";
   const promptHint = promptKind === "folder" ? "输入文件夹名称" : promptKind === "rename" ? "输入新名称" : "例如 644、755 或 0755";
+  const visibleEntries = sortFileEntries(filterFileEntries(entries, searchTerm), sortMode);
+  const sortLabel = sortMode === "name" ? "名称" : sortMode === "size" ? "大小" : "时间";
 
   return (
     <KeyboardAvoidingView style={styles.screen} behavior={Platform.OS === "ios" ? "padding" : undefined}>
@@ -315,19 +381,23 @@ export default function FilesScreen() {
       <View style={styles.primaryTools}>
         <Pressable accessibilityRole="button" accessibilityLabel="上传文件到当前文件夹" disabled={!isConnected || isBusy} onPress={() => void chooseAndUpload()} style={({ pressed }) => [styles.primaryTool, (!isConnected || isBusy) && styles.disabled, pressed && styles.pressed]}><MaterialIcons name="upload-file" size={19} color="#FFFFFF" /><Text style={styles.primaryToolText}>上传</Text></Pressable>
         <Pressable accessibilityRole="button" accessibilityLabel="在当前文件夹新建文件夹" disabled={!isConnected || isBusy} onPress={() => showPrompt("folder")} style={({ pressed }) => [styles.secondaryTool, (!isConnected || isBusy) && styles.disabled, pressed && styles.pressed]}><MaterialIcons name="create-new-folder" size={19} color="#007E7A" /><Text style={styles.secondaryToolText}>新建文件夹</Text></Pressable>
+        <Pressable accessibilityRole="button" accessibilityLabel="切换文件排序方式" disabled={!isConnected || isBusy} onPress={cycleSortMode} style={({ pressed }) => [styles.secondaryTool, (!isConnected || isBusy) && styles.disabled, pressed && styles.pressed]}><MaterialIcons name="sort" size={19} color="#007E7A" /><Text style={styles.secondaryToolText}>{sortLabel}</Text></Pressable>
+        <Pressable accessibilityRole="button" accessibilityLabel={isMultiSelecting ? "结束多选" : "开始多选"} disabled={!isConnected || isBusy} onPress={() => isMultiSelecting ? clearSelection() : (setSelected(null), setIsMultiSelecting(true))} style={({ pressed }) => [styles.secondaryTool, (!isConnected || isBusy) && styles.disabled, pressed && styles.pressed]}><MaterialIcons name={isMultiSelecting ? "close" : "checklist"} size={19} color="#007E7A" /><Text style={styles.secondaryToolText}>{isMultiSelecting ? "结束多选" : "多选"}</Text></Pressable>
         {clipboard ? <Pressable accessibilityRole="button" accessibilityLabel="将剪贴板内容粘贴到当前文件夹" disabled={!isConnected || isBusy} onPress={() => void pasteClipboard()} style={({ pressed }) => [styles.pasteTool, (!isConnected || isBusy) && styles.disabled, pressed && styles.pressed]}><MaterialIcons name={clipboard.mode === "copy" ? "content-copy" : "drive-file-move"} size={18} color="#785000" /><Text style={styles.pasteToolText}>{clipboard.mode === "copy" ? "粘贴复制" : "粘贴移动"}</Text></Pressable> : null}
       </View>
 
-      {selected ? <View style={styles.selectionTray}><View style={styles.selectionInfo}><MaterialIcons name={fileIcon(selected)} size={19} color="#007E7A" /><View style={styles.selectionCopy}><Text style={styles.selectionName} numberOfLines={1}>{selected.name}</Text><Text style={styles.selectionMeta} numberOfLines={1}>{describeEntry(selected)}</Text></View><Pressable accessibilityRole="button" accessibilityLabel="取消文件选择" onPress={() => setSelected(null)} style={styles.closeSelection}><MaterialIcons name="close" size={19} color="#60758B" /></Pressable></View><View style={styles.selectionActions}>{selected.kind === "file" ? <Pressable accessibilityRole="button" onPress={() => void openTextEditor(selected)} disabled={isBusy} style={({ pressed }) => [styles.actionButton, isBusy && styles.disabled, pressed && styles.pressed]}><MaterialIcons name="edit" size={17} color="#007E7A" /><Text style={styles.actionText}>编辑</Text></Pressable> : null}<Pressable accessibilityRole="button" onPress={() => stageClipboard("copy")} disabled={isBusy} style={({ pressed }) => [styles.actionButton, isBusy && styles.disabled, pressed && styles.pressed]}><MaterialIcons name="content-copy" size={17} color="#007E7A" /><Text style={styles.actionText}>复制</Text></Pressable><Pressable accessibilityRole="button" onPress={() => stageClipboard("move")} disabled={isBusy} style={({ pressed }) => [styles.actionButton, isBusy && styles.disabled, pressed && styles.pressed]}><MaterialIcons name="drive-file-move" size={17} color="#007E7A" /><Text style={styles.actionText}>移动</Text></Pressable><Pressable accessibilityRole="button" onPress={() => showPrompt("rename")} disabled={isBusy} style={({ pressed }) => [styles.actionButton, isBusy && styles.disabled, pressed && styles.pressed]}><MaterialIcons name="drive-file-rename-outline" size={17} color="#007E7A" /><Text style={styles.actionText}>重命名</Text></Pressable><Pressable accessibilityRole="button" onPress={() => showPrompt("permissions")} disabled={isBusy} style={({ pressed }) => [styles.actionButton, isBusy && styles.disabled, pressed && styles.pressed]}><MaterialIcons name="lock-open" size={17} color="#007E7A" /><Text style={styles.actionText}>权限</Text></Pressable><Pressable accessibilityRole="button" onPress={confirmDelete} disabled={isBusy} style={({ pressed }) => [styles.deleteAction, isBusy && styles.disabled, pressed && styles.pressed]}><MaterialIcons name="delete-outline" size={17} color="#B13939" /><Text style={styles.deleteActionText}>删除</Text></Pressable></View></View> : null}
+      <View style={styles.pathCard}><View style={styles.pathHeading}><MaterialIcons name="search" size={19} color="#007E7A" /><Text style={styles.pathLabel}>筛选当前文件夹</Text><Text style={styles.upText}>{visibleEntries.length} 项</Text></View><TextInput accessibilityLabel="按文件名筛选" style={styles.pathInput} value={searchTerm} onChangeText={setSearchTerm} editable={isConnected && !isBusy} placeholder="输入文件或文件夹名称" placeholderTextColor="#8B9AA8" autoCapitalize="none" autoCorrect={false} clearButtonMode="while-editing" /></View>
+
+      {activeSelection.length ? <View style={styles.selectionTray}><View style={styles.selectionInfo}><MaterialIcons name={isMultiSelecting ? "checklist" : fileIcon(activeSelection[0])} size={19} color="#007E7A" /><View style={styles.selectionCopy}><Text style={styles.selectionName} numberOfLines={1}>{isMultiSelecting ? `已选择 ${activeSelection.length} 项` : activeSelection[0].name}</Text><Text style={styles.selectionMeta} numberOfLines={1}>{isMultiSelecting ? "可批量复制、移动或删除" : describeEntry(activeSelection[0])}</Text></View><Pressable accessibilityRole="button" accessibilityLabel="取消文件选择" onPress={clearSelection} style={styles.closeSelection}><MaterialIcons name="close" size={19} color="#60758B" /></Pressable></View><View style={styles.selectionActions}>{!isMultiSelecting && selected?.kind === "file" ? <><Pressable accessibilityRole="button" onPress={() => void openTextEditor(selected)} disabled={isBusy} style={({ pressed }) => [styles.actionButton, isBusy && styles.disabled, pressed && styles.pressed]}><MaterialIcons name="edit" size={17} color="#007E7A" /><Text style={styles.actionText}>编辑</Text></Pressable><Pressable accessibilityRole="button" onPress={() => void downloadAndShare(selected)} disabled={isBusy} style={({ pressed }) => [styles.actionButton, isBusy && styles.disabled, pressed && styles.pressed]}><MaterialIcons name="download" size={17} color="#007E7A" /><Text style={styles.actionText}>下载</Text></Pressable></> : null}<Pressable accessibilityRole="button" onPress={() => stageClipboard("copy")} disabled={isBusy} style={({ pressed }) => [styles.actionButton, isBusy && styles.disabled, pressed && styles.pressed]}><MaterialIcons name="content-copy" size={17} color="#007E7A" /><Text style={styles.actionText}>复制</Text></Pressable><Pressable accessibilityRole="button" onPress={() => stageClipboard("move")} disabled={isBusy} style={({ pressed }) => [styles.actionButton, isBusy && styles.disabled, pressed && styles.pressed]}><MaterialIcons name="drive-file-move" size={17} color="#007E7A" /><Text style={styles.actionText}>移动</Text></Pressable>{!isMultiSelecting ? <><Pressable accessibilityRole="button" onPress={() => showPrompt("rename")} disabled={isBusy} style={({ pressed }) => [styles.actionButton, isBusy && styles.disabled, pressed && styles.pressed]}><MaterialIcons name="drive-file-rename-outline" size={17} color="#007E7A" /><Text style={styles.actionText}>重命名</Text></Pressable><Pressable accessibilityRole="button" onPress={() => showPrompt("permissions")} disabled={isBusy} style={({ pressed }) => [styles.actionButton, isBusy && styles.disabled, pressed && styles.pressed]}><MaterialIcons name="lock-open" size={17} color="#007E7A" /><Text style={styles.actionText}>权限</Text></Pressable></> : null}<Pressable accessibilityRole="button" onPress={confirmDelete} disabled={isBusy} style={({ pressed }) => [styles.deleteAction, isBusy && styles.disabled, pressed && styles.pressed]}><MaterialIcons name="delete-outline" size={17} color="#B13939" /><Text style={styles.deleteActionText}>删除</Text></Pressable></View></View> : null}
 
       <FlatList
-        data={entries}
+        data={visibleEntries}
         keyExtractor={(entry) => entry.path}
         style={styles.list}
-        contentContainerStyle={[styles.listContent, !entries.length && styles.emptyListContent]}
+        contentContainerStyle={[styles.listContent, !visibleEntries.length && styles.emptyListContent]}
         refreshControl={<RefreshControl refreshing={isLoading} onRefresh={() => void refreshDirectory()} enabled={isConnected && !isBusy} tintColor="#007E7A" />}
-        ListEmptyComponent={isConnected && !isLoading ? <View style={styles.emptyList}><MaterialIcons name="folder-open" size={32} color="#91A5B3" /><Text style={styles.emptyListTitle}>文件夹为空</Text><Text style={styles.emptyListText}>可上传文件或创建一个新文件夹。</Text></View> : null}
-        renderItem={({ item }) => <Pressable accessibilityRole="button" accessibilityLabel={`${item.kind === "directory" ? "打开文件夹" : "选择文件"} ${item.name}`} onPress={() => item.kind === "directory" ? openDirectory(item.path) : setSelected(item)} onLongPress={() => setSelected(item)} style={({ pressed }) => [styles.entry, selected?.path === item.path && styles.entrySelected, pressed && styles.pressed]}><View style={[styles.entryIcon, item.kind === "directory" && styles.directoryIcon]}><MaterialIcons name={fileIcon(item)} size={22} color={item.kind === "directory" ? "#007E7A" : "#5E7182"} /></View><View style={styles.entryCopy}><Text style={styles.entryName} numberOfLines={1}>{item.name}</Text><Text style={styles.entryMeta} numberOfLines={1}>{describeEntry(item)}</Text></View>{item.kind === "directory" ? <MaterialIcons name="chevron-right" size={22} color="#91A5B3" /> : <Pressable accessibilityRole="button" accessibilityLabel={`选择 ${item.name}`} onPress={() => setSelected(item)} hitSlop={8} style={styles.selectButton}><MaterialIcons name={selected?.path === item.path ? "check-circle" : "more-horiz"} size={21} color={selected?.path === item.path ? "#007E7A" : "#718398"} /></Pressable>}</Pressable>}
+        ListEmptyComponent={isConnected && !isLoading ? <View style={styles.emptyList}><MaterialIcons name="folder-open" size={32} color="#91A5B3" /><Text style={styles.emptyListTitle}>{searchTerm ? "没有匹配的文件" : "文件夹为空"}</Text><Text style={styles.emptyListText}>{searchTerm ? "尝试更换筛选关键词。" : "可上传文件或创建一个新文件夹。"}</Text></View> : null}
+        renderItem={({ item }) => { const itemSelected = isMultiSelecting ? multiSelected.some((entry) => entry.path === item.path) : selected?.path === item.path; return <Pressable accessibilityRole="button" accessibilityLabel={`${isMultiSelecting ? "选择" : item.kind === "directory" ? "打开文件夹" : "选择文件"} ${item.name}`} onPress={() => isMultiSelecting ? toggleMultiSelection(item) : item.kind === "directory" ? openDirectory(item.path) : setSelected(item)} onLongPress={() => { if (!isMultiSelecting) { setSelected(null); setIsMultiSelecting(true); } toggleMultiSelection(item); }} style={({ pressed }) => [styles.entry, itemSelected && styles.entrySelected, pressed && styles.pressed]}><View style={[styles.entryIcon, item.kind === "directory" && styles.directoryIcon]}><MaterialIcons name={fileIcon(item)} size={22} color={item.kind === "directory" ? "#007E7A" : "#5E7182"} /></View><View style={styles.entryCopy}><Text style={styles.entryName} numberOfLines={1}>{item.name}</Text><Text style={styles.entryMeta} numberOfLines={1}>{describeEntry(item)}</Text></View>{isMultiSelecting ? <MaterialIcons name={itemSelected ? "check-circle" : "radio-button-unchecked"} size={21} color={itemSelected ? "#007E7A" : "#718398"} /> : item.kind === "directory" ? <MaterialIcons name="chevron-right" size={22} color="#91A5B3" /> : <Pressable accessibilityRole="button" accessibilityLabel={`选择 ${item.name}`} onPress={() => setSelected(item)} hitSlop={8} style={styles.selectButton}><MaterialIcons name={itemSelected ? "check-circle" : "more-horiz"} size={21} color={itemSelected ? "#007E7A" : "#718398"} /></Pressable>}</Pressable>; }}
       />
 
       <Modal transparent animationType="fade" visible={promptKind !== null} onRequestClose={dismissPrompt}>

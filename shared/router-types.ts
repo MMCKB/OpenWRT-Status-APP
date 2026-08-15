@@ -29,6 +29,7 @@ export interface InterfaceStatus {
   device: string;
   up: boolean;
   ipv4: string[];
+  ipv6: string[];
   uptimeSeconds: number | null;
 }
 

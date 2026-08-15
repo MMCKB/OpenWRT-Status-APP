@@ -80,7 +80,7 @@ export default function StatusScreen() {
           {selectedStatus?.interfaces.length ? selectedStatus.interfaces.map((item, index) => (
             <View key={`${item.name}-${index}`} style={[styles.listRow, index > 0 && styles.rowDivider]}>
               <View style={[styles.rowStatus, { backgroundColor: item.up ? "#1B9A6A" : "#C53B3B" }]} />
-              <View style={styles.rowMain}><Text style={styles.rowTitle}>{item.name}</Text><Text style={styles.rowSubtitle}>{item.ipv4[0] ?? item.device}</Text></View>
+              <View style={styles.rowMain}><Text style={styles.rowTitle}>{item.name}</Text><Text style={styles.rowSubtitle}>IPv4 {item.ipv4[0] ?? "未分配"} · IPv6 {item.ipv6[0] ?? "未分配"}</Text></View>
               <Text style={styles.rowSide}>{item.up ? "已连接" : "未连接"}</Text>
             </View>
           )) : <Text style={styles.emptyRow}>路由器未报告网络接口状态。</Text>}

@@ -6,6 +6,7 @@ interface OpenWrtSshBridge {
   connect(host: string, port: number, username: string, password: string, key: string): Promise<void>;
   execute(key: string, command: string): Promise<string>;
   uploadFile(key: string, localUri: string, remotePath: string): Promise<void>;
+  downloadFile(key: string, remotePath: string, localUri: string): Promise<void>;
   writeTextFile(key: string, content: string, remotePath: string): Promise<void>;
   disconnect(key: string): void;
 }
@@ -70,6 +71,15 @@ export async function uploadInAppSshFile(localUri: string, remotePath: string) {
   if (!activeSession) throw new Error("尚未连接 SSH。请先建立会话。");
   if (!localUri || !remotePath.startsWith("/")) throw new Error("远程上传路径无效。");
   await nativeBridge.uploadFile(activeSession.key, localUri, remotePath);
+}
+
+export async function downloadInAppSshFile(remotePath: string, localUri: string) {
+  const nativeBridge = bridge();
+  if (!activeSession) throw new Error("尚未连接 SSH。请先建立会话。");
+  if (!remotePath.startsWith("/") || !localUri.startsWith("file://")) {
+    throw new Error("文件下载路径无效。");
+  }
+  await nativeBridge.downloadFile(activeSession.key, remotePath, localUri);
 }
 
 export async function writeInAppSshTextFile(content: string, remotePath: string) {

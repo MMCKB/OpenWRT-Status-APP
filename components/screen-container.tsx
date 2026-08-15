@@ -5,8 +5,8 @@ import { cn } from "@/lib/utils";
 
 export interface ScreenContainerProps extends ViewProps {
   /**
-   * SafeArea edges to apply. Defaults to ["top", "left", "right"].
-   * Bottom is typically handled by Tab Bar.
+   * The application root already reserves status-bar space. Defaults to horizontal edges only.
+   * Bottom is typically handled by Tab Bar; full-screen routes can opt into extra edges.
    */
   edges?: Edge[];
   /**
@@ -40,7 +40,7 @@ export interface ScreenContainerProps extends ViewProps {
  */
 export function ScreenContainer({
   children,
-  edges = ["top", "left", "right"],
+  edges = ["left", "right"],
   className,
   containerClassName,
   safeAreaClassName,

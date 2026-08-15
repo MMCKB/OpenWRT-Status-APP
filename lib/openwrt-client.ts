@@ -136,6 +136,7 @@ function mapInterfaces(payload: unknown): InterfaceStatus[] {
       device: asString(device, "未报告"),
       up: item.up === true,
       ipv4: asStringArray(item["ipv4-address"] ?? item.ipv4),
+      ipv6: asStringArray(item["ipv6-address"] ?? item.ipv6),
       uptimeSeconds: asNumber(item.uptime),
     };
   });

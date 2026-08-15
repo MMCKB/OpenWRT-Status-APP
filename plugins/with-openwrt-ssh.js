@@ -47,7 +47,9 @@ import java.io.ByteArrayOutputStream;
 import java.io.ByteArrayInputStream;
 import java.io.File;
 import java.io.FileInputStream;
+import java.io.FileOutputStream;
 import java.io.InputStream;
+import java.io.OutputStream;
 import java.util.Properties;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutorService;
@@ -175,6 +177,37 @@ public class OpenWrtSshModule extends ReactContextBaseJavaModule {
         promise.reject("SSH_UPLOAD_FAILED", error.getMessage(), error);
       } finally {
         try { if (input != null) input.close(); } catch (Exception ignored) { }
+        if (channel != null) channel.disconnect();
+      }
+    });
+  }
+
+  @ReactMethod
+  public void downloadFile(String key, String remotePath, String localUri, Promise promise) {
+    executor.execute(() -> {
+      Session session = sessions.get(key);
+      if (session == null || !session.isConnected()) {
+        promise.reject("SSH_NOT_CONNECTED", "SSH 会话未连接。");
+        return;
+      }
+      ChannelSftp channel = null;
+      OutputStream output = null;
+      try {
+        Uri uri = Uri.parse(localUri);
+        if ("file".equals(uri.getScheme())) {
+          output = new FileOutputStream(new File(uri.getPath()));
+        } else {
+          output = getReactApplicationContext().getContentResolver().openOutputStream(uri, "w");
+        }
+        if (output == null) throw new Exception("无法创建手机上的下载文件。");
+        channel = (ChannelSftp) session.openChannel("sftp");
+        channel.connect(15000);
+        channel.get(remotePath, output);
+        promise.resolve(null);
+      } catch (Exception error) {
+        promise.reject("SSH_DOWNLOAD_FAILED", error.getMessage(), error);
+      } finally {
+        try { if (output != null) output.close(); } catch (Exception ignored) { }
         if (channel != null) channel.disconnect();
       }
     });
