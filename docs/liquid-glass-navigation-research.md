@@ -18,3 +18,11 @@
 来源：[davidmokos/expo-glass-tabs](https://github.com/davidmokos/expo-glass-tabs)
 
 该仓库采用“视觉结构与交互运动分离”的方式：导航结构交由 Expo Router，玻璃几何、模糊材质与高光由原生视图承担，滑动高亮只使用 UI 线程的 transform 动画。当前项目不引入其 iOS 专用原生实现，因为还需兼容 Android 与 Web；但会吸收其三项可迁移原则，即不在玻璃层上铺设不透明底色、只对滑动高亮使用 transform 动画、让主玻璃轮廓和高光边缘保持同一椭圆几何。
+
+## 长按拖动交互参考
+
+来源：[Expo 官方手势教程](https://docs.expo.dev/tutorial/gestures/)
+
+- 使用 React Native Gesture Handler 识别原生手势，并用 Reanimated 在 UI 线程更新拖动位置与回弹动画。
+- 手势组件须处于 `GestureHandlerRootView` 根容器内；项目现有根布局已具备该基础设施。
+- 本轮 Tab 改造采用“长按激活 → 水平拖动预览 → 释放提交顺序或回弹”模型，避免普通点按导航与重排手势冲突。
