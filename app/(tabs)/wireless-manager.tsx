@@ -1,0 +1,121 @@
+import MaterialIcons from "@expo/vector-icons/MaterialIcons";
+import QRCode from "react-native-qrcode-svg";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import { ActivityIndicator, Alert, Pressable, StyleSheet, Switch, Text, TextInput, View } from "react-native";
+
+import { ManagementShell, ToolNotice } from "@/components/management-shell";
+import { EmptyState, SectionCard, StatusPill } from "@/components/status-ui";
+import { useColors } from "@/hooks/use-colors";
+import { useManagedSsh } from "@/hooks/use-managed-ssh";
+import {
+  buildGuestNetworkCommand,
+  buildWifiClientSnapshotCommand,
+  buildWifiQrValue,
+  buildWifiSnapshotCommand,
+  buildWifiSsidCommand,
+  buildWifiToggleCommand,
+  parseWifiClients,
+  parseWifiConfigs,
+  type WifiClient,
+  type WifiConfigEntry,
+} from "@/lib/openwrt-admin";
+
+function signalLabel(signalDbm: number | null) {
+  if (signalDbm === null) return "未报告";
+  if (signalDbm >= -55) return `${signalDbm} dBm · 很强`;
+  if (signalDbm >= -67) return `${signalDbm} dBm · 良好`;
+  if (signalDbm >= -75) return `${signalDbm} dBm · 一般`;
+  return `${signalDbm} dBm · 较弱`;
+}
+
+export default function WirelessManagerScreen() {
+  const colors = useColors();
+  const { execute, error, hasRouter, isRunning, isSupported } = useManagedSsh();
+  const [networks, setNetworks] = useState<WifiConfigEntry[]>([]);
+  const [clients, setClients] = useState<WifiClient[]>([]);
+  const [draftSsids, setDraftSsids] = useState<Record<string, string>>({});
+  const [guestSsid, setGuestSsid] = useState("OpenWrt-Guest");
+  const [guestPassword, setGuestPassword] = useState("");
+  const [isLoading, setIsLoading] = useState(false);
+
+  const guestQr = useMemo(() => {
+    try {
+      return guestPassword.trim() ? buildWifiQrValue(guestSsid, guestPassword) : null;
+    } catch {
+      return null;
+    }
+  }, [guestPassword, guestSsid]);
+
+  const refresh = useCallback(async () => {
+    if (!hasRouter || !isSupported) return;
+    setIsLoading(true);
+    try {
+      const [configOutput, clientOutput] = await Promise.all([execute(buildWifiSnapshotCommand()), execute(buildWifiClientSnapshotCommand())]);
+      const nextNetworks = parseWifiConfigs(configOutput);
+      setNetworks(nextNetworks);
+      setClients(parseWifiClients(clientOutput));
+      setDraftSsids(Object.fromEntries(nextNetworks.map((item) => [item.section, item.ssid])));
+    } catch {
+      // 错误已由共享 SSH 钩子保存并呈现。
+    } finally {
+      setIsLoading(false);
+    }
+  }, [execute, hasRouter, isSupported]);
+
+  useEffect(() => {
+    void refresh();
+  }, [refresh]);
+
+  const toggleNetwork = useCallback((network: WifiConfigEntry, enabled: boolean) => {
+    Alert.alert(enabled ? "开启无线网络" : "关闭无线网络", `${enabled ? "开启" : "关闭"} “${network.ssid}” 后，相关设备会短暂断开。`, [
+      { text: "取消", style: "cancel" },
+      { text: enabled ? "确认开启" : "确认关闭", style: enabled ? "default" : "destructive", onPress: () => { void execute(buildWifiToggleCommand(network.section, enabled)).then(refresh).catch(() => undefined); } },
+    ]);
+  }, [execute, refresh]);
+
+  const saveSsid = useCallback((network: WifiConfigEntry) => {
+    const nextSsid = (draftSsids[network.section] ?? "").trim();
+    if (!nextSsid || nextSsid === network.ssid) return;
+    Alert.alert("修改无线名称", `将 “${network.ssid}” 改为 “${nextSsid}”，无线会重载。`, [
+      { text: "取消", style: "cancel" },
+      { text: "确认修改", onPress: () => { void execute(buildWifiSsidCommand(network.section, nextSsid)).then(refresh).catch(() => undefined); } },
+    ]);
+  }, [draftSsids, execute, refresh]);
+
+  const createGuest = useCallback(() => {
+    const radio = networks[0]?.device;
+    if (!radio) return;
+    try {
+      const command = buildGuestNetworkCommand(radio, guestSsid, guestPassword);
+      Alert.alert("创建或更新访客网络", "将创建独立访客子网（192.168.75.0/24），默认仅允许访问互联网，不能访问主 LAN。", [
+        { text: "取消", style: "cancel" },
+        { text: "确认创建", onPress: () => { void execute(command).then(refresh).catch(() => undefined); } },
+      ]);
+    } catch (reason) {
+      Alert.alert("无法创建访客网络", reason instanceof Error ? reason.message : "请检查访客网络信息。");
+    }
+  }, [execute, guestPassword, guestSsid, networks, refresh]);
+
+  const disabled = isRunning || isLoading || !hasRouter || !isSupported;
+  return <ManagementShell title="无线管理" description="管理现有无线网络，查看客户端信号，并创建隔离的访客网络。所有变更均直接写入路由器。">
+    {!hasRouter ? <EmptyState icon="router" title="尚未选择路由器" description="请先在“路由器”页面选择一台设备。" /> : !isSupported ? <EmptyState icon="android" title="需要 Android 应用" description="无线管理通过应用内 SSH 运行，请安装最新 Android APK。" /> : <>
+      <SectionCard title="无线网络" action={<Pressable accessibilityRole="button" onPress={() => void refresh()} disabled={disabled} style={({ pressed }) => [styles.refresh, pressed && styles.pressed]}><MaterialIcons name="refresh" size={19} color={colors.primary} /></Pressable>}>
+        {isLoading ? <View style={styles.center}><ActivityIndicator color={colors.primary} /><Text style={[styles.helper, { color: colors.muted }]}>正在读取无线配置…</Text></View> : networks.length ? networks.map((network, index) => <View key={network.section} style={[styles.network, index > 0 && { borderTopColor: colors.border, borderTopWidth: 1 }]}>
+          <View style={styles.networkTop}><View style={styles.networkCopy}><Text style={[styles.sectionId, { color: colors.muted }]}>{network.device}</Text><TextInput value={draftSsids[network.section] ?? network.ssid} onChangeText={(value) => setDraftSsids((previous) => ({ ...previous, [network.section]: value }))} maxLength={32} editable={!disabled} style={[styles.ssidInput, { color: colors.foreground, borderColor: colors.border, backgroundColor: colors.background }]} /><Pressable accessibilityRole="button" onPress={() => saveSsid(network)} disabled={disabled || (draftSsids[network.section] ?? network.ssid) === network.ssid} style={({ pressed }) => [styles.saveSsid, { borderColor: colors.primary }, pressed && styles.pressed]}><Text style={[styles.saveSsidText, { color: colors.primary }]}>保存名称</Text></Pressable></View><Switch value={!network.disabled} onValueChange={(value) => toggleNetwork(network, value)} disabled={disabled} trackColor={{ false: colors.border, true: colors.primary }} /></View>
+          <StatusPill label={network.disabled ? "已关闭" : "已开启"} tone={network.disabled ? "warning" : "success"} />
+        </View>) : <View style={styles.center}><Text style={[styles.helper, { color: colors.muted }]}>未读取到可编辑的无线配置。</Text></View>}
+      </SectionCard>
+      <SectionCard title={`无线客户端 · ${clients.length}`}>
+        {clients.length ? clients.map((client, index) => <View key={`${client.interfaceName}-${client.mac}`} style={[styles.clientRow, index > 0 && { borderTopColor: colors.border, borderTopWidth: 1 }]}><View style={[styles.clientIcon, { backgroundColor: colors.background }]}><MaterialIcons name="wifi" size={18} color={colors.primary} /></View><View style={styles.clientCopy}><Text style={[styles.clientMac, { color: colors.foreground }]}>{client.mac}</Text><Text style={[styles.helper, { color: colors.muted }]}>{client.interfaceName ?? "无线接口"} · {signalLabel(client.signalDbm)}</Text></View></View>) : <View style={styles.center}><Text style={[styles.helper, { color: colors.muted }]}>当前没有从无线驱动读取到已连接客户端。</Text></View>}
+      </SectionCard>
+      <SectionCard title="访客网络">
+        <View style={styles.guestForm}><Text style={[styles.helper, { color: colors.muted }]}>会使用第一个已发现的无线设备，创建或更新应用专用的 guest 配置段。</Text><TextInput value={guestSsid} onChangeText={setGuestSsid} editable={!disabled} maxLength={32} placeholder="访客网络名称" placeholderTextColor={colors.muted} style={[styles.input, { color: colors.foreground, borderColor: colors.border, backgroundColor: colors.background }]} /><TextInput value={guestPassword} onChangeText={setGuestPassword} editable={!disabled} secureTextEntry autoCapitalize="none" maxLength={63} placeholder="访客网络密码（8–63 位）" placeholderTextColor={colors.muted} style={[styles.input, { color: colors.foreground, borderColor: colors.border, backgroundColor: colors.background }]} /><Pressable accessibilityRole="button" disabled={disabled || guestPassword.trim().length < 8 || !networks.length} onPress={createGuest} style={({ pressed }) => [styles.guestButton, { backgroundColor: colors.primary }, pressed && styles.pressed, (disabled || guestPassword.trim().length < 8 || !networks.length) && styles.disabled]}><MaterialIcons name="add-circle-outline" size={19} color="#FFFFFF" /><Text style={styles.guestButtonText}>创建或更新访客网络</Text></Pressable>{guestQr ? <View style={[styles.qrArea, { backgroundColor: "#FFFFFF" }]}><QRCode value={guestQr} size={156} color="#12313A" backgroundColor="#FFFFFF" /><Text style={styles.qrCaption}>访客扫描此二维码即可连接</Text></View> : <Text style={[styles.helper, { color: colors.muted }]}>填写至少 8 位密码后，将显示可扫描的离线二维码。</Text>}</View>
+      </SectionCard>
+    </>}
+    {error ? <ToolNotice><Text style={[styles.error, { color: colors.error }]}>{error}</Text></ToolNotice> : null}
+  </ManagementShell>;
+}
+
+const styles = StyleSheet.create({
+  refresh: { padding: 4 }, center: { minHeight: 72, alignItems: "center", justifyContent: "center", gap: 8, padding: 16 }, helper: { fontSize: 12, lineHeight: 18 }, network: { padding: 15, gap: 10 }, networkTop: { flexDirection: "row", gap: 12, alignItems: "flex-start" }, networkCopy: { flex: 1, gap: 7 }, sectionId: { fontSize: 11, fontWeight: "700", textTransform: "uppercase" }, ssidInput: { borderWidth: 1, borderRadius: 10, minHeight: 42, paddingHorizontal: 11, fontSize: 15, fontWeight: "700" }, saveSsid: { alignSelf: "flex-start", borderWidth: 1, borderRadius: 9, paddingHorizontal: 10, paddingVertical: 7 }, saveSsidText: { fontSize: 12, fontWeight: "800" }, clientRow: { minHeight: 68, padding: 14, flexDirection: "row", alignItems: "center", gap: 11 }, clientIcon: { width: 35, height: 35, borderRadius: 11, alignItems: "center", justifyContent: "center" }, clientCopy: { flex: 1, gap: 3 }, clientMac: { fontSize: 14, fontWeight: "800" }, guestForm: { padding: 15, gap: 11 }, input: { borderWidth: 1, borderRadius: 11, minHeight: 46, paddingHorizontal: 12, fontSize: 15 }, guestButton: { minHeight: 48, borderRadius: 12, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 8 }, guestButtonText: { color: "#FFFFFF", fontSize: 15, fontWeight: "800" }, qrArea: { alignItems: "center", gap: 10, borderRadius: 14, paddingVertical: 18, marginTop: 2 }, qrCaption: { color: "#12313A", fontSize: 13, fontWeight: "700" }, error: { fontSize: 13, lineHeight: 19 }, pressed: { opacity: 0.72 }, disabled: { opacity: 0.45 },
+});

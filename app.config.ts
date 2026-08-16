@@ -70,7 +70,7 @@ const config: ExpoConfig = {
       foregroundImage: "./assets/images/android-icon-foreground.png",
     },
     edgeToEdgeEnabled: true,
-    predictiveBackGestureEnabled: false,
+    predictiveBackGestureEnabled: true,
     package: env.androidPackage,
     permissions: ["POST_NOTIFICATIONS"],
     intentFilters: [

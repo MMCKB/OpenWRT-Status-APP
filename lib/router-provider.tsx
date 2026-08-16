@@ -1,6 +1,7 @@
 import { createContext, type ReactNode, useCallback, useContext, useEffect, useMemo, useState } from "react";
 
 import { fetchRouterStatus, normalizeRouterEndpoint } from "@/lib/openwrt-client";
+import { recordWanTrafficHistory } from "@/lib/traffic-history";
 import {
   loadPassword,
   loadProfiles,
@@ -83,6 +84,9 @@ export function RouterProvider({ children }: { children: ReactNode }) {
         password,
       );
       setSelectedStatus(status);
+      if (status.online) {
+        void recordWanTrafficHistory(status.routerId, status.interfaces, status.fetchedAt);
+      }
       const updated = profiles.map((profile) =>
         profile.id === selectedProfile.id ? { ...profile, lastConnectedAt: status.fetchedAt } : profile,
       );

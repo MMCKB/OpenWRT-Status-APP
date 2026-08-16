@@ -45,6 +45,13 @@ export default function TabLayout() {
       <Tabs.Screen name="files" options={{ href: null }} />
       <Tabs.Screen name="packages" options={{ href: null }} />
       <Tabs.Screen name="router-form" options={{ href: null }} />
+      <Tabs.Screen name="tools" options={{ href: null }} />
+      <Tabs.Screen name="clients" options={{ href: null }} />
+      <Tabs.Screen name="traffic" options={{ href: null }} />
+      <Tabs.Screen name="diagnostics" options={{ href: null }} />
+      <Tabs.Screen name="wireless-manager" options={{ href: null }} />
+      <Tabs.Screen name="maintenance-tools" options={{ href: null }} />
+      <Tabs.Screen name="quick-actions" options={{ href: null }} />
     </Tabs>
     </RouterProvider>
   );

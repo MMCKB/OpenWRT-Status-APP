@@ -51,6 +51,7 @@ export default function SettingsScreen() {
           <InfoRow icon="wifi" title="仅访问已保存的路由器" description="状态读取通过 OpenWrt 的 LuCI ubus 接口完成。请在可信局域网内使用。" colors={colors} softPrimary={softPrimary} divider />
         </SectionCard>
         <SectionCard title="维护">
+          <MaintenanceRow icon="construction" label="网络工具" description="已连接设备、按 WAN 流量统计、网络诊断、无线管理、备份和服务控制。" target="/tools" colors={colors} softPrimary={softPrimary} router={router} />
           <MaintenanceRow icon="folder-open" label="文件管理" description="通过应用内 SSH 浏览、上传、编辑、复制、移动与管理路由器文件。" target="/files" colors={colors} softPrimary={softPrimary} router={router} />
           <MaintenanceRow icon="extension" label="软件包管理" description="查看已安装系统包，搜索在线仓库并执行安装、卸载与更新。" target="/packages" colors={colors} softPrimary={softPrimary} router={router} />
           <MaintenanceRow icon="system-update" label="固件升级" description="选择 sysupgrade 镜像，经 SSH 上传后确认执行升级。" target="/firmware" colors={colors} softPrimary={softPrimary} router={router} warning />

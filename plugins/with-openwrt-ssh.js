@@ -1,5 +1,6 @@
 const {
   withAppBuildGradle,
+  withAndroidManifest,
   withDangerousMod,
   withMainApplication,
 } = require("@expo/config-plugins");
@@ -254,6 +255,7 @@ public class OpenWrtSshModule extends ReactContextBaseJavaModule {
 };
 
 function withOpenWrtSsh(config) {
+  const appScheme = config.scheme || "openwrt-status";
   config = withAppBuildGradle(config, (modConfig) => {
     if (!modConfig.modResults.contents.includes("com.github.mwiede:jsch")) {
       modConfig.modResults.contents = modConfig.modResults.contents.replace(
@@ -283,10 +285,38 @@ function withOpenWrtSsh(config) {
     return modConfig;
   });
 
+  config = withAndroidManifest(config, (modConfig) => {
+    const application = modConfig.modResults.manifest.application?.[0];
+    if (!application) throw new Error("无法找到 Android Application 配置。");
+    const metadata = application["meta-data"] ?? [];
+    if (!metadata.some((item) => item.$?.["android:name"] === "android.app.shortcuts")) {
+      metadata.push({
+        $: {
+          "android:name": "android.app.shortcuts",
+          "android:resource": "@xml/openwrt_status_shortcuts",
+        },
+      });
+    }
+    application["meta-data"] = metadata;
+    return modConfig;
+  });
+
   return withDangerousMod(config, ["android", async (modConfig) => {
     const destination = path.join(modConfig.modRequest.platformProjectRoot, "app", "src", "main", "java", ...JAVA_PACKAGE.split("."));
     fs.mkdirSync(destination, { recursive: true });
     Object.entries(SOURCE_FILES).forEach(([name, source]) => fs.writeFileSync(path.join(destination, name), source));
+    const xmlDirectory = path.join(modConfig.modRequest.platformProjectRoot, "app", "src", "main", "res", "xml");
+    fs.mkdirSync(xmlDirectory, { recursive: true });
+    fs.writeFileSync(path.join(xmlDirectory, "openwrt_status_shortcuts.xml"), `<?xml version="1.0" encoding="utf-8"?>
+<shortcuts xmlns:android="http://schemas.android.com/apk/res/android">
+  <shortcut android:shortcutId="openwrt_quick_actions" android:enabled="true" android:icon="@mipmap/ic_launcher" android:shortcutShortLabel="快捷操作" android:shortcutLongLabel="OpenWrt 快捷操作">
+    <intent android:action="android.intent.action.VIEW" android:data="${appScheme}:///quick-actions" />
+  </shortcut>
+  <shortcut android:shortcutId="openwrt_diagnostics" android:enabled="true" android:icon="@mipmap/ic_launcher" android:shortcutShortLabel="网络诊断" android:shortcutLongLabel="按 WAN 网络诊断">
+    <intent android:action="android.intent.action.VIEW" android:data="${appScheme}:///diagnostics" />
+  </shortcut>
+</shortcuts>
+`);
     return modConfig;
   }]);
 }
