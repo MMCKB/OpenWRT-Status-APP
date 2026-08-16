@@ -92,7 +92,7 @@ export default function RouterFormScreen() {
 }
 
 const styles = StyleSheet.create({
-  content: { padding: 20, paddingBottom: 36, gap: 16 },
+  content: { padding: 20, paddingBottom: 112, gap: 16 },
   nav: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", minHeight: 42 },
   backButton: { width: 42, height: 42, borderRadius: 21, alignItems: "center", justifyContent: "center", backgroundColor: "#EAF1F5" },
   navTitle: { color: "#203B55", fontSize: 16, fontWeight: "800" },
