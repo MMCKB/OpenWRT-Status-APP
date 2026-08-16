@@ -7,21 +7,46 @@ export interface TrafficSnapshot {
   source: "wan" | "interfaces" | "unreported";
 }
 
+export interface TrafficInterfaceSnapshot extends TrafficSnapshot {
+  id: string;
+  label: string;
+  device: string;
+}
+
 export interface TrafficRate {
   rxBytesPerSecond: number;
   txBytesPerSecond: number;
   sampleSeconds: number;
 }
 
-const WAN_NAME = /(^|[-_.])(wan|wwan|uplink|internet)([-_.]|$)|^pppoe/i;
+const WAN_NAME = /(^|[-_.])(wan|wwan|uplink|internet)([-_.]|$)|^wan[a-z0-9_-]*$|^pppoe/i;
 
-/** Prefers upstream interfaces so LAN-side traffic is not counted twice in the dashboard total. */
+/** Prefers upstream interfaces so LAN-side traffic is not counted twice in dashboard figures. */
 export function selectTrafficInterfaces(interfaces: InterfaceStatus[]) {
   const active = interfaces.filter((item) => item.up && (item.rxBytes !== null || item.txBytes !== null));
   const wan = active.filter((item) => WAN_NAME.test(item.name) || WAN_NAME.test(item.device));
-  return wan.length ? { items: wan, source: "wan" as const } : active.length ? { items: active, source: "interfaces" as const } : { items: [], source: "unreported" as const };
+  return wan.length
+    ? { items: wan, source: "wan" as const }
+    : active.length
+      ? { items: active, source: "interfaces" as const }
+      : { items: [], source: "unreported" as const };
 }
 
+/** Builds independent snapshots so multi-WAN routers retain one history per uplink. */
+export function makeTrafficInterfaceSnapshots(interfaces: InterfaceStatus[], timestamp = Date.now()): TrafficInterfaceSnapshot[] {
+  const selection = selectTrafficInterfaces(interfaces);
+  return selection.items.map((item) => ({
+    id: `${item.name}:${item.device}`,
+    label: item.name || item.device,
+    device: item.device,
+    timestamp,
+    rxBytes: item.rxBytes ?? 0,
+    txBytes: item.txBytes ?? 0,
+    source: selection.source,
+  }));
+}
+
+/** Retained for aggregate consumers and backwards-compatible data tests. */
 export function makeTrafficSnapshot(interfaces: InterfaceStatus[], timestamp = Date.now()): TrafficSnapshot {
   const selection = selectTrafficInterfaces(interfaces);
   return {

@@ -4,8 +4,9 @@ import { View, useColorScheme as useSystemColorScheme } from "react-native";
 import { colorScheme as nativewindColorScheme, vars } from "nativewind";
 
 import { SchemeColors, type ColorScheme } from "@/constants/theme";
+import { resolveColorScheme, type ThemePreference } from "@/lib/theme-utils";
 
-export type ThemePreference = "system" | ColorScheme;
+export type { ThemePreference } from "@/lib/theme-utils";
 
 type ThemeContextValue = {
   colorScheme: ColorScheme;
@@ -16,10 +17,6 @@ type ThemeContextValue = {
 
 const THEME_PREFERENCE_KEY = "openwrt.theme-preference.v1";
 const ThemeContext = createContext<ThemeContextValue | null>(null);
-
-function resolveColorScheme(preference: ThemePreference, systemScheme: ColorScheme): ColorScheme {
-  return preference === "system" ? systemScheme : preference;
-}
 
 export function ThemeProvider({ children }: { children: React.ReactNode }) {
   const systemScheme = useSystemColorScheme() === "dark" ? "dark" : "light";
@@ -87,7 +84,7 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
 
   return (
     <ThemeContext.Provider value={value}>
-      <View style={[{ flex: 1 }, themeVariables]}>{children}</View>
+      <View style={[{ flex: 1, backgroundColor: SchemeColors[colorScheme].background }, themeVariables]}>{children}</View>
     </ThemeContext.Provider>
   );
 }
