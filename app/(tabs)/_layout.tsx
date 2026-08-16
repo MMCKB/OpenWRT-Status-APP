@@ -67,7 +67,7 @@ function DraggableTabItem({
     .activateAfterLongPress(320)
     .onBegin(() => {
       targetIndex.value = index;
-      scale.value = withSpring(1.055, { damping: 16, stiffness: 220 });
+      scale.value = withSpring(1.06, { damping: 14, stiffness: 280 });
       runOnJS(onDragStart)(index);
     })
     .onUpdate((event) => {
@@ -84,8 +84,8 @@ function DraggableTabItem({
       runOnJS(onDragEnd)(targetIndex.value);
     })
     .onFinalize(() => {
-      translationX.value = withSpring(0, { damping: 17, stiffness: 220 });
-      scale.value = withSpring(1, { damping: 17, stiffness: 220 });
+      translationX.value = withSpring(0, { damping: 18, stiffness: 260, mass: 0.8 });
+      scale.value = withSpring(1, { damping: 18, stiffness: 260, mass: 0.8 });
       runOnJS(onDragFinalize)();
     });
 
@@ -136,7 +136,7 @@ function FloatingTabBar({ state, descriptors, navigation }: BottomTabBarProps) {
 
   useEffect(() => {
     if (tabWidth <= 0) return;
-    indicatorX.value = withTiming(activeIndex * tabWidth + 4, { duration: 280, easing: Easing.out(Easing.cubic) });
+    indicatorX.value = withSpring(activeIndex * tabWidth + 4, { damping: 19, stiffness: 280, mass: 0.7 });
   }, [activeIndex, indicatorX, tabWidth]);
 
   useEffect(() => {
@@ -180,7 +180,7 @@ function FloatingTabBar({ state, descriptors, navigation }: BottomTabBarProps) {
   }
 
   function updateDragPosition(pointerX: number, targetIndex: number) {
-    dragTargetX.value = withSpring(getTabIndicatorX(pointerX, tabWidth, contentWidth), { damping: 18, stiffness: 240 });
+    dragTargetX.value = withSpring(getTabIndicatorX(pointerX, tabWidth, contentWidth), { damping: 22, stiffness: 320, mass: 0.6 });
     if (lastDragTarget.current !== targetIndex) {
       lastDragTarget.current = targetIndex;
       setDragTargetIndex(targetIndex);
@@ -308,27 +308,27 @@ const styles = StyleSheet.create({
   overlay: { position: "absolute", left: 16, right: 16, zIndex: 20 },
   shell: {
     height: 74,
-    overflow: "visible",
+    overflow: "hidden",
     borderRadius: 999,
-    borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.10)",
-    backgroundColor: "transparent",
-    shadowColor: "#184A4D",
-    shadowOpacity: 0.08,
-    shadowRadius: 20,
+    borderWidth: 1.5,
+    borderColor: "rgba(255,255,255,0.65)",
+    backgroundColor: "rgba(246,248,250,0.78)",
+    shadowColor: "#0D2327",
+    shadowOpacity: 0.14,
+    shadowRadius: 24,
     shadowOffset: { width: 0, height: 10 },
-    elevation: 10,
+    elevation: 14,
   },
   classicShell: { overflow: "hidden", backgroundColor: "#FFFFFF", borderColor: "#DCE7E9", shadowOpacity: 0.11 },
-  glassEdgeRim: { ...StyleSheet.absoluteFillObject, borderRadius: 999, borderWidth: 1, borderColor: "rgba(255,255,255,0.10)", borderBottomColor: "rgba(118,197,194,0.11)" },
-  glassInnerRim: { position: "absolute", top: 2, bottom: 2, left: 2, right: 2, borderRadius: 999, borderTopWidth: 1, borderTopColor: "rgba(255,255,255,0.10)", borderBottomWidth: 1, borderBottomColor: "rgba(15,102,106,0.025)" },
-  specularSweep: { position: "absolute", top: -18, left: 0, width: 58, height: 116, borderRadius: 58, backgroundColor: "rgba(255,255,255,0.025)" },
-  glassTopShine: { position: "absolute", top: 1, left: 28, right: 86, height: 1, borderRadius: 2, backgroundColor: "rgba(255,255,255,0.12)" },
-  glassBottomShine: { position: "absolute", left: 58, right: 28, bottom: 1, height: 1, borderRadius: 1, backgroundColor: "rgba(94,196,191,0.10)" },
+  glassEdgeRim: { ...StyleSheet.absoluteFillObject, borderRadius: 999, borderWidth: 1, borderColor: "rgba(255,255,255,0.85)", borderBottomColor: "rgba(0,126,122,0.18)" },
+  glassInnerRim: { position: "absolute", top: 1, bottom: 1, left: 1, right: 1, borderRadius: 999, borderTopWidth: 1.5, borderTopColor: "rgba(255,255,255,0.95)", borderBottomWidth: 1, borderBottomColor: "rgba(0,126,122,0.08)" },
+  specularSweep: { position: "absolute", top: -20, left: 0, width: 72, height: 120, borderRadius: 36, backgroundColor: "rgba(255,255,255,0.32)" },
+  glassTopShine: { position: "absolute", top: 1, left: 24, right: 24, height: 1.5, borderRadius: 1, backgroundColor: "rgba(255,255,255,0.95)" },
+  glassBottomShine: { position: "absolute", left: 32, right: 32, bottom: 1, height: 1, borderRadius: 1, backgroundColor: "rgba(0,126,122,0.12)" },
   tabRow: { flex: 1, flexDirection: "row", alignItems: "stretch", paddingHorizontal: 4, paddingVertical: 4 },
-  activeIndicator: { position: "absolute", top: 4, bottom: 4, left: 0, overflow: "hidden", borderRadius: 999, backgroundColor: "rgba(0,126,122,0.075)", borderWidth: 1, borderColor: "rgba(255,255,255,0.16)", shadowColor: "#C7FFFC", shadowOpacity: 0.12, shadowRadius: 9, shadowOffset: { width: 0, height: 2 } },
-  activeIndicatorGloss: { position: "absolute", top: 2, left: 10, right: 10, height: 10, borderRadius: 12, backgroundColor: "rgba(255,255,255,0.045)", borderTopWidth: 1, borderTopColor: "rgba(255,255,255,0.12)" },
-  classicIndicator: { backgroundColor: "#E6F5F4", borderColor: "#BDE6E1" },
+  activeIndicator: { position: "absolute", top: 4, bottom: 4, left: 0, overflow: "hidden", borderRadius: 999, backgroundColor: "rgba(255,255,255,0.92)", borderWidth: 1, borderColor: "rgba(0,126,122,0.22)", shadowColor: "#007E7A", shadowOpacity: 0.22, shadowRadius: 12, shadowOffset: { width: 0, height: 3 } },
+  activeIndicatorGloss: { position: "absolute", top: 1, left: 8, right: 8, height: 12, borderRadius: 999, backgroundColor: "rgba(255,255,255,0.85)", borderTopWidth: 1, borderTopColor: "rgba(255,255,255,1)" },
+  classicIndicator: { backgroundColor: "#007E7A", borderColor: "#005F5C" },
   tabGestureTarget: { flex: 1, minWidth: 0, zIndex: 1 },
   draggingTab: { zIndex: 8, elevation: 16 },
   tabItem: { flex: 1, minWidth: 0, alignItems: "center", justifyContent: "center", gap: 2, borderRadius: 32 },
