@@ -103,6 +103,10 @@ function FloatingTabBar({ state, descriptors, navigation }: BottomTabBarProps) {
 }
 
 export default function TabLayout() {
+  const insets = useSafeAreaInsets();
+  const tabBottomInset = Platform.OS === "web" ? 8 : Math.max(insets.bottom, 8);
+  const sceneBottomPadding = tabBottomInset + 92;
+
   return (
     <RouterProvider>
       <TabBarPreferenceProvider>
@@ -111,6 +115,8 @@ export default function TabLayout() {
           screenOptions={{
             headerShown: false,
             tabBarHideOnKeyboard: true,
+            // The custom floating bar is absolute, so reserve its visual footprint in every scene.
+            sceneStyle: { paddingBottom: sceneBottomPadding },
           }}
         >
           <Tabs.Screen name="index" options={{ title: "状态", tabBarIcon: ({ color, focused }) => <IconSymbol size={focused ? 23 : 21} name="gauge.with.dots.needle.50percent" color={color} /> }} />

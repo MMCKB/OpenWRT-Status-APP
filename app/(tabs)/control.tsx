@@ -152,7 +152,7 @@ const styles = StyleSheet.create({
   platformBanner: { flexDirection: "row", alignItems: "flex-start", gap: 8, paddingHorizontal: 16, paddingVertical: 10, backgroundColor: "#2A2111", borderBottomWidth: 1, borderBottomColor: "#4C3A1C" },
   platformText: { flex: 1, color: "#E6C481", fontSize: 12, lineHeight: 18 },
   terminalScroll: { flex: 1 },
-  terminalContent: { flexGrow: 1, padding: 16, paddingBottom: 112 },
+  terminalContent: { flexGrow: 1, padding: 16, paddingBottom: 176 },
   terminalText: { color: "#D8F1ED", fontSize: 13, lineHeight: 20, fontFamily: Platform.select({ ios: "Menlo", android: "monospace", default: "monospace" }) },
   runningLine: { flexDirection: "row", alignItems: "center", gap: 8, marginTop: 12 },
   runningText: { color: "#7FE5D4", fontSize: 12, fontFamily: Platform.select({ ios: "Menlo", android: "monospace", default: "monospace" }) },
