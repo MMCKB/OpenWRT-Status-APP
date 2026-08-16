@@ -12,6 +12,10 @@ const tools = [
   { title: "流量统计", description: "按每条 WAN 查看本机采样的日、周、月流量。", icon: "query-stats", target: "/traffic" },
   { title: "网络诊断", description: "按 WAN 执行 Ping、DNS、路由追踪和端口连通性检查。", icon: "network-check", target: "/diagnostics" },
   { title: "无线管理", description: "管理 SSID、无线开关及访客网络二维码。", icon: "wifi", target: "/wireless-manager" },
+  { title: "代理与健康", description: "查看 OpenClash、AdGuard Home 与资源、温度、连通性报告。", icon: "monitor-heart", target: "/services-health" },
+  { title: "日志中心", description: "按系统、内核、DNS、拨号或防火墙查看并导出最近日志。", icon: "article", target: "/logs" },
+  { title: "防火墙与端口转发", description: "查看安全区域，安全管理端口转发与 UPnP 服务。", icon: "security", target: "/firewall" },
+  { title: "多路由器批量操作", description: "依次刷新多台路由器状态、执行基础诊断或下载配置备份。", icon: "router", target: "/bulk-operations" },
   { title: "备份与服务", description: "导出/恢复配置，查看 OpenWrt 服务和 Docker 容器。", icon: "settings-suggest", target: "/maintenance-tools" },
   { title: "快捷操作", description: "一键重连 WAN，并快速进入常用路由器管理功能。", icon: "bolt", target: "/quick-actions" },
 ];

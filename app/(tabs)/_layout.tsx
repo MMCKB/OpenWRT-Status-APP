@@ -52,6 +52,10 @@ export default function TabLayout() {
       <Tabs.Screen name="wireless-manager" options={{ href: null }} />
       <Tabs.Screen name="maintenance-tools" options={{ href: null }} />
       <Tabs.Screen name="quick-actions" options={{ href: null }} />
+      <Tabs.Screen name="services-health" options={{ href: null }} />
+      <Tabs.Screen name="logs" options={{ href: null }} />
+      <Tabs.Screen name="firewall" options={{ href: null }} />
+      <Tabs.Screen name="bulk-operations" options={{ href: null }} />
     </Tabs>
     </RouterProvider>
   );
