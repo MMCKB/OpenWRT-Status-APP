@@ -65,7 +65,7 @@ export function EmptyState({ icon, title, description }: { icon: React.Component
 
 export const sharedStyles = StyleSheet.create({
   screen: { flex: 1, backgroundColor: "#F6F8FA" },
-  content: { padding: 20, paddingBottom: 176, gap: 20 },
+  content: { padding: 20, paddingBottom: 112, gap: 20 },
   primaryButton: { minHeight: 48, borderRadius: 14, backgroundColor: "#007E7A", alignItems: "center", justifyContent: "center", paddingHorizontal: 18 },
   primaryButtonPressed: { opacity: 0.86, transform: [{ scale: 0.98 }] },
   primaryButtonText: { color: "#FFFFFF", fontSize: 16, fontWeight: "700" },

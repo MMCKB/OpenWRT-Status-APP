@@ -19,7 +19,6 @@
     "qr": "node scripts/generate_qr.mjs"
   },
   "dependencies": {
-    "@callstack/liquid-glass": "^0.8.0",
     "@expo/vector-icons": "^15.0.3",
     "@react-native-async-storage/async-storage": "^2.2.0",
     "@react-navigation/bottom-tabs": "^7.8.12",

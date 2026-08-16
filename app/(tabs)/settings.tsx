@@ -4,7 +4,6 @@ import { Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
 
 import { SectionCard, sharedStyles } from "@/components/status-ui";
 import { useRouterStore } from "@/lib/router-provider";
-import { useTabBarPreference } from "@/lib/tab-bar-preference";
 
 const intervals = [
   { label: "手动", value: 0 },
@@ -15,7 +14,6 @@ const intervals = [
 
 export default function SettingsScreen() {
   const { settings, updateRefreshInterval } = useRouterStore();
-  const { mode: tabBarMode, setMode: setTabBarMode } = useTabBarPreference();
   const router = useRouter();
   return (
     <View style={sharedStyles.screen}>
@@ -27,22 +25,6 @@ export default function SettingsScreen() {
             const selected = settings.refreshIntervalSeconds === interval.value;
             return <Pressable key={interval.value} accessibilityRole="button" accessibilityState={{ selected }} onPress={() => void updateRefreshInterval(interval.value)} style={({ pressed }) => [styles.interval, selected && styles.intervalSelected, pressed && styles.intervalPressed]}><Text style={[styles.intervalText, selected && styles.intervalTextSelected]}>{interval.label}</Text></Pressable>;
           })}</View>
-        </SectionCard>
-        <SectionCard title="导航外观">
-          <Text style={styles.cardDescription}>选择底部 Tab 栏的视觉风格。液体玻璃模式使用透明模糊与滑动选中指示器，经典模式使用高对比度实色背景。</Text>
-          <View style={styles.intervalGrid}>
-            {[
-              { label: "液体玻璃", value: "liquid" as const },
-              { label: "经典 Tab", value: "classic" as const },
-            ].map((option) => {
-              const selected = tabBarMode === option.value;
-              return (
-                <Pressable key={option.value} accessibilityRole="button" accessibilityState={{ selected }} onPress={() => setTabBarMode(option.value)} style={({ pressed }) => [styles.interval, selected && styles.intervalSelected, pressed && styles.intervalPressed]}>
-                  <Text style={[styles.intervalText, selected && styles.intervalTextSelected]}>{option.label}</Text>
-                </Pressable>
-              );
-            })}
-          </View>
         </SectionCard>
         <SectionCard title="数据与隐私">
           <View style={styles.infoRow}><View style={styles.infoIcon}><MaterialIcons name="vpn-key" size={19} color="#007E7A" /></View><View style={styles.infoText}><Text style={styles.infoTitle}>凭证仅存储在本机</Text><Text style={styles.infoDescription}>LuCI 密码会保存在设备安全存储中；配置资料保存在本地，不会同步至云端。</Text></View></View>
