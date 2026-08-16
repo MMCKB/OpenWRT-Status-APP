@@ -102,7 +102,7 @@ export default function FirmwareScreen() {
 }
 
 const styles = StyleSheet.create({
-  screen: { flex: 1, backgroundColor: "#F6F8FA" }, content: { padding: 20, paddingBottom: 112, gap: 16 },
+  screen: { flex: 1, backgroundColor: "#F6F8FA" }, content: { padding: 20, paddingBottom: 38, gap: 16 },
   blank: { flex: 1, backgroundColor: "#F6F8FA", alignItems: "center", justifyContent: "center", padding: 30 }, blankTitle: { color: "#102A43", fontSize: 22, fontWeight: "800" }, blankText: { color: "#60758B", marginTop: 8, textAlign: "center" },
   nav: { minHeight: 42, flexDirection: "row", alignItems: "center", justifyContent: "space-between" }, back: { width: 42, height: 42, borderRadius: 21, alignItems: "center", justifyContent: "center", backgroundColor: "#EAF1F5" }, navTitle: { color: "#203B55", fontSize: 16, fontWeight: "800" }, navSpacer: { width: 42 },
   warning: { flexDirection: "row", gap: 11, backgroundColor: "#FFF3D9", borderWidth: 1, borderColor: "#F0D59A", borderRadius: 16, padding: 14 }, warningText: { flex: 1 }, warningTitle: { color: "#7E5200", fontSize: 15, fontWeight: "800" }, warningBody: { color: "#855D14", fontSize: 13, lineHeight: 19, marginTop: 4 },
