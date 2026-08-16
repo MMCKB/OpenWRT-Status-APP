@@ -6,19 +6,23 @@ import { MaterialIcons } from "@expo/vector-icons";
 import { EmptyState } from "@/components/status-ui";
 import { connectInAppSsh, disconnectInAppSsh, getInAppSshTarget, isInAppSshSupported, runInAppSshCommand } from "@/lib/native-ssh";
 import {
-  buildOpkgListInstalledCommand,
-  buildOpkgSearchCommand,
-  buildOpkgInstallCommand,
-  buildOpkgRemoveCommand,
-  buildOpkgUpdateCommand,
+  buildApkListInstalledCommand,
+  buildApkListUpgradableCommand,
+  buildApkUpgradeCommand,
+  buildApkUpgradePackageCommand,
+  buildApkSearchCommand,
+  buildApkInstallCommand,
+  buildApkRemoveCommand,
+  buildApkUpdateCommand,
   parseInstalledPackages,
+  parseUpgradablePackages,
   parseAvailablePackages,
-  type OpkgPackage,
+  type ApkPackage,
 } from "@/lib/router-package-commands";
 import { useRouterStore } from "@/lib/router-provider";
 
 type ConnectionState = "idle" | "connecting" | "connected" | "error";
-type TabFilter = "installed" | "search";
+type TabFilter = "installed" | "updates" | "search";
 
 export default function PackagesScreen() {
   const router = useRouter();
@@ -33,8 +37,9 @@ export default function PackagesScreen() {
   const [isBusy, setIsBusy] = useState<boolean>(false);
 
   const [activeTab, setActiveTab] = useState<TabFilter>("installed");
-  const [installedPackages, setInstalledPackages] = useState<OpkgPackage[]>([]);
-  const [availablePackages, setAvailablePackages] = useState<OpkgPackage[]>([]);
+  const [installedPackages, setInstalledPackages] = useState<ApkPackage[]>([]);
+  const [upgradablePackages, setUpgradablePackages] = useState<ApkPackage[]>([]);
+  const [availablePackages, setAvailablePackages] = useState<ApkPackage[]>([]);
   const [searchTerm, setSearchTerm] = useState<string>("");
   const [searchQuery, setSearchQuery] = useState<string>("");
 
@@ -68,8 +73,9 @@ export default function PackagesScreen() {
       if (!credentials) throw new Error("未找到本机保存的 SSH 密码，请编辑路由器资料后再试。");
       await connectInAppSsh(profile!, credentials.sshPassword);
       setConnection("connected");
-      setNotice("SSH 已连接，正在加载已安装软件包...");
+      setNotice("SSH 已连接，正在加载 apk 软件包信息...");
       await loadInstalledPackages();
+      await loadUpgradablePackages();
     } catch (error) {
       setConnection("error");
       setNotice(error instanceof Error ? error.message : "连接失败。");
@@ -83,13 +89,15 @@ export default function PackagesScreen() {
     setConnection("idle");
     setNotice("已断开 SSH 连接。");
     setInstalledPackages([]);
+    setUpgradablePackages([]);
+    setAvailablePackages([]);
   }
 
   async function loadInstalledPackages() {
-    if (!isConnected || isBusy) return;
+    if (isLoading) return;
     setIsLoading(true);
     try {
-      const output = await runInAppSshCommand(buildOpkgListInstalledCommand());
+      const output = await runInAppSshCommand(buildApkListInstalledCommand());
       const parsed = parseInstalledPackages(output);
       setInstalledPackages(parsed);
       setNotice(`已加载 ${parsed.length} 个系统软件包。`);
@@ -100,16 +108,33 @@ export default function PackagesScreen() {
     }
   }
 
+  async function loadUpgradablePackages() {
+    if (isLoading) return;
+    setIsLoading(true);
+    try {
+      const output = await runInAppSshCommand(buildApkListUpgradableCommand());
+      const parsed = parseUpgradablePackages(output);
+      setUpgradablePackages(parsed);
+      setNotice(parsed.length ? `发现 ${parsed.length} 个可更新软件包。` : "当前没有可更新的软件包。");
+    } catch (error) {
+      Alert.alert("读取更新列表失败", error instanceof Error ? error.message : "无法获取可更新软件包。");
+    } finally {
+      setIsLoading(false);
+    }
+  }
+
   async function updateRepository() {
     if (!isConnected || isBusy) return;
     setIsBusy(true);
-    setNotice("正在更新软件源列表 (opkg update)...");
+    setNotice("正在更新 apk 软件源列表...");
     try {
-      await runInAppSshCommand(buildOpkgUpdateCommand());
-      setNotice("软件源列表更新成功。");
-      Alert.alert("更新成功", "系统软件源列表已刷新。");
+      await runInAppSshCommand(buildApkUpdateCommand());
+      await loadInstalledPackages();
+      await loadUpgradablePackages();
+      setNotice("apk 软件源列表更新成功，更新列表已刷新。");
+      Alert.alert("更新成功", "apk 软件源列表已刷新。");
       if (activeTab === "search" && searchQuery) {
-        await executeSearch(searchQuery);
+        await executeSearch(searchQuery, true);
       }
     } catch (error) {
       Alert.alert("更新失败", error instanceof Error ? error.message : "无法更新软件源。");
@@ -118,16 +143,16 @@ export default function PackagesScreen() {
     }
   }
 
-  async function executeSearch(query: string) {
+  async function executeSearch(query: string, ignoreBusy = false) {
     const trimmed = query.trim();
     if (!trimmed) {
       setAvailablePackages([]);
       return;
     }
-    if (!isConnected || isBusy) return;
+    if (!isConnected || (isBusy && !ignoreBusy)) return;
     setIsLoading(true);
     try {
-      const output = await runInAppSshCommand(buildOpkgSearchCommand(trimmed));
+      const output = await runInAppSshCommand(buildApkSearchCommand(trimmed));
       const installedMap = new Set(installedPackages.map((p) => p.name));
       const parsed = parseAvailablePackages(output, installedMap);
       setAvailablePackages(parsed);
@@ -139,17 +164,24 @@ export default function PackagesScreen() {
     }
   }
 
-  function confirmInstall(pkg: OpkgPackage) {
+  function confirmInstall(pkg: ApkPackage) {
     Alert.alert("确认安装", `确定要安装软件包 "${pkg.name}" (${pkg.version}) 吗？`, [
       { text: "取消", style: "cancel" },
-      { text: "安装", onPress: () => void runPackageAction(buildOpkgInstallCommand(pkg.name), `已成功安装 ${pkg.name}`) },
+      { text: "安装", onPress: () => void runPackageAction(buildApkInstallCommand(pkg.name), `已成功安装 ${pkg.name}`) },
     ]);
   }
 
-  function confirmRemove(pkg: OpkgPackage) {
+  function confirmUpgrade(pkg: ApkPackage) {
+    Alert.alert("确认更新", `确定要更新软件包 "${pkg.name}" 吗？`, [
+      { text: "取消", style: "cancel" },
+      { text: "更新", onPress: () => void runPackageAction(buildApkUpgradePackageCommand(pkg.name), `已成功更新 ${pkg.name}`) },
+    ]);
+  }
+
+  function confirmRemove(pkg: ApkPackage) {
     Alert.alert("确认卸载", `确定要卸载软件包 "${pkg.name}" 吗？这可能会影响依赖它的功能。`, [
       { text: "取消", style: "cancel" },
-      { text: "卸载", style: "destructive", onPress: () => void runPackageAction(buildOpkgRemoveCommand(pkg.name), `已成功卸载 ${pkg.name}`) },
+      { text: "卸载", style: "destructive", onPress: () => void runPackageAction(buildApkRemoveCommand(pkg.name), `已成功卸载 ${pkg.name}`) },
     ]);
   }
 
@@ -162,8 +194,9 @@ export default function PackagesScreen() {
       setActionOutput(`执行命令: ${command}\n\n[执行结果]\n${output}\n\n${successMessage}`);
       setNotice(successMessage);
       await loadInstalledPackages();
+      await loadUpgradablePackages();
       if (activeTab === "search" && searchQuery) {
-        await executeSearch(searchQuery);
+        await executeSearch(searchQuery, true);
       }
     } catch (error) {
       const msg = error instanceof Error ? error.message : "操作执行失败。";
@@ -176,7 +209,7 @@ export default function PackagesScreen() {
 
   const displayedPackages = activeTab === "installed"
     ? installedPackages.filter((p) => p.name.toLowerCase().includes(searchTerm.toLowerCase()) || p.description.toLowerCase().includes(searchTerm.toLowerCase()))
-    : availablePackages;
+    : activeTab === "updates" ? upgradablePackages : availablePackages;
 
   return (
     <KeyboardAvoidingView style={styles.screen} behavior={Platform.OS === "ios" ? "padding" : undefined}>
@@ -189,7 +222,8 @@ export default function PackagesScreen() {
           <Text style={styles.target} numberOfLines={1}>{profile.name} ({target})</Text>
         </View>
         <Pressable accessibilityRole="button" accessibilityLabel="更新软件包源列表" disabled={!isConnected || isBusy} onPress={() => void updateRepository()} style={({ pressed }) => [styles.refreshButton, (!isConnected || isBusy) && styles.disabled, pressed && styles.pressed]}>
-          {isBusy ? <ActivityIndicator size="small" color="#007E7A" /> : <MaterialIcons name="system-update-alt" size={21} color="#007E7A" />}
+          {isBusy ? <ActivityIndicator size="small" color="#007E7A" /> : <MaterialIcons name="system-update-alt" size={18} color="#007E7A" />}
+          <Text style={styles.refreshText}>更新源</Text>
         </Pressable>
       </View>
 
@@ -214,6 +248,10 @@ export default function PackagesScreen() {
           <MaterialIcons name="inventory" size={17} color={activeTab === "installed" ? "#007E7A" : "#60758B"} />
           <Text style={[styles.tabButtonText, activeTab === "installed" && styles.activeTabButtonText]}>已安装 ({installedPackages.length})</Text>
         </Pressable>
+        <Pressable accessibilityRole="button" onPress={() => setActiveTab("updates")} style={[styles.tabButton, activeTab === "updates" && styles.activeTabButton]}>
+          <MaterialIcons name="system-update-alt" size={17} color={activeTab === "updates" ? "#007E7A" : "#60758B"} />
+          <Text style={[styles.tabButtonText, activeTab === "updates" && styles.activeTabButtonText]}>可更新 ({upgradablePackages.length})</Text>
+        </Pressable>
         <Pressable accessibilityRole="button" onPress={() => setActiveTab("search")} style={[styles.tabButton, activeTab === "search" && styles.activeTabButton]}>
           <MaterialIcons name="search" size={17} color={activeTab === "search" ? "#007E7A" : "#60758B"} />
           <Text style={[styles.tabButtonText, activeTab === "search" && styles.activeTabButtonText]}>仓库搜索</Text>
@@ -222,6 +260,7 @@ export default function PackagesScreen() {
 
       {activeTab === "installed" ? (
         <View style={styles.searchCard}>
+
           <TextInput
             accessibilityLabel="筛选已安装软件包"
             style={styles.searchInput}
@@ -234,7 +273,7 @@ export default function PackagesScreen() {
             clearButtonMode="while-editing"
           />
         </View>
-      ) : (
+      ) : activeTab === "updates" ? null : (
         <View style={styles.searchCard}>
           <View style={styles.searchRow}>
             <TextInput
@@ -259,9 +298,15 @@ export default function PackagesScreen() {
       <View style={styles.directorySection}>
         <View style={styles.listHeader}>
           <View style={styles.listHeaderCopy}>
-            <Text style={styles.listTitle}>{activeTab === "installed" ? "已安装软件包列表" : "仓库搜索结果"}</Text>
+            <Text style={styles.listTitle}>{activeTab === "installed" ? "已安装软件包列表" : activeTab === "updates" ? "可更新软件包" : "仓库搜索结果"}</Text>
             <Text style={styles.listSubtitle}>{displayedPackages.length} 个结果</Text>
           </View>
+          {activeTab === "updates" && upgradablePackages.length > 0 ? (
+            <Pressable accessibilityRole="button" disabled={isBusy} onPress={() => void runPackageAction(buildApkUpgradeCommand(), "已完成全部软件包更新")} style={({ pressed }) => [styles.updateAllButton, isBusy && styles.disabled, pressed && styles.pressed]}>
+              <MaterialIcons name="system-update-alt" size={15} color="#FFFFFF" />
+              <Text style={styles.updateAllButtonText}>全部更新</Text>
+            </Pressable>
+          ) : null}
         </View>
 
         <FlatList
@@ -269,12 +314,12 @@ export default function PackagesScreen() {
           keyExtractor={(item) => item.name}
           style={styles.list}
           contentContainerStyle={[styles.listContent, !displayedPackages.length && styles.emptyListContent]}
-          refreshControl={<RefreshControl refreshing={isLoading} onRefresh={() => void (activeTab === "installed" ? loadInstalledPackages() : executeSearch(searchQuery))} enabled={isConnected && !isBusy} tintColor="#007E7A" />}
+          refreshControl={<RefreshControl refreshing={isLoading} onRefresh={() => void (activeTab === "installed" ? loadInstalledPackages() : activeTab === "updates" ? loadUpgradablePackages() : executeSearch(searchQuery))} enabled={isConnected && !isBusy} tintColor="#007E7A" />}
           ListEmptyComponent={
             <View style={styles.emptyList}>
               <MaterialIcons name="extension" size={32} color="#91A5B3" />
-              <Text style={styles.emptyListTitle}>{isConnected ? (activeTab === "installed" ? "没有找到匹配的软件包" : "请输入关键词搜索仓库包") : "连接 SSH 后管理软件包"}</Text>
-              <Text style={styles.emptyListText}>{isConnected ? "尝试更换关键词或更新源列表。" : "连接路由器后，系统软件包将在此显示。"}</Text>
+              <Text style={styles.emptyListTitle}>{isConnected ? (activeTab === "installed" ? "没有找到匹配的软件包" : activeTab === "updates" ? "当前没有可更新的软件包" : "请输入关键词搜索仓库包") : "连接 SSH 后管理软件包"}</Text>
+              <Text style={styles.emptyListText}>{isConnected ? (activeTab === "updates" ? "先点击右上角更新源，再下拉刷新更新列表。" : "尝试更换关键词或更新源列表。") : "连接路由器后，系统软件包将在此显示。"}</Text>
             </View>
           }
           renderItem={({ item }) => (
@@ -290,7 +335,11 @@ export default function PackagesScreen() {
                 <Text style={styles.entryMeta} numberOfLines={2}>{item.description}</Text>
               </View>
               <View style={styles.entryActionRow}>
-                {item.installed ? (
+                {activeTab === "updates" ? (
+                  <Pressable accessibilityRole="button" accessibilityLabel={`更新 ${item.name}`} disabled={isBusy} onPress={() => confirmUpgrade(item)} style={({ pressed }) => [styles.updateButton, isBusy && styles.disabled, pressed && styles.pressed]}>
+                    <Text style={styles.updateButtonText}>更新</Text>
+                  </Pressable>
+                ) : item.installed ? (
                   <Pressable accessibilityRole="button" accessibilityLabel={`卸载 ${item.name}`} disabled={isBusy} onPress={() => confirmRemove(item)} style={({ pressed }) => [styles.removeButton, isBusy && styles.disabled, pressed && styles.pressed]}>
                     <Text style={styles.removeButtonText}>卸载</Text>
                   </Pressable>
@@ -331,7 +380,8 @@ const styles = StyleSheet.create({
   navTitleText: { color: "#203B55", fontSize: 17, fontWeight: "800" },
   navSpacer: { width: 38 },
   target: { color: "#718398", fontSize: 11, marginTop: 2, fontVariant: ["tabular-nums"] },
-  refreshButton: { width: 38, height: 38, borderRadius: 19, backgroundColor: "#E6F5F4", alignItems: "center", justifyContent: "center" },
+  refreshButton: { minWidth: 72, height: 36, paddingHorizontal: 9, borderRadius: 18, flexDirection: "row", gap: 4, backgroundColor: "#E6F5F4", alignItems: "center", justifyContent: "center" },
+  refreshText: { color: "#007E7A", fontSize: 11, fontWeight: "800" },
   connectionCard: { marginHorizontal: 20, marginTop: 4, padding: 13, flexDirection: "row", alignItems: "center", gap: 12, backgroundColor: "#FFFFFF", borderRadius: 15, borderWidth: 1, borderColor: "#DDE7E9" },
   connectionCopy: { flex: 1, minWidth: 0 },
   connectionLabel: { color: "#203B55", fontSize: 13, fontWeight: "800" },
@@ -367,8 +417,12 @@ const styles = StyleSheet.create({
   entryVersion: { color: "#718398", fontSize: 11, fontFamily: Platform.select({ ios: "Menlo", android: "monospace", default: "monospace" }) },
   entryMeta: { color: "#60758B", fontSize: 11, marginTop: 4, lineHeight: 15 },
   entryActionRow: { alignItems: "flex-end" },
+  updateAllButton: { minHeight: 32, paddingHorizontal: 10, borderRadius: 8, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 4, backgroundColor: "#007E7A" },
+  updateAllButtonText: { color: "#FFFFFF", fontSize: 11, fontWeight: "800" },
   installButton: { minWidth: 54, minHeight: 32, paddingHorizontal: 10, borderRadius: 8, alignItems: "center", justifyContent: "center", backgroundColor: "#007E7A" },
   installButtonText: { color: "#FFFFFF", fontSize: 12, fontWeight: "800" },
+  updateButton: { minWidth: 54, minHeight: 32, paddingHorizontal: 10, borderRadius: 8, alignItems: "center", justifyContent: "center", backgroundColor: "#E6F5F4", borderWidth: 1, borderColor: "#A7DCD9" },
+  updateButtonText: { color: "#007E7A", fontSize: 12, fontWeight: "800" },
   removeButton: { minWidth: 54, minHeight: 32, paddingHorizontal: 10, borderRadius: 8, alignItems: "center", justifyContent: "center", backgroundColor: "#FFF0F0", borderWidth: 1, borderColor: "#F5C6C6" },
   removeButtonText: { color: "#B13939", fontSize: 12, fontWeight: "800" },
   emptyList: { alignItems: "center", justifyContent: "center", padding: 34, gap: 6 },

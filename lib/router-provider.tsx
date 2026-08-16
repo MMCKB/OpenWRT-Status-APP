@@ -30,7 +30,7 @@ interface RouterContextValue {
   testConnection: (draft: RouterDraft, password: string, routerId?: string) => Promise<RouterStatus>;
   refreshStatus: () => Promise<RouterStatus | null>;
   updateRefreshInterval: (seconds: number) => Promise<void>;
-  getSelectedCredentials: () => Promise<{ luciPassword: string; sshPassword: string } | null>;
+  getSelectedCredentials: () => Promise<{ luciPassword: string | null; sshPassword: string } | null>;
 }
 
 const RouterContext = createContext<RouterContextValue | null>(null);
@@ -184,8 +184,9 @@ export function RouterProvider({ children }: { children: ReactNode }) {
       loadPassword(selectedProfile.id),
       loadSshPassword(selectedProfile.id),
     ]);
-    if (!luciPassword) return null;
-    return { luciPassword, sshPassword: sshPassword ?? luciPassword };
+    const effectiveSshPassword = sshPassword ?? luciPassword;
+    if (!effectiveSshPassword) return null;
+    return { luciPassword, sshPassword: effectiveSshPassword };
   }, [selectedProfile]);
 
   const value = useMemo<RouterContextValue>(() => ({
