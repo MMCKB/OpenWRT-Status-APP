@@ -36,6 +36,11 @@ export default function SettingsScreen() {
             <View style={styles.infoText}><Text style={styles.infoTitle}>文件管理</Text><Text style={styles.infoDescription}>通过应用内 SSH 浏览、上传、编辑、复制、移动与管理路由器文件。</Text></View>
             <MaterialIcons name="chevron-right" size={20} color="#718398" />
           </Pressable>
+          <Pressable accessibilityRole="button" accessibilityLabel="打开软件包管理" onPress={() => router.push("/packages" as never)} style={({ pressed }) => [styles.maintenanceRow, pressed && styles.intervalPressed]}>
+            <View style={styles.infoIcon}><MaterialIcons name="extension" size={19} color="#007E7A" /></View>
+            <View style={styles.infoText}><Text style={styles.infoTitle}>软件包管理</Text><Text style={styles.infoDescription}>查看已安装系统包，搜索在线仓库并执行安装、卸载与更新。</Text></View>
+            <MaterialIcons name="chevron-right" size={20} color="#718398" />
+          </Pressable>
           <Pressable accessibilityRole="button" accessibilityLabel="打开固件升级" onPress={() => router.push("/firmware" as never)} style={({ pressed }) => [styles.maintenanceRow, pressed && styles.intervalPressed]}>
             <View style={styles.infoIcon}><MaterialIcons name="system-update" size={19} color="#C77A00" /></View>
             <View style={styles.infoText}><Text style={styles.infoTitle}>固件升级</Text><Text style={styles.infoDescription}>选择 sysupgrade 镜像，经 SSH 上传后确认执行升级。</Text></View>
