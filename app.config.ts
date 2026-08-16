@@ -32,7 +32,7 @@ const env = {
   appSlug: "openwrt-status-app",
   // S3 URL of the app logo - set this to the URL returned by generate_image when creating custom logo
   // Leave empty to use the default icon from assets/images/icon.png
-  logoUrl: "/manus-storage/openwrt-status-icon_d7e040e2.png",
+  logoUrl: "/manus-storage/openwrt-router-icon_36d68569.png",
   scheme: schemeFromBundleId,
   iosBundleId: bundleId,
   androidPackage: bundleId,
@@ -66,7 +66,7 @@ const config: ExpoConfig = {
   },
   android: {
     adaptiveIcon: {
-      backgroundColor: "#E6F4FE",
+      backgroundColor: "#102A43",
       foregroundImage: "./assets/images/android-icon-foreground.png",
       backgroundImage: "./assets/images/android-icon-background.png",
       monochromeImage: "./assets/images/android-icon-monochrome.png",
@@ -123,9 +123,9 @@ const config: ExpoConfig = {
         image: "./assets/images/splash-icon.png",
         imageWidth: 200,
         resizeMode: "contain",
-        backgroundColor: "#ffffff",
+        backgroundColor: "#102A43",
         dark: {
-          backgroundColor: "#000000",
+          backgroundColor: "#102A43",
         },
       },
     ],

@@ -34,6 +34,11 @@ function asNumber(value: unknown): number | null {
   return typeof value === "number" && Number.isFinite(value) ? value : null;
 }
 
+function asCounter(value: unknown): number | null {
+  const parsed = typeof value === "string" && value.trim() ? Number(value) : asNumber(value);
+  return parsed !== null && Number.isFinite(parsed) && parsed >= 0 ? parsed : null;
+}
+
 function isDefined(value: unknown): boolean {
   return value !== undefined && value !== null;
 }
@@ -137,21 +142,40 @@ async function login(endpoint: string, username: string, password: string) {
   return token;
 }
 
-function mapInterfaces(payload: unknown): InterfaceStatus[] {
+function mapDeviceCounters(payload: unknown) {
+  const root = asRecord(payload);
+  const devices = asRecord(root.devices ?? root.device ?? payload);
+  return new Map(Object.entries(devices).map(([name, rawDevice]) => {
+    const device = asRecord(rawDevice);
+    const statistics = asRecord(device.statistics ?? device.stats);
+    return [name, {
+      rxBytes: asCounter(statistics.rx_bytes ?? device.rx_bytes ?? device.rxBytes),
+      txBytes: asCounter(statistics.tx_bytes ?? device.tx_bytes ?? device.txBytes),
+    }] as const;
+  }));
+}
+
+function mapInterfaces(payload: unknown, deviceCountersPayload: unknown = {}): InterfaceStatus[] {
   const root = asRecord(payload);
   const candidates = root.interface ?? root.interfaces ?? payload;
   if (!Array.isArray(candidates)) return [];
+  const deviceCounters = mapDeviceCounters(deviceCountersPayload);
   return candidates.map((entry, index) => {
     const item = asRecord(entry);
     const rawName = item.interface ?? item.name;
     const device = asRecord(item.l3_device).name ?? item.l3_device ?? item.device;
+    const deviceName = asString(device, "未报告");
+    const statistics = asRecord(item.statistics ?? item.stats);
+    const counters = deviceCounters.get(deviceName);
     return {
       name: asString(rawName, `接口 ${index + 1}`),
-      device: asString(device, "未报告"),
+      device: deviceName,
       up: item.up === true,
       ipv4: asStringArray(item["ipv4-address"] ?? item.ipv4),
       ipv6: asStringArray(item["ipv6-address"] ?? item.ipv6),
       uptimeSeconds: asNumber(item.uptime),
+      rxBytes: asCounter(statistics.rx_bytes ?? item.rx_bytes ?? item.rxBytes) ?? counters?.rxBytes ?? null,
+      txBytes: asCounter(statistics.tx_bytes ?? item.tx_bytes ?? item.txBytes) ?? counters?.txBytes ?? null,
     };
   });
 }
@@ -210,6 +234,7 @@ export function buildRouterStatus(
   interfacesPayload: unknown,
   wirelessPayload: unknown,
   warnings: string[] = [],
+  deviceCountersPayload: unknown = {},
 ): RouterStatus {
   const board = asRecord(boardPayload);
   const info = asRecord(infoPayload);
@@ -232,7 +257,7 @@ export function buildRouterStatus(
     online: true,
     fetchedAt: new Date().toISOString(),
     system,
-    interfaces: mapInterfaces(interfacesPayload),
+    interfaces: mapInterfaces(interfacesPayload, deviceCountersPayload),
     wireless: mapWireless(wirelessPayload),
     warnings,
   };
@@ -253,14 +278,15 @@ export async function fetchRouterStatus(
   const optional = await Promise.allSettled([
     ubusCall(endpoint, token, "network.interface", "dump", {}),
     ubusCall(endpoint, token, "network.wireless", "status", {}),
+    ubusCall(endpoint, token, "network.device", "status", {}),
   ]);
   const warnings: string[] = [];
-  const [interfaces, wireless] = optional.map((result, index) => {
-    if (result.status === "fulfilled") return result.value;
-    warnings.push(index === 0 ? "网络接口状态暂不可用。" : "无线状态暂不可用。");
-    return {};
-  });
-  return buildRouterStatus(routerId, required[0], required[1], interfaces, wireless, warnings);
+  const interfaces = optional[0].status === "fulfilled" ? optional[0].value : {};
+  if (optional[0].status === "rejected") warnings.push("网络接口状态暂不可用。");
+  const wireless = optional[1].status === "fulfilled" ? optional[1].value : {};
+  if (optional[1].status === "rejected") warnings.push("无线状态暂不可用。");
+  const deviceCounters = optional[2].status === "fulfilled" ? optional[2].value : {};
+  return buildRouterStatus(routerId, required[0], required[1], interfaces, wireless, warnings, deviceCounters);
 }
 
 export function formatBytes(value: number | null) {

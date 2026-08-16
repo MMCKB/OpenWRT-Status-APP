@@ -31,6 +31,9 @@ export interface InterfaceStatus {
   ipv4: string[];
   ipv6: string[];
   uptimeSeconds: number | null;
+  /** OpenWrt interface statistics, collected from ubus network.interface.dump. */
+  rxBytes: number | null;
+  txBytes: number | null;
 }
 
 export interface WirelessStatus {

@@ -3,6 +3,7 @@ import { useFocusEffect, useRouter } from "expo-router";
 import { useCallback } from "react";
 import { ActivityIndicator, Pressable, RefreshControl, ScrollView, StyleSheet, Text, View } from "react-native";
 
+import { RealtimeTrafficCard } from "@/components/realtime-traffic-card";
 import { EmptyState, MetricTile, SectionCard, sharedStyles, StatusPill } from "@/components/status-ui";
 import { formatBytes, formatLoad, formatUptime, memoryUsagePercent } from "@/lib/openwrt-client";
 import { useRouterStore } from "@/lib/router-provider";
@@ -19,6 +20,14 @@ export default function StatusScreen() {
   useFocusEffect(useCallback(() => {
     if (selectedProfile && !selectedStatus) void refreshStatus();
   }, [refreshStatus, selectedProfile, selectedStatus]));
+
+  useFocusEffect(useCallback(() => {
+    if (!selectedProfile) return;
+    const samplingTimer = setInterval(() => {
+      if (!isRefreshing) void refreshStatus();
+    }, 5000);
+    return () => clearInterval(samplingTimer);
+  }, [isRefreshing, refreshStatus, selectedProfile]));
 
   if (!isReady) {
     return <View style={styles.loading}><ActivityIndicator size="large" color="#007E7A" /><Text style={styles.loadingText}>正在载入本地配置…</Text></View>;
@@ -64,6 +73,8 @@ export default function StatusScreen() {
             <Text style={styles.model}>{system?.model ?? selectedStatus?.error ?? "下拉刷新以重新尝试连接。"}</Text>
           </View>
         </View>
+
+        <RealtimeTrafficCard interfaces={selectedStatus?.interfaces ?? []} fetchedAt={selectedStatus?.fetchedAt} refreshing={isRefreshing} />
 
         {selectedStatus?.error ? <View style={styles.errorBox}><MaterialIcons name="info-outline" size={19} color="#A43131" /><Text style={styles.errorText}>{selectedStatus.error}</Text></View> : null}
 
