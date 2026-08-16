@@ -128,11 +128,12 @@ export default function PackagesScreen() {
     setIsBusy(true);
     setNotice("正在更新 apk 软件源列表...");
     try {
-      await runInAppSshCommand(buildApkUpdateCommand());
+      const output = await runInAppSshCommand(buildApkUpdateCommand());
       await loadInstalledPackages();
       await loadUpgradablePackages();
-      setNotice("apk 软件源列表更新成功，更新列表已刷新。");
-      Alert.alert("更新成功", "apk 软件源列表已刷新。");
+      setNotice("apk 软件源列表更新完成。");
+      const cleanOutput = (output || "软件源已更新完成，无详细输出。").trim();
+      Alert.alert("软件源更新结果", cleanOutput.length > 500 ? cleanOutput.slice(0, 500) + "\n...(输出过长已截断)" : cleanOutput);
       if (activeTab === "search" && searchQuery) {
         await executeSearch(searchQuery, true);
       }

@@ -20,7 +20,7 @@ describe("router-package-commands (apk)", () => {
     expect(buildApkListUpgradableCommand()).toBe("apk list -u");
     expect(buildApkUpgradeCommand()).toBe("apk upgrade");
     expect(buildApkUpgradePackageCommand("luci-base")).toBe('apk upgrade "luci-base"');
-    expect(buildApkSearchCommand("luci")).toBe('apk search -v "*luci*"');
+    expect(buildApkSearchCommand("luci")).toBe('apk search -v "*luci*" || apk search "*luci*"');
     expect(buildApkInstallCommand("curl")).toBe('apk add "curl"');
     expect(buildApkRemoveCommand("luci-app-firewall")).toBe('apk del "luci-app-firewall"');
   });

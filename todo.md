@@ -61,3 +61,6 @@
 - [x] 将软件包管理从 opkg 升级重构为 OpenWrt 25.12 原生 apk 包管理器（支持 apk update、apk info、apk search、apk add 和 apk del）
 - [x] 编写 apk 输出解析与命令构建的单元测试
 - [x] 修复软件包页面与 SSH 凭证的握手、加载状态和更新源列表反馈
+- [x] 修复 OpenWrt 25.12 仓库搜索结果为 0 的问题（调整 apk search 命令与多格式输出解析）
+- [x] 将更新源操作改造为通过动作弹窗展示完整的 apk update 命令输出
+- [x] 补充 apk 搜索解析与更新源命令的单元测试，并验证页面交互

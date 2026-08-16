@@ -50,7 +50,7 @@ export function buildApkUpgradePackageCommand(name: string): string {
  */
 export function buildApkSearchCommand(keyword: string): string {
   const sanitized = keyword.trim().replace(/['"\\$`]/g, "");
-  return `apk search -v "*${sanitized}*"`;
+  return `apk search -v "*${sanitized}*" || apk search "*${sanitized}*"`;
 }
 
 /**
@@ -147,7 +147,7 @@ export function parseAvailablePackages(output: string, installedNames: Set<strin
       description = trimmed.slice(sepIdx + 3).trim();
     }
 
-    const match = nameVersion.match(/^(.+)-([0-9].*)$/);
+    const match = nameVersion.match(/^(.+)-([0-9][a-zA-Z0-9._.-]*)$/);
     if (match) {
       const name = match[1];
       const version = match[2];
