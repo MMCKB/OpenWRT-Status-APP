@@ -1,11 +1,12 @@
 import { Tabs } from "expo-router";
 import type { BottomTabBarProps } from "@react-navigation/bottom-tabs";
 import { BlurView } from "expo-blur";
+import { GlassView, isGlassEffectAPIAvailable } from "expo-glass-effect";
 import { useEffect, useMemo, useState } from "react";
 import { Platform, Pressable, StyleSheet, Text, View, type LayoutChangeEvent } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import * as Haptics from "expo-haptics";
-import Animated, { useAnimatedStyle, useSharedValue, withTiming } from "react-native-reanimated";
+import Animated, { Easing, useAnimatedStyle, useSharedValue, withRepeat, withTiming } from "react-native-reanimated";
 
 import { IconSymbol } from "@/components/ui/icon-symbol";
 import { useColors } from "@/hooks/use-colors";
@@ -20,10 +21,12 @@ function FloatingTabBar({ state, descriptors, navigation }: BottomTabBarProps) {
   const { mode } = useTabBarPreference();
   const [contentWidth, setContentWidth] = useState(0);
   const indicatorX = useSharedValue(4);
+  const glossX = useSharedValue(-96);
   const safeBottom = Platform.OS === "web" ? 8 : Math.max(insets.bottom, 8);
   const tabWidth = contentWidth > 0 ? contentWidth / VISIBLE_ROUTES.length : 0;
   const activeIndex = Math.max(0, VISIBLE_ROUTES.indexOf(state.routes[state.index]?.name as (typeof VISIBLE_ROUTES)[number]));
   const isClassic = mode === "classic";
+  const useNativeGlass = Platform.OS === "ios" && isGlassEffectAPIAvailable();
 
   useEffect(() => {
     if (tabWidth <= 0) return;
@@ -32,10 +35,31 @@ function FloatingTabBar({ state, descriptors, navigation }: BottomTabBarProps) {
     });
   }, [activeIndex, indicatorX, tabWidth]);
 
+  useEffect(() => {
+    if (isClassic || contentWidth <= 0) {
+      glossX.value = -96;
+      return;
+    }
+
+    glossX.value = -96;
+    glossX.value = withRepeat(
+      withTiming(contentWidth + 96, {
+        duration: 4800,
+        easing: Easing.inOut(Easing.quad),
+      }),
+      -1,
+      false,
+    );
+  }, [contentWidth, glossX, isClassic]);
+
   const indicatorStyle = useAnimatedStyle(() => ({
     width: Math.max(0, tabWidth - 8),
     transform: [{ translateX: indicatorX.value }],
   }), [tabWidth]);
+
+  const travellingGlossStyle = useAnimatedStyle(() => ({
+    transform: [{ translateX: glossX.value }, { rotate: "21deg" }],
+  }));
 
   function onLayout(event: LayoutChangeEvent) {
     setContentWidth(event.nativeEvent.layout.width);
@@ -53,20 +77,30 @@ function FloatingTabBar({ state, descriptors, navigation }: BottomTabBarProps) {
       <View style={[styles.shell, isClassic && styles.classicShell]}>
         {!isClassic ? (
           <>
-            <BlurView
-              pointerEvents="none"
-              intensity={Platform.OS === "web" ? 60 : 75}
-              tint="light"
-              experimentalBlurMethod={Platform.OS === "android" ? "dimezisBlurView" : undefined}
-              style={styles.blur}
-            />
+            {useNativeGlass ? (
+              <GlassView pointerEvents="none" glassEffectStyle="clear" style={styles.nativeGlass} />
+            ) : Platform.OS !== "web" ? (
+              <BlurView
+                pointerEvents="none"
+                intensity={28}
+                tint="default"
+                experimentalBlurMethod={Platform.OS === "android" ? "dimezisBlurView" : undefined}
+                style={styles.blur}
+              />
+            ) : null}
             <View pointerEvents="none" style={styles.transparentGlassWash} />
+            <View pointerEvents="none" style={styles.glassDepth} />
+            <View pointerEvents="none" style={styles.glassEdgeRim} />
+            <View pointerEvents="none" style={styles.glassInnerRim} />
+            <Animated.View pointerEvents="none" style={[styles.specularSweep, travellingGlossStyle]} />
             <View pointerEvents="none" style={styles.glassTopShine} />
             <View pointerEvents="none" style={styles.glassBottomShine} />
           </>
         ) : null}
         <View onLayout={onLayout} style={styles.tabRow}>
-          <Animated.View pointerEvents="none" style={[styles.activeIndicator, isClassic && styles.classicIndicator, indicatorStyle]} />
+          <Animated.View pointerEvents="none" style={[styles.activeIndicator, isClassic && styles.classicIndicator, indicatorStyle]}>
+            {!isClassic ? <View style={styles.activeIndicatorGloss} /> : null}
+          </Animated.View>
           {visibleRouteEntries.map((route, index) => {
             if (!route) return null;
             const descriptor = descriptors[route.key];
@@ -135,14 +169,20 @@ export default function TabLayout() {
 
 const styles = StyleSheet.create({
   overlay: { position: "absolute", left: 16, right: 16, zIndex: 20 },
-  shell: { height: 72, overflow: "hidden", borderRadius: 38, borderWidth: 1, borderColor: "rgba(255,255,255,0.78)", backgroundColor: "rgba(255,255,255,0.08)", shadowColor: "#244B57", shadowOpacity: 0.18, shadowRadius: 19, shadowOffset: { width: 0, height: 9 }, elevation: 14 },
+  shell: { height: 74, overflow: "hidden", borderRadius: 999, borderWidth: 1, borderColor: "rgba(255,255,255,0.22)", backgroundColor: "transparent", shadowColor: "#2B6468", shadowOpacity: 0.1, shadowRadius: 22, shadowOffset: { width: 0, height: 10 }, elevation: 14 },
   classicShell: { backgroundColor: "#FFFFFF", borderColor: "#DCE7E9", shadowOpacity: 0.11 },
   blur: { ...StyleSheet.absoluteFillObject },
-  transparentGlassWash: { ...StyleSheet.absoluteFillObject, backgroundColor: "rgba(255,255,255,0.12)" },
-  glassTopShine: { position: "absolute", top: 0, left: 34, right: 34, height: 1, backgroundColor: "rgba(255,255,255,0.95)" },
-  glassBottomShine: { position: "absolute", left: 38, right: 38, bottom: 0, height: 1, backgroundColor: "rgba(184,238,235,0.65)" },
+  nativeGlass: { ...StyleSheet.absoluteFillObject },
+  transparentGlassWash: { ...StyleSheet.absoluteFillObject, backgroundColor: "transparent" },
+  glassDepth: { ...StyleSheet.absoluteFillObject, backgroundColor: "transparent" },
+  glassEdgeRim: { ...StyleSheet.absoluteFillObject, borderRadius: 999, borderWidth: 1, borderColor: "rgba(255,255,255,0.2)", borderBottomColor: "rgba(156,220,217,0.16)" },
+  glassInnerRim: { position: "absolute", top: 2, bottom: 2, left: 2, right: 2, borderRadius: 999, borderTopWidth: 1, borderTopColor: "rgba(255,255,255,0.16)", borderBottomWidth: 1, borderBottomColor: "rgba(15,102,106,0.035)" },
+  specularSweep: { position: "absolute", top: -18, left: 0, width: 58, height: 116, borderRadius: 58, backgroundColor: "rgba(255,255,255,0.035)" },
+  glassTopShine: { position: "absolute", top: 1, left: 28, right: 86, height: 2, borderRadius: 2, backgroundColor: "rgba(255,255,255,0.3)" },
+  glassBottomShine: { position: "absolute", left: 58, right: 28, bottom: 1, height: 1, borderRadius: 1, backgroundColor: "rgba(167,233,230,0.16)" },
   tabRow: { flex: 1, flexDirection: "row", alignItems: "stretch", paddingHorizontal: 4, paddingVertical: 4 },
-  activeIndicator: { position: "absolute", top: 4, bottom: 4, left: 0, borderRadius: 32, backgroundColor: "rgba(202,249,245,0.48)", borderWidth: 1, borderColor: "rgba(255,255,255,0.72)" },
+  activeIndicator: { position: "absolute", top: 4, bottom: 4, left: 0, overflow: "hidden", borderRadius: 999, backgroundColor: "rgba(0,126,122,0.1)", borderWidth: 1, borderColor: "rgba(255,255,255,0.28)", shadowColor: "#DFFDFC", shadowOpacity: 0.16, shadowRadius: 8, shadowOffset: { width: 0, height: 2 } },
+  activeIndicatorGloss: { position: "absolute", top: 2, left: 10, right: 10, height: 12, borderRadius: 12, backgroundColor: "rgba(255,255,255,0.08)", borderTopWidth: 1, borderTopColor: "rgba(255,255,255,0.22)" },
   classicIndicator: { backgroundColor: "#E6F5F4", borderColor: "#BDE6E1" },
   tabItem: { flex: 1, minWidth: 0, alignItems: "center", justifyContent: "center", gap: 2, borderRadius: 32 },
   tabPressed: { opacity: 0.65, transform: [{ scale: 0.96 }] },
