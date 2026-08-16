@@ -34,6 +34,20 @@ function asNumber(value: unknown): number | null {
   return typeof value === "number" && Number.isFinite(value) ? value : null;
 }
 
+function isDefined(value: unknown): boolean {
+  return value !== undefined && value !== null;
+}
+
+function asBoolean(value: unknown): boolean {
+  if (value === true || value === 1) return true;
+  if (typeof value !== "string") return false;
+  return ["1", "true", "yes", "on", "up", "active", "enabled", "running"].includes(value.trim().toLowerCase());
+}
+
+function firstDefined(...values: unknown[]) {
+  return values.find(isDefined);
+}
+
 function asStringArray(value: unknown): string[] {
   if (!Array.isArray(value)) return [];
   return value
@@ -144,10 +158,15 @@ function mapInterfaces(payload: unknown): InterfaceStatus[] {
 
 function mapWireless(payload: unknown): WirelessStatus[] {
   const root = asRecord(payload);
-  const radios = root.radios ?? root.wireless ?? payload;
+  const candidates = [root.radios, root.wireless, root.radio, payload];
+  const radios = candidates.find((candidate) => {
+    if (Array.isArray(candidate)) return candidate.length > 0;
+    return Object.keys(asRecord(candidate)).length > 0;
+  }) ?? payload;
   const radioEntries = Array.isArray(radios)
     ? radios.map((value, index) => [`radio${index}`, value] as const)
     : Object.entries(asRecord(radios));
+
   return radioEntries.flatMap(([radioName, radioValue]) => {
     const radio = asRecord(radioValue);
     const rawInterfaces = radio.interfaces ?? radio.interface;
@@ -155,16 +174,29 @@ function mapWireless(payload: unknown): WirelessStatus[] {
       ? rawInterfaces
       : Object.values(asRecord(rawInterfaces));
     const entries = interfaces.length ? interfaces : [radio];
+    const radioConfig = asRecord(radio.config);
     return entries.map((entry, index) => {
       const item = asRecord(entry);
       const config = asRecord(item.config);
       const assoclist = asRecord(item.assoclist);
       const stations = Array.isArray(item.stations) ? item.stations : Array.isArray(item.clients) ? item.clients : [];
+      const disabled = asBoolean(firstDefined(item.disabled, config.disabled, radio.disabled, radioConfig.disabled));
+      const reportedState = firstDefined(
+        item.up,
+        item.state,
+        item.status,
+        item.enabled,
+        radio.up,
+        radio.state,
+        radio.status,
+        radio.enabled,
+      );
+      const hasWirelessConfig = Boolean(config.ssid ?? item.ssid ?? radioConfig.ssid ?? radioConfig.mode);
       return {
         name: asString(item.ifname ?? item.name, `${radioName} · ${index + 1}`),
-        ssid: asString(config.ssid ?? item.ssid ?? asRecord(radio.config).ssid, "未广播 SSID"),
-        up: item.up === true || radio.up === true,
-        channel: asDisplayValue(item.channel ?? radio.channel, "自动"),
+        ssid: asString(config.ssid ?? item.ssid ?? radioConfig.ssid, "未广播 SSID"),
+        up: !disabled && (isDefined(reportedState) ? asBoolean(reportedState) : hasWirelessConfig),
+        channel: asDisplayValue(item.channel ?? radio.channel ?? radioConfig.channel, "自动"),
         clients: stations.length || Object.keys(assoclist).length || null,
       };
     });

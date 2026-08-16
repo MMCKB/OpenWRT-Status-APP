@@ -36,6 +36,42 @@ describe("OpenWrt 数据转换", () => {
     expect(status.wireless).toEqual([{ name: "phy0-ap0", ssid: "Guest", up: true, channel: "149", clients: 2 }]);
   });
 
+  it("将无线字符串状态与已启用配置识别为在线", () => {
+    const status = buildRouterStatus(
+      "router-3",
+      { hostname: "gateway", model: "Router", release: { description: "OpenWrt" } },
+      { uptime: 1, load: [0, 0, 0], memory: { total: 1, free: 1 } },
+      { interface: [] },
+      {
+        radio0: {
+          disabled: "0",
+          channel: 6,
+          interfaces: {
+            primary: { ifname: "wlan0", state: "up", config: { ssid: "Home" } },
+          },
+        },
+        radio1: {
+          disabled: false,
+          config: { ssid: "Guest", mode: "ap" },
+        },
+      },
+    );
+    expect(status.wireless).toHaveLength(2);
+    expect(status.wireless[0]).toMatchObject({ name: "wlan0", ssid: "Home", up: true, channel: "6" });
+    expect(status.wireless[1]).toMatchObject({ ssid: "Guest", up: true });
+  });
+
+  it("将明确禁用的无线接口标记为未启用", () => {
+    const status = buildRouterStatus(
+      "router-4",
+      {},
+      { memory: { total: 1 } },
+      { interface: [] },
+      { radio0: { disabled: true, config: { ssid: "Disabled" } } },
+    );
+    expect(status.wireless[0]).toMatchObject({ ssid: "Disabled", up: false });
+  });
+
   it("格式化仪表盘中的数字", () => {
     expect(formatBytes(1048576)).toBe("1.0 MB");
     expect(formatUptime(90061)).toBe("1 天 1 小时");
