@@ -1,8 +1,8 @@
+import { LiquidGlassView, isLiquidGlassSupported } from "@callstack/liquid-glass";
 import type { BottomTabBarProps } from "@react-navigation/bottom-tabs";
-import { GlassView, isGlassEffectAPIAvailable } from "expo-glass-effect";
 import * as Haptics from "expo-haptics";
 import { Tabs } from "expo-router";
-import { useEffect, useMemo, useState, type ReactNode } from "react";
+import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { Platform, Pressable, StyleSheet, Text, View, type LayoutChangeEvent } from "react-native";
 import { Gesture, GestureDetector } from "react-native-gesture-handler";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -20,9 +20,9 @@ import { IconSymbol } from "@/components/ui/icon-symbol";
 import { useColors } from "@/hooks/use-colors";
 import { RouterProvider } from "@/lib/router-provider";
 import { TabBarPreferenceProvider, useTabBarPreference } from "@/lib/tab-bar-preference";
-import { reorderTabOrder, type TabRouteName } from "@/lib/tab-navigation";
+import { getTabIndexForOffset, getTabIndicatorX, TAB_ROUTE_NAMES } from "@/lib/tab-navigation";
 
-const VISIBLE_ROUTES = ["index", "routers", "details", "control", "settings"] as const;
+const VISIBLE_ROUTES = TAB_ROUTE_NAMES;
 
 interface DraggableTabItemProps {
   label: string;
@@ -34,10 +34,9 @@ interface DraggableTabItemProps {
   tabWidth: number;
   isDragging: boolean;
   onPress: () => void;
-  onLongPress: () => void;
   onDragStart: (index: number) => void;
-  onDragTargetChange: (targetIndex: number) => void;
-  onDragEnd: (sourceIndex: number, targetIndex: number) => void;
+  onDragMove: (pointerX: number, targetIndex: number) => void;
+  onDragEnd: (targetIndex: number) => void;
   onDragFinalize: () => void;
 }
 
@@ -51,9 +50,8 @@ function DraggableTabItem({
   tabWidth,
   isDragging,
   onPress,
-  onLongPress,
   onDragStart,
-  onDragTargetChange,
+  onDragMove,
   onDragEnd,
   onDragFinalize,
 }: DraggableTabItemProps) {
@@ -69,20 +67,21 @@ function DraggableTabItem({
     .activateAfterLongPress(320)
     .onBegin(() => {
       targetIndex.value = index;
-      scale.value = withSpring(1.1, { damping: 16, stiffness: 220 });
+      scale.value = withSpring(1.055, { damping: 16, stiffness: 220 });
       runOnJS(onDragStart)(index);
     })
     .onUpdate((event) => {
       translationX.value = event.translationX;
       if (tabWidth <= 0) return;
-      const nextTarget = Math.max(0, Math.min(tabCount - 1, Math.round((index * tabWidth + event.translationX) / tabWidth)));
+      const pointerX = index * tabWidth + tabWidth / 2 + event.translationX;
+      const nextTarget = getTabIndexForOffset(pointerX, tabWidth, tabCount);
       if (nextTarget !== targetIndex.value) {
         targetIndex.value = nextTarget;
-        runOnJS(onDragTargetChange)(nextTarget);
       }
+      runOnJS(onDragMove)(pointerX, nextTarget);
     })
     .onEnd(() => {
-      runOnJS(onDragEnd)(index, targetIndex.value);
+      runOnJS(onDragEnd)(targetIndex.value);
     })
     .onFinalize(() => {
       translationX.value = withSpring(0, { damping: 17, stiffness: 220 });
@@ -97,10 +96,8 @@ function DraggableTabItem({
           accessibilityRole="tab"
           accessibilityState={isFocused ? { selected: true } : {}}
           accessibilityLabel={label}
-          accessibilityHint="双击打开。长按后左右拖动可调整导航顺序。"
-          delayLongPress={500}
+          accessibilityHint="双击打开。长按后向左或向右滑动，松手即可选择对应页面。"
           onPress={onPress}
-          onLongPress={onLongPress}
           style={({ pressed }) => [styles.tabItem, pressed && !isDragging && styles.tabPressed]}
         >
           {icon}
@@ -114,9 +111,11 @@ function DraggableTabItem({
 function FloatingTabBar({ state, descriptors, navigation }: BottomTabBarProps) {
   const colors = useColors();
   const insets = useSafeAreaInsets();
-  const { mode, tabOrder, setTabOrder } = useTabBarPreference();
+  const { mode } = useTabBarPreference();
   const [contentWidth, setContentWidth] = useState(0);
-  const [draggingRoute, setDraggingRoute] = useState<string | null>(null);
+  const [draggingIndex, setDraggingIndex] = useState<number | null>(null);
+  const [dragTargetIndex, setDragTargetIndex] = useState<number | null>(null);
+  const lastDragTarget = useRef<number | null>(null);
   const indicatorX = useSharedValue(4);
   const dragTargetX = useSharedValue(4);
   const dragActive = useSharedValue(0);
@@ -124,14 +123,14 @@ function FloatingTabBar({ state, descriptors, navigation }: BottomTabBarProps) {
   const safeBottom = Platform.OS === "web" ? 8 : Math.max(insets.bottom, 8);
   const tabWidth = contentWidth > 0 ? contentWidth / VISIBLE_ROUTES.length : 0;
   const isClassic = mode === "classic";
-  const useNativeGlass = Platform.OS === "ios" && isGlassEffectAPIAvailable();
+  const useNativeGlass = Platform.OS === "ios" && isLiquidGlassSupported;
 
   const visibleRouteEntries = useMemo(() => {
     const routesByName = new Map(state.routes.map((route) => [route.name, route]));
-    return tabOrder
+    return VISIBLE_ROUTES
       .map((name) => routesByName.get(name))
       .filter((route): route is (typeof state.routes)[number] => Boolean(route));
-  }, [state.routes, tabOrder]);
+  }, [state.routes]);
 
   const activeIndex = Math.max(0, visibleRouteEntries.findIndex((route) => route.key === state.routes[state.index]?.key));
 
@@ -157,7 +156,10 @@ function FloatingTabBar({ state, descriptors, navigation }: BottomTabBarProps) {
   const indicatorStyle = useAnimatedStyle(() => ({
     width: Math.max(0, tabWidth - 8),
     opacity: dragActive.value ? 0.9 : 1,
-    transform: [{ translateX: dragActive.value ? dragTargetX.value : indicatorX.value }],
+    transform: [
+      { translateX: dragActive.value ? dragTargetX.value : indicatorX.value },
+      { scale: 1 + dragActive.value * 0.075 },
+    ],
   }), [tabWidth]);
 
   const travellingGlossStyle = useAnimatedStyle(() => ({
@@ -169,40 +171,62 @@ function FloatingTabBar({ state, descriptors, navigation }: BottomTabBarProps) {
   }
 
   function beginDrag(index: number) {
-    setDraggingRoute(visibleRouteEntries[index]?.key ?? null);
+    setDraggingIndex(index);
+    setDragTargetIndex(index);
+    lastDragTarget.current = index;
     dragTargetX.value = withTiming(index * tabWidth + 4, { duration: 120 });
     dragActive.value = withTiming(1, { duration: 100 });
     if (Platform.OS !== "web") void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
   }
 
-  function updateDragTarget(targetIndex: number) {
-    dragTargetX.value = withTiming(targetIndex * tabWidth + 4, { duration: 120, easing: Easing.out(Easing.quad) });
-    if (Platform.OS !== "web") void Haptics.selectionAsync();
+  function updateDragPosition(pointerX: number, targetIndex: number) {
+    dragTargetX.value = withSpring(getTabIndicatorX(pointerX, tabWidth, contentWidth), { damping: 18, stiffness: 240 });
+    if (lastDragTarget.current !== targetIndex) {
+      lastDragTarget.current = targetIndex;
+      setDragTargetIndex(targetIndex);
+      if (Platform.OS !== "web") void Haptics.selectionAsync();
+    }
   }
 
-  function commitDrag(sourceIndex: number, targetIndex: number) {
-    if (sourceIndex === targetIndex) return;
-    const nextOrder = reorderTabOrder(
-      visibleRouteEntries.map((route) => route.name as TabRouteName),
-      sourceIndex,
-      targetIndex,
-    );
-    setTabOrder(nextOrder);
+  function navigateToRoute(route: (typeof state.routes)[number], isFocused: boolean) {
+    const event = navigation.emit({ type: "tabPress", target: route.key, canPreventDefault: true });
+    if (!isFocused && !event.defaultPrevented) navigation.navigate(route.name, route.params);
+  }
+
+  function commitDrag(targetIndex: number) {
+    const route = visibleRouteEntries[targetIndex];
+    if (!route) return;
+    const isFocused = route.key === state.routes[state.index]?.key;
+    navigateToRoute(route, isFocused);
     if (Platform.OS !== "web") void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
   }
 
   function finalizeDrag() {
-    setDraggingRoute(null);
+    setDraggingIndex(null);
+    setDragTargetIndex(null);
+    lastDragTarget.current = null;
     dragActive.value = withTiming(0, { duration: 180 });
   }
 
   return (
     <View pointerEvents="box-none" style={[styles.overlay, { bottom: safeBottom + 7 }]}>
-      <View style={[styles.shell, isClassic && styles.classicShell]}>
+      {useNativeGlass && !isClassic ? (
+        <LiquidGlassView animated effect="clear" interactive style={styles.shell}>
+          <TabBarContents />
+        </LiquidGlassView>
+      ) : (
+        <View style={[styles.shell, isClassic && styles.classicShell]}>
+          <TabBarContents />
+        </View>
+      )}
+    </View>
+  );
+
+  function TabBarContents() {
+    return (
+      <>
         {!isClassic ? (
           <>
-            {useNativeGlass ? <GlassView pointerEvents="none" glassEffectStyle="clear" style={styles.nativeGlass} /> : null}
-            <View pointerEvents="none" style={styles.pageBackgroundBlend} />
             <View pointerEvents="none" style={styles.glassEdgeRim} />
             <View pointerEvents="none" style={styles.glassInnerRim} />
             <Animated.View pointerEvents="none" style={[styles.specularSweep, travellingGlossStyle]} />
@@ -217,9 +241,10 @@ function FloatingTabBar({ state, descriptors, navigation }: BottomTabBarProps) {
           {visibleRouteEntries.map((route, index) => {
             const descriptor = descriptors[route.key];
             const options = descriptor.options;
-            const isFocused = state.index === state.routes.findIndex((item) => item.key === route.key);
-            const color = isFocused ? colors.tint : colors.muted;
-            const icon = options.tabBarIcon?.({ focused: isFocused, color, size: 21 });
+            const isFocused = route.key === state.routes[state.index]?.key;
+            const isVisualActive = dragTargetIndex === null ? isFocused : dragTargetIndex === index;
+            const color = isVisualActive ? colors.tint : colors.muted;
+            const icon = options.tabBarIcon?.({ focused: isVisualActive, color, size: 21 });
             const label = typeof options.tabBarLabel === "string" ? options.tabBarLabel : options.title ?? route.name;
             return (
               <DraggableTabItem
@@ -231,24 +256,22 @@ function FloatingTabBar({ state, descriptors, navigation }: BottomTabBarProps) {
                 index={index}
                 tabCount={visibleRouteEntries.length}
                 tabWidth={tabWidth}
-                isDragging={draggingRoute === route.key}
+                isDragging={draggingIndex === index}
                 onPress={() => {
                   if (Platform.OS !== "web") void Haptics.selectionAsync();
-                  const event = navigation.emit({ type: "tabPress", target: route.key, canPreventDefault: true });
-                  if (!isFocused && !event.defaultPrevented) navigation.navigate(route.name, route.params);
+                  navigateToRoute(route, isFocused);
                 }}
-                onLongPress={() => navigation.emit({ type: "tabLongPress", target: route.key })}
                 onDragStart={beginDrag}
-                onDragTargetChange={updateDragTarget}
+                onDragMove={updateDragPosition}
                 onDragEnd={commitDrag}
                 onDragFinalize={finalizeDrag}
               />
             );
           })}
         </View>
-      </View>
-    </View>
-  );
+      </>
+    );
+  }
 }
 
 export default function TabLayout() {
@@ -297,8 +320,6 @@ const styles = StyleSheet.create({
     elevation: 10,
   },
   classicShell: { overflow: "hidden", backgroundColor: "#FFFFFF", borderColor: "#DCE7E9", shadowOpacity: 0.11 },
-  nativeGlass: { ...StyleSheet.absoluteFillObject, borderRadius: 999 },
-  pageBackgroundBlend: { ...StyleSheet.absoluteFillObject, borderRadius: 999, backgroundColor: "transparent" },
   glassEdgeRim: { ...StyleSheet.absoluteFillObject, borderRadius: 999, borderWidth: 1, borderColor: "rgba(255,255,255,0.10)", borderBottomColor: "rgba(118,197,194,0.11)" },
   glassInnerRim: { position: "absolute", top: 2, bottom: 2, left: 2, right: 2, borderRadius: 999, borderTopWidth: 1, borderTopColor: "rgba(255,255,255,0.10)", borderBottomWidth: 1, borderBottomColor: "rgba(15,102,106,0.025)" },
   specularSweep: { position: "absolute", top: -18, left: 0, width: 58, height: 116, borderRadius: 58, backgroundColor: "rgba(255,255,255,0.025)" },

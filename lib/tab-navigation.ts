@@ -1,21 +1,25 @@
 export const DEFAULT_TAB_ORDER = ["index", "routers", "details", "control", "settings"] as const;
-export type TabRouteName = (typeof DEFAULT_TAB_ORDER)[number];
+export const TAB_ROUTE_NAMES = ["index", "routers", "details", "control", "settings"] as const;
 
-export function isTabOrder(value: unknown): value is TabRouteName[] {
-  return Array.isArray(value)
-    && value.length === DEFAULT_TAB_ORDER.length
-    && value.every((item) => typeof item === "string" && DEFAULT_TAB_ORDER.includes(item as TabRouteName))
-    && new Set(value).size === DEFAULT_TAB_ORDER.length;
+export type TabRouteName = (typeof TAB_ROUTE_NAMES)[number];
+
+function clamp(value: number, minimum: number, maximum: number) {
+  "worklet";
+  return Math.max(minimum, Math.min(maximum, value));
 }
 
-export function reorderTabOrder(order: TabRouteName[], sourceIndex: number, targetIndex: number): TabRouteName[] {
-  if (!isTabOrder(order)) return [...DEFAULT_TAB_ORDER];
-  if (sourceIndex < 0 || targetIndex < 0 || sourceIndex >= order.length || targetIndex >= order.length) return [...order];
-  if (sourceIndex === targetIndex) return [...order];
+/** Maps a finger position in the tab rail to the page represented by that position. */
+export function getTabIndexForOffset(offsetX: number, tabWidth: number, tabCount: number) {
+  "worklet";
+  if (tabWidth <= 0 || tabCount <= 0) return 0;
+  return clamp(Math.floor(offsetX / tabWidth), 0, tabCount - 1);
+}
 
-  const nextOrder = [...order];
-  const [movedRoute] = nextOrder.splice(sourceIndex, 1);
-  if (!movedRoute) return [...order];
-  nextOrder.splice(targetIndex, 0, movedRoute);
-  return nextOrder;
+/** Keeps the liquid selection capsule centered below the finger without leaving the rail. */
+export function getTabIndicatorX(pointerX: number, tabWidth: number, contentWidth: number) {
+  "worklet";
+  const indicatorWidth = Math.max(0, tabWidth - 8);
+  const minimum = 4;
+  const maximum = Math.max(minimum, contentWidth - indicatorWidth - 4);
+  return clamp(pointerX - indicatorWidth / 2, minimum, maximum);
 }

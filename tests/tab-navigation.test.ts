@@ -1,22 +1,18 @@
 import { describe, expect, it } from "vitest";
 
-import { DEFAULT_TAB_ORDER, isTabOrder, reorderTabOrder } from "../lib/tab-navigation";
+import { getTabIndexForOffset, getTabIndicatorX } from "../lib/tab-navigation";
 
-describe("tab navigation ordering", () => {
-  it("accepts only a complete unique set of supported routes", () => {
-    expect(isTabOrder([...DEFAULT_TAB_ORDER])).toBe(true);
-    expect(isTabOrder(["index", "routers"])).toBe(false);
-    expect(isTabOrder(["index", "routers", "details", "control", "invalid"])).toBe(false);
-    expect(isTabOrder(["index", "routers", "details", "control", "control"])).toBe(false);
+describe("tab drag selection", () => {
+  it("maps the finger position to the matching page slot", () => {
+    expect(getTabIndexForOffset(-12, 64, 5)).toBe(0);
+    expect(getTabIndexForOffset(10, 64, 5)).toBe(0);
+    expect(getTabIndexForOffset(130, 64, 5)).toBe(2);
+    expect(getTabIndexForOffset(500, 64, 5)).toBe(4);
   });
 
-  it("moves a dragged tab to its release position without changing other routes", () => {
-    expect(reorderTabOrder([...DEFAULT_TAB_ORDER], 0, 3)).toEqual(["routers", "details", "control", "index", "settings"]);
-    expect(reorderTabOrder([...DEFAULT_TAB_ORDER], 4, 1)).toEqual(["index", "settings", "routers", "details", "control"]);
-  });
-
-  it("keeps the current order when the drag ends at its source or outside the tab range", () => {
-    expect(reorderTabOrder([...DEFAULT_TAB_ORDER], 2, 2)).toEqual([...DEFAULT_TAB_ORDER]);
-    expect(reorderTabOrder([...DEFAULT_TAB_ORDER], 1, 8)).toEqual([...DEFAULT_TAB_ORDER]);
+  it("keeps the liquid selection capsule inside the rail", () => {
+    expect(getTabIndicatorX(32, 64, 320)).toBe(4);
+    expect(getTabIndicatorX(160, 64, 320)).toBe(132);
+    expect(getTabIndicatorX(500, 64, 320)).toBe(260);
   });
 });
