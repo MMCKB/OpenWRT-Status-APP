@@ -21,22 +21,40 @@ export interface TrafficRate {
 
 const WAN_NAME = /(^|[-_.])(wan|wwan|uplink|internet)([-_.]|$)|^wan[a-z0-9_-]*$|^pppoe/i;
 
-/** Prefers upstream interfaces so LAN-side traffic is not counted twice in dashboard figures. */
-export function selectTrafficInterfaces(interfaces: InterfaceStatus[]) {
-  const active = interfaces.filter((item) => item.up && (item.rxBytes !== null || item.txBytes !== null));
+export function trafficInterfaceId(item: Pick<InterfaceStatus, "name" | "device">) {
+  return `${item.name}:${item.device}`;
+}
+
+/** Lists every reported network interface so the user may explicitly include LAN or extra WANs. */
+export function getTrafficInterfaceCandidates(interfaces: InterfaceStatus[]) {
+  return interfaces.filter((item) => item.rxBytes !== null || item.txBytes !== null);
+}
+
+export function getDefaultTrafficInterfaceId(interfaces: InterfaceStatus[]) {
+  const active = getTrafficInterfaceCandidates(interfaces).filter((item) => item.up);
   const wan = active.filter((item) => WAN_NAME.test(item.name) || WAN_NAME.test(item.device));
-  return wan.length
-    ? { items: wan, source: "wan" as const }
-    : active.length
-      ? { items: active, source: "interfaces" as const }
-      : { items: [], source: "unreported" as const };
+  return wan[0] ? trafficInterfaceId(wan[0]) : active[0] ? trafficInterfaceId(active[0]) : null;
+}
+
+/** Prefers one upstream interface by default, while retaining explicit LAN/WAN selection support. */
+export function selectTrafficInterfaces(interfaces: InterfaceStatus[], selectedInterfaceIds: string[] = []) {
+  const active = getTrafficInterfaceCandidates(interfaces).filter((item) => item.up);
+  if (!active.length) return { items: [], source: "unreported" as const };
+  if (selectedInterfaceIds.length) {
+    const selected = new Set(selectedInterfaceIds);
+    return { items: active.filter((item) => selected.has(trafficInterfaceId(item))), source: "interfaces" as const };
+  }
+  const defaultId = getDefaultTrafficInterfaceId(interfaces);
+  const item = active.find((candidate) => trafficInterfaceId(candidate) === defaultId) ?? active[0];
+  const isWan = WAN_NAME.test(item.name) || WAN_NAME.test(item.device);
+  return { items: [item], source: isWan ? "wan" as const : "interfaces" as const };
 }
 
 /** Builds independent snapshots so multi-WAN routers retain one history per uplink. */
-export function makeTrafficInterfaceSnapshots(interfaces: InterfaceStatus[], timestamp = Date.now()): TrafficInterfaceSnapshot[] {
-  const selection = selectTrafficInterfaces(interfaces);
+export function makeTrafficInterfaceSnapshots(interfaces: InterfaceStatus[], timestamp = Date.now(), selectedInterfaceIds: string[] = []): TrafficInterfaceSnapshot[] {
+  const selection = selectTrafficInterfaces(interfaces, selectedInterfaceIds);
   return selection.items.map((item) => ({
-    id: `${item.name}:${item.device}`,
+    id: trafficInterfaceId(item),
     label: item.name || item.device,
     device: item.device,
     timestamp,
@@ -47,8 +65,8 @@ export function makeTrafficInterfaceSnapshots(interfaces: InterfaceStatus[], tim
 }
 
 /** Retained for aggregate consumers and backwards-compatible data tests. */
-export function makeTrafficSnapshot(interfaces: InterfaceStatus[], timestamp = Date.now()): TrafficSnapshot {
-  const selection = selectTrafficInterfaces(interfaces);
+export function makeTrafficSnapshot(interfaces: InterfaceStatus[], timestamp = Date.now(), selectedInterfaceIds: string[] = []): TrafficSnapshot {
+  const selection = selectTrafficInterfaces(interfaces, selectedInterfaceIds);
   return {
     timestamp,
     rxBytes: selection.items.reduce((total, item) => total + (item.rxBytes ?? 0), 0),

@@ -3,6 +3,8 @@ import { useEffect, useRef, useState } from "react";
 import { ActivityIndicator, KeyboardAvoidingView, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from "react-native";
 
 import { EmptyState, StatusPill } from "@/components/status-ui";
+import { useColors } from "@/hooks/use-colors";
+import { useColorScheme } from "@/hooks/use-color-scheme";
 import { connectInAppSsh, disconnectInAppSsh, getInAppSshTarget, isInAppSshSupported, runInAppSshCommand } from "@/lib/native-ssh";
 import { useRouterStore } from "@/lib/router-provider";
 
@@ -17,6 +19,8 @@ function trimTerminalOutput(value: string) {
 
 export default function ControlScreen() {
   const { selectedProfile, getSelectedCredentials } = useRouterStore();
+  const colors = useColors();
+  const isDark = useColorScheme() === "dark";
   const terminalRef = useRef<ScrollView>(null);
   const [connection, setConnection] = useState<ConnectionState>("idle");
   const [terminalOutput, setTerminalOutput] = useState(WELCOME_OUTPUT);
@@ -30,8 +34,8 @@ export default function ControlScreen() {
   const profile = selectedProfile;
   if (!profile) {
     return (
-      <View style={styles.emptyScreen}>
-        <View style={styles.emptyHeader}><Text style={styles.emptyTitle}>终端</Text></View>
+      <View style={[styles.emptyScreen, { backgroundColor: colors.background }]}>
+        <View style={styles.emptyHeader}><Text style={[styles.emptyTitle, { color: colors.foreground }]}>终端</Text></View>
         <EmptyState icon="terminal" title="还没有可连接的路由器" description="请先在“路由器”中保存 OpenWrt 的 LuCI 与 SSH 连接资料。" />
       </View>
     );
@@ -94,81 +98,81 @@ export default function ControlScreen() {
   }
 
   return (
-    <KeyboardAvoidingView style={styles.screen} behavior={Platform.OS === "ios" ? "padding" : undefined}>
-      <View style={styles.topBar}>
+    <KeyboardAvoidingView style={[styles.screen, { backgroundColor: colors.background }]} behavior={Platform.OS === "ios" ? "padding" : "height"} keyboardVerticalOffset={0}>
+      <View style={[styles.topBar, { backgroundColor: colors.surface, borderBottomColor: colors.border }]}>
         <View style={styles.identityWrap}>
-          <View style={styles.terminalBadge}><MaterialIcons name="terminal" size={19} color="#7FE5D4" /></View>
-          <View style={styles.identity}><Text style={styles.target} numberOfLines={1}>{target}</Text><Text style={styles.context} numberOfLines={1}>OpenWrt · 应用内 SSH 会话</Text></View>
+          <View style={[styles.terminalBadge, { backgroundColor: isDark ? "#143734" : "#E6F5F4" }]}><MaterialIcons name="terminal" size={19} color={colors.primary} /></View>
+          <View style={styles.identity}><Text style={[styles.target, { color: colors.foreground }]} numberOfLines={1}>{target}</Text><Text style={[styles.context, { color: colors.muted }]} numberOfLines={1}>OpenWrt · 应用内 SSH 会话</Text></View>
         </View>
         <StatusPill label={stateLabel} tone={stateTone} />
       </View>
 
-      {!isInAppSshSupported() ? <View style={styles.platformBanner}><MaterialIcons name="info-outline" size={17} color="#E6B05A" /><Text style={styles.platformText}>内嵌 SSH 终端仅在新版 Android APK 中可用，Web 与 iOS 预览不会加载该原生组件。</Text></View> : null}
+      {!isInAppSshSupported() ? <View style={[styles.platformBanner, { backgroundColor: isDark ? "#302718" : "#FFF4DD", borderBottomColor: isDark ? "#5C4720" : "#F0D39A" }]}><MaterialIcons name="info-outline" size={17} color={colors.warning} /><Text style={[styles.platformText, { color: colors.warning }]}>内嵌 SSH 终端仅在新版 Android APK 中可用，Web 与 iOS 预览不会加载该原生组件。</Text></View> : null}
 
-      <ScrollView ref={terminalRef} style={styles.terminalScroll} contentContainerStyle={styles.terminalContent} onContentSizeChange={() => terminalRef.current?.scrollToEnd({ animated: false })}>
-        <Text selectable style={styles.terminalText}>{terminalOutput}</Text>
-        {isRunning ? <View style={styles.runningLine}><ActivityIndicator size="small" color="#7FE5D4" /><Text style={styles.runningText}>正在执行命令…</Text></View> : null}
+      <ScrollView ref={terminalRef} style={[styles.terminalScroll, { backgroundColor: colors.background }]} contentContainerStyle={styles.terminalContent} keyboardShouldPersistTaps="handled" onContentSizeChange={() => terminalRef.current?.scrollToEnd({ animated: false })}>
+        <Text selectable style={[styles.terminalText, { color: isDark ? "#D8F1ED" : colors.foreground }]}>{terminalOutput}</Text>
+        {isRunning ? <View style={styles.runningLine}><ActivityIndicator size="small" color={colors.primary} /><Text style={[styles.runningText, { color: colors.primary }]}>正在执行命令…</Text></View> : null}
       </ScrollView>
 
-      <View style={styles.toolStrip}>
-        <Pressable accessibilityRole="button" accessibilityLabel="显示上一条命令" onPress={() => recallCommand(-1)} disabled={!history.length || isRunning} style={({ pressed }) => [styles.toolButton, (!history.length || isRunning) && styles.disabled, pressed && styles.toolPressed]}><MaterialIcons name="keyboard-arrow-up" size={21} color="#C4D8D6" /></Pressable>
-        <Pressable accessibilityRole="button" accessibilityLabel="显示下一条命令" onPress={() => recallCommand(1)} disabled={!history.length || isRunning} style={({ pressed }) => [styles.toolButton, (!history.length || isRunning) && styles.disabled, pressed && styles.toolPressed]}><MaterialIcons name="keyboard-arrow-down" size={21} color="#C4D8D6" /></Pressable>
-        <Pressable accessibilityRole="button" accessibilityLabel="清除终端输出" onPress={() => setTerminalOutput(WELCOME_OUTPUT)} disabled={isRunning} style={({ pressed }) => [styles.clearButton, isRunning && styles.disabled, pressed && styles.toolPressed]}><MaterialIcons name="delete-outline" size={18} color="#C4D8D6" /><Text style={styles.clearText}>清屏</Text></Pressable>
-        {connection === "connected" ? <Pressable accessibilityRole="button" accessibilityLabel="断开 SSH 连接" onPress={disconnect} style={({ pressed }) => [styles.disconnectButton, pressed && styles.toolPressed]}><Text style={styles.disconnectText}>断开</Text></Pressable> : <Pressable accessibilityRole="button" accessibilityLabel="连接 SSH" disabled={connection === "connecting" || !isInAppSshSupported()} onPress={() => void connect()} style={({ pressed }) => [styles.connectButton, (connection === "connecting" || !isInAppSshSupported()) && styles.disabled, pressed && styles.toolPressed]}>{connection === "connecting" ? <ActivityIndicator size="small" color="#041C1A" /> : <><MaterialIcons name="power" size={17} color="#041C1A" /><Text style={styles.connectText}>连接</Text></>}</Pressable>}
+      <View style={[styles.toolStrip, { backgroundColor: colors.surface, borderTopColor: colors.border }]}>
+        <Pressable accessibilityRole="button" accessibilityLabel="显示上一条命令" onPress={() => recallCommand(-1)} disabled={!history.length || isRunning} style={({ pressed }) => [styles.toolButton, { backgroundColor: isDark ? "#1A2D38" : "#EAF1F3" }, (!history.length || isRunning) && styles.disabled, pressed && styles.toolPressed]}><MaterialIcons name="keyboard-arrow-up" size={21} color={colors.foreground} /></Pressable>
+        <Pressable accessibilityRole="button" accessibilityLabel="显示下一条命令" onPress={() => recallCommand(1)} disabled={!history.length || isRunning} style={({ pressed }) => [styles.toolButton, { backgroundColor: isDark ? "#1A2D38" : "#EAF1F3" }, (!history.length || isRunning) && styles.disabled, pressed && styles.toolPressed]}><MaterialIcons name="keyboard-arrow-down" size={21} color={colors.foreground} /></Pressable>
+        <Pressable accessibilityRole="button" accessibilityLabel="清除终端输出" onPress={() => setTerminalOutput(WELCOME_OUTPUT)} disabled={isRunning} style={({ pressed }) => [styles.clearButton, { backgroundColor: isDark ? "#1A2D38" : "#EAF1F3" }, isRunning && styles.disabled, pressed && styles.toolPressed]}><MaterialIcons name="delete-outline" size={18} color={colors.foreground} /><Text style={[styles.clearText, { color: colors.foreground }]}>清屏</Text></Pressable>
+        {connection === "connected" ? <Pressable accessibilityRole="button" accessibilityLabel="断开 SSH 连接" onPress={disconnect} style={({ pressed }) => [styles.disconnectButton, { borderColor: colors.border }, pressed && styles.toolPressed]}><Text style={[styles.disconnectText, { color: colors.foreground }]}>断开</Text></Pressable> : <Pressable accessibilityRole="button" accessibilityLabel="连接 SSH" disabled={connection === "connecting" || !isInAppSshSupported()} onPress={() => void connect()} style={({ pressed }) => [styles.connectButton, { backgroundColor: colors.primary }, (connection === "connecting" || !isInAppSshSupported()) && styles.disabled, pressed && styles.toolPressed]}>{connection === "connecting" ? <ActivityIndicator size="small" color="#FFFFFF" /> : <><MaterialIcons name="power" size={17} color="#FFFFFF" /><Text style={styles.connectText}>连接</Text></>}</Pressable>}
       </View>
 
-      <View style={styles.composer}>
-        <Text style={styles.prompt}>$</Text>
+      <View style={[styles.composer, { backgroundColor: colors.surface, borderTopColor: colors.border }]}>
+        <Text style={[styles.prompt, { color: colors.primary }]}>$</Text>
         <TextInput
           accessibilityLabel="SSH 命令"
-          style={styles.commandInput}
+          style={[styles.commandInput, { color: colors.foreground }]}
           value={command}
           onChangeText={setCommand}
           placeholder={connection === "connected" ? "输入 OpenWrt 命令" : "请先连接 SSH"}
-          placeholderTextColor="#719390"
+          placeholderTextColor={colors.muted}
           autoCapitalize="none"
           autoCorrect={false}
           editable={connection === "connected" && !isRunning}
           returnKeyType="send"
           onSubmitEditing={() => void execute()}
         />
-        <Pressable accessibilityRole="button" accessibilityLabel="执行 SSH 命令" disabled={connection !== "connected" || isRunning || !command.trim()} onPress={() => void execute()} style={({ pressed }) => [styles.sendButton, (connection !== "connected" || isRunning || !command.trim()) && styles.sendDisabled, pressed && styles.toolPressed]}>{isRunning ? <ActivityIndicator size="small" color="#041C1A" /> : <MaterialIcons name="arrow-upward" size={20} color="#041C1A" />}</Pressable>
+        <Pressable accessibilityRole="button" accessibilityLabel="执行 SSH 命令" disabled={connection !== "connected" || isRunning || !command.trim()} onPress={() => void execute()} style={({ pressed }) => [styles.sendButton, { backgroundColor: colors.primary }, (connection !== "connected" || isRunning || !command.trim()) && styles.sendDisabled, pressed && styles.toolPressed]}>{isRunning ? <ActivityIndicator size="small" color="#FFFFFF" /> : <MaterialIcons name="arrow-upward" size={20} color="#FFFFFF" />}</Pressable>
       </View>
     </KeyboardAvoidingView>
   );
 }
 
 const styles = StyleSheet.create({
-  screen: { flex: 1, backgroundColor: "#081211" },
-  emptyScreen: { flex: 1, backgroundColor: "#F6F8FA" },
+  screen: { flex: 1 },
+  emptyScreen: { flex: 1 },
   emptyHeader: { paddingHorizontal: 20, paddingTop: 26 },
-  emptyTitle: { color: "#102A43", fontSize: 28, fontWeight: "800" },
-  topBar: { minHeight: 76, paddingHorizontal: 16, paddingVertical: 14, borderBottomWidth: 1, borderBottomColor: "#1C3431", flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 10 },
+  emptyTitle: { fontSize: 28, fontWeight: "800" },
+  topBar: { minHeight: 76, paddingHorizontal: 16, paddingVertical: 14, borderBottomWidth: 1, flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 10 },
   identityWrap: { flex: 1, minWidth: 0, flexDirection: "row", alignItems: "center", gap: 11 },
-  terminalBadge: { width: 38, height: 38, borderRadius: 11, alignItems: "center", justifyContent: "center", backgroundColor: "#11302C" },
+  terminalBadge: { width: 38, height: 38, borderRadius: 11, alignItems: "center", justifyContent: "center" },
   identity: { flex: 1, minWidth: 0 },
-  target: { color: "#F0FBF9", fontSize: 15, fontWeight: "800", fontVariant: ["tabular-nums"] },
-  context: { color: "#8EAAA7", fontSize: 11, marginTop: 3 },
-  platformBanner: { flexDirection: "row", alignItems: "flex-start", gap: 8, paddingHorizontal: 16, paddingVertical: 10, backgroundColor: "#2A2111", borderBottomWidth: 1, borderBottomColor: "#4C3A1C" },
-  platformText: { flex: 1, color: "#E6C481", fontSize: 12, lineHeight: 18 },
+  target: { fontSize: 15, fontWeight: "800", fontVariant: ["tabular-nums"] },
+  context: { fontSize: 11, marginTop: 3 },
+  platformBanner: { flexDirection: "row", alignItems: "flex-start", gap: 8, paddingHorizontal: 16, paddingVertical: 10, borderBottomWidth: 1 },
+  platformText: { flex: 1, fontSize: 12, lineHeight: 18 },
   terminalScroll: { flex: 1 },
   terminalContent: { flexGrow: 1, padding: 16, paddingBottom: 28 },
-  terminalText: { color: "#D8F1ED", fontSize: 13, lineHeight: 20, fontFamily: Platform.select({ ios: "Menlo", android: "monospace", default: "monospace" }) },
+  terminalText: { fontSize: 13, lineHeight: 20, fontFamily: Platform.select({ ios: "Menlo", android: "monospace", default: "monospace" }) },
   runningLine: { flexDirection: "row", alignItems: "center", gap: 8, marginTop: 12 },
-  runningText: { color: "#7FE5D4", fontSize: 12, fontFamily: Platform.select({ ios: "Menlo", android: "monospace", default: "monospace" }) },
-  toolStrip: { minHeight: 52, paddingHorizontal: 12, gap: 7, flexDirection: "row", alignItems: "center", backgroundColor: "#0D1C1A", borderTopWidth: 1, borderTopColor: "#1C3431" },
-  toolButton: { width: 36, height: 34, alignItems: "center", justifyContent: "center", borderRadius: 8, backgroundColor: "#17322F" },
-  clearButton: { height: 34, paddingHorizontal: 10, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 5, borderRadius: 8, backgroundColor: "#17322F" },
-  clearText: { color: "#C4D8D6", fontSize: 12, fontWeight: "700" },
-  connectButton: { marginLeft: "auto", minWidth: 76, height: 34, paddingHorizontal: 10, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 5, borderRadius: 8, backgroundColor: "#7FE5D4" },
-  connectText: { color: "#041C1A", fontSize: 12, fontWeight: "800" },
-  disconnectButton: { marginLeft: "auto", minWidth: 58, height: 34, paddingHorizontal: 10, alignItems: "center", justifyContent: "center", borderRadius: 8, borderWidth: 1, borderColor: "#46625E" },
-  disconnectText: { color: "#B9CDC9", fontSize: 12, fontWeight: "800" },
-  composer: { minHeight: 62, paddingHorizontal: 12, paddingVertical: 10, flexDirection: "row", alignItems: "center", gap: 9, backgroundColor: "#102421", borderTopWidth: 1, borderTopColor: "#294640" },
-  prompt: { color: "#7FE5D4", fontSize: 20, fontWeight: "800", fontFamily: Platform.select({ ios: "Menlo", android: "monospace", default: "monospace" }) },
-  commandInput: { flex: 1, minHeight: 40, color: "#F0FBF9", fontSize: 14, fontFamily: Platform.select({ ios: "Menlo", android: "monospace", default: "monospace" }), paddingVertical: 5 },
-  sendButton: { width: 38, height: 38, alignItems: "center", justifyContent: "center", borderRadius: 19, backgroundColor: "#7FE5D4" },
-  sendDisabled: { backgroundColor: "#294640" },
+  runningText: { fontSize: 12, fontFamily: Platform.select({ ios: "Menlo", android: "monospace", default: "monospace" }) },
+  toolStrip: { minHeight: 52, paddingHorizontal: 12, gap: 7, flexDirection: "row", alignItems: "center", borderTopWidth: 1 },
+  toolButton: { width: 36, height: 34, alignItems: "center", justifyContent: "center", borderRadius: 8 },
+  clearButton: { height: 34, paddingHorizontal: 10, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 5, borderRadius: 8 },
+  clearText: { fontSize: 12, fontWeight: "700" },
+  connectButton: { marginLeft: "auto", minWidth: 76, height: 34, paddingHorizontal: 10, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 5, borderRadius: 8 },
+  connectText: { color: "#FFFFFF", fontSize: 12, fontWeight: "800" },
+  disconnectButton: { marginLeft: "auto", minWidth: 58, height: 34, paddingHorizontal: 10, alignItems: "center", justifyContent: "center", borderRadius: 8, borderWidth: 1 },
+  disconnectText: { fontSize: 12, fontWeight: "800" },
+  composer: { minHeight: 62, paddingHorizontal: 12, paddingVertical: 10, flexDirection: "row", alignItems: "center", gap: 9, borderTopWidth: 1 },
+  prompt: { fontSize: 20, fontWeight: "800", fontFamily: Platform.select({ ios: "Menlo", android: "monospace", default: "monospace" }) },
+  commandInput: { flex: 1, minHeight: 40, fontSize: 14, fontFamily: Platform.select({ ios: "Menlo", android: "monospace", default: "monospace" }), paddingVertical: 5 },
+  sendButton: { width: 38, height: 38, alignItems: "center", justifyContent: "center", borderRadius: 19 },
+  sendDisabled: { opacity: 0.42 },
   disabled: { opacity: 0.45 },
   toolPressed: { opacity: 0.72, transform: [{ scale: 0.96 }] },
 });

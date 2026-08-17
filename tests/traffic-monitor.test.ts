@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { appendTrafficRate, calculateTrafficRate, formatTrafficRate, makeTrafficInterfaceSnapshots, makeTrafficSnapshot, selectTrafficInterfaces } from "../lib/traffic-monitor";
+import { appendTrafficRate, calculateTrafficRate, formatTrafficRate, getDefaultTrafficInterfaceId, makeTrafficInterfaceSnapshots, makeTrafficSnapshot, selectTrafficInterfaces } from "../lib/traffic-monitor";
 import type { InterfaceStatus } from "../shared/router-types";
 
 const interfaces: InterfaceStatus[] = [
@@ -14,14 +14,25 @@ describe("实时流量采样", () => {
     expect(makeTrafficSnapshot(interfaces, 1000)).toMatchObject({ rxBytes: 2000, txBytes: 1000, source: "wan" });
   });
 
-  it("为每个 WAN 保留单独的采样身份，避免多拨或多宽带流量被合并", () => {
+  it("默认仅采样主 WAN，避免未勾选的多拨或多宽带挤满状态页", () => {
     const multiWan: InterfaceStatus[] = [
       ...interfaces,
       { name: "wanb", device: "eth1", up: true, ipv4: [], ipv6: [], uptimeSeconds: 1, rxBytes: 9000, txBytes: 4000 },
     ];
     expect(makeTrafficInterfaceSnapshots(multiWan, 1000)).toEqual([
       expect.objectContaining({ id: "wan:eth0", label: "wan", device: "eth0", rxBytes: 2000, txBytes: 1000, source: "wan" }),
-      expect.objectContaining({ id: "wanb:eth1", label: "wanb", device: "eth1", rxBytes: 9000, txBytes: 4000, source: "wan" }),
+    ]);
+    expect(getDefaultTrafficInterfaceId(multiWan)).toBe("wan:eth0");
+  });
+
+  it("使用显式勾选同时采样 LAN 和额外 WAN", () => {
+    const multiWan: InterfaceStatus[] = [
+      ...interfaces,
+      { name: "wanb", device: "eth1", up: true, ipv4: [], ipv6: [], uptimeSeconds: 1, rxBytes: 9000, txBytes: 4000 },
+    ];
+    expect(makeTrafficInterfaceSnapshots(multiWan, 1000, ["lan:br-lan", "wanb:eth1"])).toEqual([
+      expect.objectContaining({ id: "lan:br-lan", source: "interfaces" }),
+      expect.objectContaining({ id: "wanb:eth1", source: "interfaces" }),
     ]);
   });
 

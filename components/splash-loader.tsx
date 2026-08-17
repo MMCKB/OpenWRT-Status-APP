@@ -4,6 +4,9 @@ import { useFonts } from "expo-font";
 import * as SplashScreen from "expo-splash-screen";
 import MaterialIcons from "@expo/vector-icons/MaterialIcons";
 
+import { useColors } from "@/hooks/use-colors";
+import { useThemeContext } from "@/lib/theme-provider";
+
 try {
   SplashScreen.preventAutoHideAsync();
 } catch {
@@ -13,6 +16,9 @@ try {
 const materialFont = (MaterialIcons.font as Record<string, unknown>).material;
 
 export function SplashLoader({ children }: { children: React.ReactNode }) {
+  const colors = useColors();
+  const { colorScheme } = useThemeContext();
+  const isDark = colorScheme === "dark";
   const [progress, setProgress] = useState(8);
   const [isReady, setIsReady] = useState(false);
   const [fontsLoaded] = useFonts({ material: materialFont as never });
@@ -41,27 +47,27 @@ export function SplashLoader({ children }: { children: React.ReactNode }) {
 
   if (!isReady) {
     return (
-      <View style={styles.container}>
-        <View style={styles.card}>
+      <View style={[styles.container, { backgroundColor: colors.background }]}> 
+        <View style={[styles.card, { backgroundColor: colors.surface, borderColor: colors.border, shadowOpacity: isDark ? 0.28 : 0.1 }]}> 
           <View style={styles.routerMark} accessibilityLabel="OpenWrt">
             <View style={styles.antennaRow}>
-              <View style={styles.antenna} />
-              <View style={styles.antenna} />
+              <View style={[styles.antenna, { borderColor: colors.primary }]} />
+              <View style={[styles.antenna, { borderColor: colors.primary }]} />
             </View>
-            <View style={styles.routerBody}>
-              <View style={styles.port} />
-              <View style={styles.port} />
-              <View style={styles.port} />
+            <View style={[styles.routerBody, { backgroundColor: colors.primary }]}>
+              <View style={[styles.port, { backgroundColor: isDark ? colors.background : "#0A3C4A" }]} />
+              <View style={[styles.port, { backgroundColor: isDark ? colors.background : "#0A3C4A" }]} />
+              <View style={[styles.port, { backgroundColor: isDark ? colors.background : "#0A3C4A" }]} />
             </View>
           </View>
-          <Text style={styles.title}>OpenWrt 管理中心</Text>
-          <Text style={styles.subtitle}>正在准备管理模块与图标资源</Text>
-          <View style={styles.progressTrack} accessibilityRole="progressbar">
-            <View style={[styles.progressBar, { width: `${progress}%` }]} />
+          <Text style={[styles.title, { color: colors.foreground }]}>OpenWrt 管理中心</Text>
+          <Text style={[styles.subtitle, { color: colors.muted }]}>正在准备管理模块与图标资源</Text>
+          <View style={[styles.progressTrack, { backgroundColor: isDark ? "#20303D" : "#E5E7EB" }]} accessibilityRole="progressbar">
+            <View style={[styles.progressBar, { backgroundColor: colors.primary, width: `${progress}%` }]} />
           </View>
           <View style={styles.progressRow}>
-            <ActivityIndicator size="small" color="#007E7A" />
-            <Text style={styles.progressText}>{progress}%</Text>
+            <ActivityIndicator size="small" color={colors.primary} />
+            <Text style={[styles.progressText, { color: colors.primary }]}>{progress}%</Text>
           </View>
         </View>
       </View>

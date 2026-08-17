@@ -12,6 +12,8 @@ export interface RouterProfile {
 export interface RouterSettings {
   selectedRouterId: string | null;
   refreshIntervalSeconds: number;
+  /** Empty means automatically display the primary WAN; otherwise uses explicit interface IDs. */
+  trafficInterfaceIds: string[];
 }
 
 export interface SystemStatus {

@@ -1,4 +1,4 @@
-import { createContext, type ReactNode, useCallback, useContext, useEffect, useMemo, useState } from "react";
+import { createContext, type ReactNode, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
 
 import { fetchRouterStatus, normalizeRouterEndpoint } from "@/lib/openwrt-client";
 import { recordWanTrafficHistory } from "@/lib/traffic-history";
@@ -31,6 +31,7 @@ interface RouterContextValue {
   testConnection: (draft: RouterDraft, password: string, routerId?: string) => Promise<RouterStatus>;
   refreshStatus: () => Promise<RouterStatus | null>;
   updateRefreshInterval: (seconds: number) => Promise<void>;
+  updateTrafficInterfaceIds: (interfaceIds: string[]) => Promise<void>;
   getSelectedCredentials: () => Promise<{ luciPassword: string | null; sshPassword: string } | null>;
 }
 
@@ -42,10 +43,11 @@ function makeId() {
 
 export function RouterProvider({ children }: { children: ReactNode }) {
   const [profiles, setProfiles] = useState<RouterProfile[]>([]);
-  const [settings, setSettings] = useState<RouterSettings>({ selectedRouterId: null, refreshIntervalSeconds: 60 });
+  const [settings, setSettings] = useState<RouterSettings>({ selectedRouterId: null, refreshIntervalSeconds: 60, trafficInterfaceIds: [] });
   const [selectedStatus, setSelectedStatus] = useState<RouterStatus | null>(null);
   const [isReady, setIsReady] = useState(false);
   const [isRefreshing, setIsRefreshing] = useState(false);
+  const refreshInFlightRef = useRef(false);
 
   const selectedProfile = useMemo(
     () => profiles.find((profile) => profile.id === settings.selectedRouterId) ?? null,
@@ -73,6 +75,8 @@ export function RouterProvider({ children }: { children: ReactNode }) {
 
   const refreshStatus = useCallback(async () => {
     if (!selectedProfile) return null;
+    if (refreshInFlightRef.current) return selectedStatus;
+    refreshInFlightRef.current = true;
     setIsRefreshing(true);
     try {
       const password = await loadPassword(selectedProfile.id);
@@ -107,15 +111,16 @@ export function RouterProvider({ children }: { children: ReactNode }) {
       setSelectedStatus(offline);
       return offline;
     } finally {
+      refreshInFlightRef.current = false;
       setIsRefreshing(false);
     }
-  }, [profiles, selectedProfile]);
+  }, [profiles, selectedProfile, selectedStatus]);
 
   useEffect(() => {
     if (!isReady || !selectedProfile || settings.refreshIntervalSeconds <= 0) return;
     const timer = setInterval(() => {
       void refreshStatus();
-    }, settings.refreshIntervalSeconds * 1000);
+    }, Math.max(1, settings.refreshIntervalSeconds) * 1000);
     return () => clearInterval(timer);
   }, [isReady, refreshStatus, selectedProfile, settings.refreshIntervalSeconds]);
 
@@ -177,7 +182,13 @@ export function RouterProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const updateRefreshInterval = useCallback(async (seconds: number) => {
-    const next = { ...settings, refreshIntervalSeconds: seconds };
+    const next = { ...settings, refreshIntervalSeconds: Math.max(0, Math.floor(seconds)) };
+    setSettings(next);
+    await saveSettings(next);
+  }, [settings]);
+
+  const updateTrafficInterfaceIds = useCallback(async (interfaceIds: string[]) => {
+    const next = { ...settings, trafficInterfaceIds: [...new Set(interfaceIds)] };
     setSettings(next);
     await saveSettings(next);
   }, [settings]);
@@ -206,8 +217,9 @@ export function RouterProvider({ children }: { children: ReactNode }) {
     testConnection,
     refreshStatus,
     updateRefreshInterval,
+    updateTrafficInterfaceIds,
     getSelectedCredentials,
-  }), [profiles, settings, selectedProfile, selectedStatus, isReady, isRefreshing, setSelectedRouter, saveProfile, deleteProfile, testConnection, refreshStatus, updateRefreshInterval, getSelectedCredentials]);
+  }), [profiles, settings, selectedProfile, selectedStatus, isReady, isRefreshing, setSelectedRouter, saveProfile, deleteProfile, testConnection, refreshStatus, updateRefreshInterval, updateTrafficInterfaceIds, getSelectedCredentials]);
 
   return <RouterContext.Provider value={value}>{children}</RouterContext.Provider>;
 }

@@ -73,11 +73,11 @@ function WanTrafficPanel({ snapshot, rate, history, refreshing }: { snapshot: Tr
   );
 }
 
-export function RealtimeTrafficCard({ interfaces, fetchedAt, refreshing }: { interfaces: InterfaceStatus[]; fetchedAt?: string; refreshing: boolean }) {
+export function RealtimeTrafficCard({ interfaces, fetchedAt, refreshing, refreshIntervalSeconds, selectedInterfaceIds }: { interfaces: InterfaceStatus[]; fetchedAt?: string; refreshing: boolean; refreshIntervalSeconds: number; selectedInterfaceIds: string[] }) {
   const colors = useColors();
   const snapshots = useMemo(
-    () => makeTrafficInterfaceSnapshots(interfaces, fetchedAt ? new Date(fetchedAt).getTime() : Date.now()),
-    [fetchedAt, interfaces],
+    () => makeTrafficInterfaceSnapshots(interfaces, fetchedAt ? new Date(fetchedAt).getTime() : Date.now(), selectedInterfaceIds),
+    [fetchedAt, interfaces, selectedInterfaceIds],
   );
   const previous = useRef<Record<string, TrafficInterfaceSnapshot>>({});
   const [rates, setRates] = useState<RateMap>({});
@@ -102,17 +102,20 @@ export function RealtimeTrafficCard({ interfaces, fetchedAt, refreshing }: { int
   }, [snapshots]);
 
   const sourceLabel = snapshots.length
-    ? snapshots[0].source === "wan"
-      ? `${snapshots.length} 个 WAN 接口 · 分别采样`
-      : `${snapshots.length} 个在线接口 · 分别采样`
+    ? selectedInterfaceIds.length
+      ? `已选择 ${snapshots.length} 个网口 · 分别采样`
+      : snapshots[0].source === "wan"
+        ? "主 WAN 接口 · 默认采样"
+        : "主在线接口 · 默认采样"
     : "等待接口统计";
+  const intervalLabel = refreshIntervalSeconds === 1 ? "每秒采样" : refreshIntervalSeconds > 0 ? `约每 ${refreshIntervalSeconds} 秒采样` : "手动刷新";
 
   return (
     <View style={[styles.card, { backgroundColor: colors.surface, borderColor: colors.border }]}>
       <View style={styles.header}>
         <View>
           <Text style={[styles.title, { color: colors.foreground }]}>实时流量</Text>
-          <Text style={[styles.subtitle, { color: colors.muted }]}>{sourceLabel} · 约每 5 秒采样</Text>
+          <Text style={[styles.subtitle, { color: colors.muted }]}>{sourceLabel} · {intervalLabel}</Text>
         </View>
       </View>
       {snapshots.length ? snapshots.map((snapshot) => (

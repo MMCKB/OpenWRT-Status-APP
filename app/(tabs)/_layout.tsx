@@ -16,6 +16,7 @@ export default function TabLayout() {
   return (
     <RouterProvider>
     <Tabs
+      backBehavior="history"
       screenOptions={{
         tabBarActiveTintColor: colors.tint,
         headerShown: false,

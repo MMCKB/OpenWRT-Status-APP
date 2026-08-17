@@ -12,6 +12,7 @@ const SSH_PASSWORD_PREFIX = "openwrt.router-ssh-password.";
 const defaultSettings: RouterSettings = {
   selectedRouterId: null,
   refreshIntervalSeconds: 60,
+  trafficInterfaceIds: [],
 };
 
 function passwordKey(routerId: string) {
@@ -71,6 +72,9 @@ export async function loadSettings(): Promise<RouterSettings> {
         typeof decoded.refreshIntervalSeconds === "number"
           ? decoded.refreshIntervalSeconds
           : defaultSettings.refreshIntervalSeconds,
+      trafficInterfaceIds: Array.isArray(decoded.trafficInterfaceIds)
+        ? decoded.trafficInterfaceIds.filter((item): item is string => typeof item === "string")
+        : defaultSettings.trafficInterfaceIds,
     };
   } catch {
     return defaultSettings;

@@ -6,8 +6,10 @@ import { SectionCard, sharedStyles } from "@/components/status-ui";
 import { useColors } from "@/hooks/use-colors";
 import { useRouterStore } from "@/lib/router-provider";
 import { useThemeContext, type ThemePreference } from "@/lib/theme-provider";
+import { getDefaultTrafficInterfaceId, getTrafficInterfaceCandidates, trafficInterfaceId } from "@/lib/traffic-monitor";
 
 const intervals = [
+  { label: "实时", value: 1 },
   { label: "手动", value: 0 },
   { label: "30 秒", value: 30 },
   { label: "1 分钟", value: 60 },
@@ -21,12 +23,22 @@ const themeOptions: { label: string; value: ThemePreference; icon: React.Compone
 ];
 
 export default function SettingsScreen() {
-  const { settings, updateRefreshInterval } = useRouterStore();
+  const { settings, updateRefreshInterval, updateTrafficInterfaceIds, selectedStatus } = useRouterStore();
   const { colorScheme, themePreference, setThemePreference } = useThemeContext();
   const colors = useColors();
   const router = useRouter();
   const softPrimary = colorScheme === "dark" ? "#1C485C" : "#E6F5F4";
   const noteSurface = colorScheme === "dark" ? "#193A52" : "#EEF3F6";
+  const trafficCandidates = getTrafficInterfaceCandidates(selectedStatus?.interfaces ?? []);
+  const defaultTrafficId = getDefaultTrafficInterfaceId(selectedStatus?.interfaces ?? []);
+
+  function toggleTrafficInterface(interfaceId: string) {
+    const effectiveSelection = settings.trafficInterfaceIds.length ? settings.trafficInterfaceIds : defaultTrafficId ? [defaultTrafficId] : [];
+    const next = effectiveSelection.includes(interfaceId)
+      ? effectiveSelection.filter((id) => id !== interfaceId)
+      : [...effectiveSelection, interfaceId];
+    void updateTrafficInterfaceIds(next);
+  }
 
   return (
     <View style={[sharedStyles.screen, { backgroundColor: colors.background }]}>
@@ -40,11 +52,19 @@ export default function SettingsScreen() {
           })}</View>
         </SectionCard>
         <SectionCard title="状态刷新">
-          <Text style={[styles.cardDescription, { color: colors.muted }]}>应用打开时会按此频率更新当前路由器。切换到后台后不会持续请求网络。</Text>
+          <Text style={[styles.cardDescription, { color: colors.muted }]}>“实时”每秒读取一次接口计数；其余模式按所选频率更新当前路由器。切换到后台后不会持续请求网络。</Text>
           <View style={styles.intervalGrid}>{intervals.map((interval) => {
             const selected = settings.refreshIntervalSeconds === interval.value;
             return <Pressable key={interval.value} accessibilityRole="button" accessibilityState={{ selected }} onPress={() => void updateRefreshInterval(interval.value)} style={({ pressed }) => [styles.interval, { borderColor: selected ? colors.primary : colors.border, backgroundColor: selected ? colors.primary : colors.surface }, pressed && styles.pressed]}><Text style={[styles.intervalText, { color: selected ? "#FFFFFF" : colors.foreground }]}>{interval.label}</Text></Pressable>;
           })}</View>
+        </SectionCard>
+        <SectionCard title="实时流量网口">
+          <Text style={[styles.cardDescription, { color: colors.muted }]}>默认仅展示主 WAN。勾选后可同时显示 LAN、备用 WAN 或其他已报告字节计数的网口。</Text>
+          {trafficCandidates.length ? <View style={styles.interfaceList}>{trafficCandidates.map((item, index) => {
+            const id = trafficInterfaceId(item);
+            const selected = settings.trafficInterfaceIds.length ? settings.trafficInterfaceIds.includes(id) : id === defaultTrafficId;
+            return <Pressable key={id} accessibilityRole="checkbox" accessibilityState={{ checked: selected }} onPress={() => toggleTrafficInterface(id)} style={({ pressed }) => [styles.interfaceOption, index > 0 && { borderTopWidth: 1, borderTopColor: colors.border }, pressed && styles.pressed]}><View style={[styles.interfaceCheck, { borderColor: selected ? colors.primary : colors.border, backgroundColor: selected ? colors.primary : colors.background }]}>{selected ? <MaterialIcons name="check" size={15} color="#FFFFFF" /> : null}</View><View style={styles.infoText}><Text style={[styles.infoTitle, { color: colors.foreground }]}>{item.name}</Text><Text style={[styles.infoDescription, { color: colors.muted }]}>{item.device || "未报告设备"} · {item.up ? "已连接" : "未连接"}</Text></View></Pressable>;
+          })}</View> : <Text style={[styles.emptyTrafficText, { color: colors.muted }]}>连接路由器并完成一次状态刷新后，可在这里选择流量网口。</Text>}
         </SectionCard>
         <SectionCard title="数据与隐私">
           <InfoRow icon="vpn-key" title="凭证仅存储在本机" description="LuCI 密码会保存在设备安全存储中；配置资料保存在本地，不会同步至云端。" colors={colors} softPrimary={softPrimary} />
@@ -80,6 +100,7 @@ const styles = StyleSheet.create({
   intervalGrid: { flexDirection: "row", flexWrap: "wrap", gap: 8, padding: 15 },
   interval: { borderRadius: 10, borderWidth: 1, minWidth: "46%", alignItems: "center", paddingVertical: 11 },
   intervalText: { fontSize: 13, fontWeight: "700" }, pressed: { opacity: 0.72 },
+  interfaceList: { paddingHorizontal: 15, paddingBottom: 4 }, interfaceOption: { minHeight: 62, flexDirection: "row", alignItems: "center", gap: 11 }, interfaceCheck: { width: 23, height: 23, borderRadius: 7, borderWidth: 1, alignItems: "center", justifyContent: "center" }, emptyTrafficText: { paddingHorizontal: 15, paddingVertical: 18, fontSize: 13, lineHeight: 19 },
   infoRow: { flexDirection: "row", alignItems: "flex-start", gap: 12, padding: 15 }, infoIcon: { width: 34, height: 34, borderRadius: 10, alignItems: "center", justifyContent: "center" }, infoText: { flex: 1 }, infoTitle: { fontSize: 14, fontWeight: "800" }, infoDescription: { fontSize: 13, lineHeight: 19, marginTop: 4 },
   maintenanceRow: { minHeight: 74, flexDirection: "row", alignItems: "center", gap: 12, padding: 15 },
   note: { flexDirection: "row", alignItems: "flex-start", gap: 9, padding: 14, borderRadius: 14 }, noteText: { flex: 1, fontSize: 13, lineHeight: 19 },

@@ -95,7 +95,7 @@ export default function RootLayout() {
                 <Stack.Screen name="(tabs)" />
                 <Stack.Screen name="oauth/callback" />
               </Stack>
-              <StatusBar style={colorScheme === "dark" ? "light" : "dark"} />
+              <StatusBar style={colorScheme === "dark" ? "light" : "dark"} backgroundColor={colors.background} />
             </SafeAreaView>
           </QueryClientProvider>
         </trpc.Provider>

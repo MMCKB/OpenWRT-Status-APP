@@ -19,7 +19,7 @@ export default function StatusScreen() {
   const router = useRouter();
   const colors = useColors();
   const isDark = useColorScheme() === "dark";
-  const { selectedProfile, selectedStatus, isReady, isRefreshing, refreshStatus } = useRouterStore();
+  const { selectedProfile, selectedStatus, isReady, isRefreshing, refreshStatus, settings } = useRouterStore();
   const softPrimary = isDark ? "#1C485C" : "#E6F5F4";
   const heroSurface = isDark ? "#183B54" : "#FFFFFF";
   const errorSurface = isDark ? "#512E36" : "#FDEBEC";
@@ -28,14 +28,6 @@ export default function StatusScreen() {
   useFocusEffect(useCallback(() => {
     if (selectedProfile && !selectedStatus) void refreshStatus();
   }, [refreshStatus, selectedProfile, selectedStatus]));
-
-  useFocusEffect(useCallback(() => {
-    if (!selectedProfile) return;
-    const samplingTimer = setInterval(() => {
-      if (!isRefreshing) void refreshStatus();
-    }, 5000);
-    return () => clearInterval(samplingTimer);
-  }, [isRefreshing, refreshStatus, selectedProfile]));
 
   if (!isReady) {
     return <View style={[styles.loading, { backgroundColor: colors.background }]}><ActivityIndicator size="large" color={colors.primary} /><Text style={[styles.loadingText, { color: colors.muted }]}>正在载入本地配置…</Text></View>;
@@ -58,7 +50,7 @@ export default function StatusScreen() {
 
         <View style={[styles.heroCard, { backgroundColor: heroSurface, borderColor: colors.border }]}><View style={[styles.heroIcon, { backgroundColor: softPrimary }]}><MaterialIcons name="router" size={28} color={isOnline ? colors.success : colors.error} /></View><View style={styles.heroContent}><StatusPill label={isOnline ? "在线" : "连接失败"} tone={isOnline ? "success" : "danger"} /><Text style={[styles.hostname, { color: colors.foreground }]}>{system?.hostname ?? "无法读取设备"}</Text><Text style={[styles.model, { color: colors.muted }]}>{system?.model ?? selectedStatus?.error ?? "下拉刷新以重新尝试连接。"}</Text></View></View>
 
-        <RealtimeTrafficCard interfaces={selectedStatus?.interfaces ?? []} fetchedAt={selectedStatus?.fetchedAt} refreshing={isRefreshing} />
+        <RealtimeTrafficCard interfaces={selectedStatus?.interfaces ?? []} fetchedAt={selectedStatus?.fetchedAt} refreshing={isRefreshing} refreshIntervalSeconds={settings.refreshIntervalSeconds} selectedInterfaceIds={settings.trafficInterfaceIds} />
         {selectedStatus?.error ? <View style={[styles.errorBox, { backgroundColor: errorSurface }]}><MaterialIcons name="info-outline" size={19} color={colors.error} /><Text style={[styles.errorText, { color: colors.error }]}>{selectedStatus.error}</Text></View> : null}
 
         <View style={styles.metricRow}><MetricTile icon="timer" label="运行时间" value={formatUptime(system?.uptimeSeconds ?? null)} tone="success" /><MetricTile icon="speed" label="系统负载" value={formatLoad(system?.load ?? null)} caption="1 / 5 / 15 分钟" /></View>
@@ -71,7 +63,7 @@ export default function StatusScreen() {
           {selectedStatus?.wireless.length ? selectedStatus.wireless.map((item, index) => <View key={`${item.name}-${index}`} style={[styles.listRow, index > 0 && { borderTopWidth: 1, borderTopColor: colors.border }]}><MaterialIcons name="wifi" size={20} color={item.up ? colors.primary : colors.muted} /><View style={styles.rowMain}><Text style={[styles.rowTitle, { color: colors.foreground }]}>{item.ssid}</Text><Text style={[styles.rowSubtitle, { color: colors.muted }]}>{item.name} · 信道 {item.channel}</Text></View><Text style={[styles.rowSide, { color: colors.muted }]}>{item.clients === null ? "—" : `${item.clients} 台`}</Text></View>) : <Text style={[styles.emptyRow, { color: colors.muted }]}>路由器未报告无线网络状态。</Text>}
         </SectionCard>
         {selectedStatus?.warnings.length ? <View style={[styles.warningBox, { backgroundColor: warningSurface }]}><Text style={[styles.warningText, { color: colors.warning }]}>{selectedStatus.warnings.join(" ")}</Text></View> : null}
-        <Text style={[styles.updatedAt, { color: colors.muted }]}>更新于 {formatUpdateTime(selectedStatus?.fetchedAt)} · 下拉即可刷新</Text>
+        <Text style={[styles.updatedAt, { color: colors.muted }]}>更新于 {formatUpdateTime(selectedStatus?.fetchedAt)} · {settings.refreshIntervalSeconds === 1 ? "实时模式（每秒更新）" : settings.refreshIntervalSeconds > 0 ? `每 ${settings.refreshIntervalSeconds} 秒自动更新` : "手动刷新"}</Text>
       </ScrollView>
     </View>
   );

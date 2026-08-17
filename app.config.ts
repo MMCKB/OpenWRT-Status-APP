@@ -47,7 +47,7 @@ const config: ExpoConfig = {
       projectId: "c4d4af65-fe2b-4803-8ba9-5efecb95d126",
     },
   },
-  version: "1.0.2",
+  version: "1.0.3",
   orientation: "portrait",
   icon: "./assets/images/icon.png",
   scheme: env.scheme,
@@ -124,7 +124,7 @@ const config: ExpoConfig = {
         resizeMode: "contain",
         backgroundColor: "#F6F5F1",
         dark: {
-          backgroundColor: "#F6F5F1",
+          backgroundColor: "#0A0F14",
         },
       },
     ],

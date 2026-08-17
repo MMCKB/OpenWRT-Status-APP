@@ -1,6 +1,6 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { createContext, useCallback, useContext, useEffect, useMemo, useState } from "react";
-import { Appearance, View } from "react-native";
+import { AppState, Appearance, View } from "react-native";
 import { colorScheme as nativewindColorScheme, vars } from "nativewind";
 import * as SystemUI from "expo-system-ui";
 
@@ -53,12 +53,20 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   useEffect(() => {
-    // Keep the in-app “follow system” preference live while Android changes uiMode.
-    setSystemScheme(readSystemScheme());
+    // Keep “follow system” live while Android changes uiMode, including a switch
+    // made in system settings while this application is temporarily backgrounded.
+    const syncSystemScheme = () => setSystemScheme(readSystemScheme());
+    syncSystemScheme();
     const subscription = Appearance.addChangeListener(({ colorScheme: nextScheme }) => {
       setSystemScheme(nextScheme === "dark" ? "dark" : "light");
     });
-    return () => subscription.remove();
+    const appStateSubscription = AppState.addEventListener("change", (nextState) => {
+      if (nextState === "active") syncSystemScheme();
+    });
+    return () => {
+      subscription.remove();
+      appStateSubscription.remove();
+    };
   }, []);
 
   useEffect(() => {
