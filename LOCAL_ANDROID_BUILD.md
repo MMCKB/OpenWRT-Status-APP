@@ -1,37 +1,104 @@
-# OpenWrt 状态：本地 Android 编译指南
+# OpenWrt 状态 v1.0.12：电脑本地构建 APK 完整教程
 
-本文档对应当前源码版本，适用于 Windows、macOS 或 Linux 电脑。项目使用 **Expo SDK 54、React Native 和自定义 Android SSH 原生模块**；因此不能只用 Expo Go 测试 SSH、文件管理或固件升级功能，首次本地编译必须生成 Android 原生工程。[1]
+**适用项目版本：v1.0.12（Android `versionCode 8`）**  
+**应用包名：`com.app.openwrtstatusapp`**  
+**适用系统：Windows 10/11、macOS、Ubuntu/Debian 等 Linux 发行版**
 
-| 项目 | 本指南使用的值 |
+本项目是一个带有原生 Android SSH 模块的 Expo / React Native 应用。它不是纯网页，也不能只用 Expo Go 运行完整功能；SSH 终端、文件管理和固件升级均需要你编译并安装原生 APK。项目保留了 **Expo 新架构**（`newArchEnabled: true`）、Hermes 和四 ABI 配置，构建时不要关闭或删除这些设置。
+
+> **最短可行路径**：下载本教程随附的源码 ZIP → 安装 Node 22、JDK 21、Android Studio → 在源码根目录执行 `pnpm install --frozen-lockfile` → 进入 `android` 目录执行 ARM64 单架构构建命令 → 使用 `adb install` 安装 APK。
+
+## 1. 你将得到什么
+
+| 项目 | 当前配置 |
 |---|---|
-| Node.js | 22.x LTS |
-| 包管理器 | pnpm 9.12.0 |
-| Expo SDK | 54 |
-| Android 包名 | `com.app.openwrtstatusapp` |
-| 安装测试 APK 配置 | Debug APK |
-| 商店发布构建 | 已配置 EAS `production` AAB；本地发布需自行签名 |
-| React Native 新架构 | 已保留，`newArchEnabled: true` |
-| Android ABI | `arm64-v8a`、`armeabi-v7a`、`x86`、`x86_64` |
+| 应用名称 | OpenWrt 状态 |
+| 版本 | `1.0.12` / `versionCode 8` |
+| Android 最低版本 | Android 7.0（API 24） |
+| 手机推荐 ABI | `arm64-v8a` |
+| 完整 ABI | `arm64-v8a`、`armeabi-v7a`、`x86`、`x86_64` |
+| JavaScript 工具链 | Node.js 22 LTS、pnpm 9.12.0 |
+| Android 工具链 | Android Studio、Android SDK、Platform Tools、OpenJDK 21 |
+| 生成调试包 | `assembleDebug` |
+| 生成可安装发布包 | `assembleRelease` |
+| Release 当前默认签名 | 项目现有 Debug keystore，仅适合个人安装、真机测试或侧载 |
 
-## 1. 准备开发环境
+本教程优先使用 **ARM64 单架构 APK**，因为绝大多数近年的真机使用 ARM64，而且该方式明显降低 React Native 新架构下的 CMake、NDK 和 Gradle 内存压力。若确实需要同时支持 ARM、x86 模拟器和 x86 设备，可在最后的“全 ABI 构建”章节执行完整构建。
 
-请安装 Node.js 22、Android Studio（含 Android SDK、Platform Tools 和至少一个 Android SDK Platform）以及 OpenJDK。Android Studio 负责提供 Android SDK 和本地编译工具；Expo 官方将其列为本地 Android 编译的前置条件。[1]
+## 2. 准备源码
 
-安装完成后，在终端确认以下命令可用：
+将随附的 `openwrt-status-v1.0.12-source.zip` 解压到不含中文、空格过多或同步盘锁定的路径。例如：
+
+| 系统 | 建议目录 |
+|---|---|
+| Windows | `C:\dev\openwrt-status-app` |
+| macOS | `~/Developer/openwrt-status-app` |
+| Linux | `~/Projects/openwrt-status-app` |
+
+解压后必须能看到 `package.json`、`app.config.ts`、`android/`、`plugins/` 和 `pnpm-lock.yaml`。不要只复制 `app/` 文件夹；自定义 SSH 原生模块位于项目的原生配置插件中，缺少 `plugins/` 或 `android/` 都会导致构建不完整。
+
+## 3. 安装工具链
+
+本项目已经锁定 Expo SDK 54、React Native 0.81、TypeScript 5.9 和 Gradle Wrapper 8.14.3。你不需要全局安装 Gradle；应始终使用源码自带的 `gradlew` / `gradlew.bat`，以避免全局 Gradle 与项目版本不一致。[1]
+
+### 3.1 必装软件
+
+请安装以下软件，然后再继续后面的命令。
+
+| 软件 | 建议版本 | 用途 |
+|---|---:|---|
+| Node.js | **22 LTS** | 运行 Expo、React Native、pnpm 和打包脚本 |
+| OpenJDK | **21** | 运行 Gradle、`keytool` 和 Android 构建工具 |
+| Android Studio | 当前稳定版 | 安装 Android SDK、Platform Tools、Build Tools、NDK 与模拟器 |
+| Git | 当前稳定版 | 可选，用于管理源码更新 |
+
+在 Android Studio 中依次进入 **More Actions → SDK Manager**，至少确认已安装以下组件：
+
+| SDK Manager 区域 | 需要安装的项目 |
+|---|---|
+| **SDK Platforms** | 一个近期 Android SDK Platform；若 Gradle 报缺少 API 版本，按报错安装对应平台 |
+| **SDK Tools** | Android SDK Build-Tools、Android SDK Platform-Tools、Android SDK Command-line Tools (latest) |
+| **SDK Tools** | NDK (Side by side)、CMake；新架构首次编译若提示缺失，会给出所需版本 |
+
+Expo 的本地原生构建流程要求准备 Java 环境；如 Android 原生目录需要重新生成，则应先运行 `npx expo prebuild`。[2]
+
+### 3.2 配置环境变量
+
+请先确定 Android SDK 路径。Windows 默认通常是 `%LOCALAPPDATA%\Android\Sdk`；macOS 常为 `$HOME/Library/Android/sdk`；Linux 常为 `$HOME/Android/Sdk`。
+
+**Windows PowerShell（仅当前窗口生效）**：
+
+```powershell
+$env:JAVA_HOME = "C:\Program Files\Eclipse Adoptium\jdk-21"
+$env:ANDROID_HOME = "$env:LOCALAPPDATA\Android\Sdk"
+$env:ANDROID_SDK_ROOT = $env:ANDROID_HOME
+$env:Path += ";$env:JAVA_HOME\bin;$env:ANDROID_HOME\platform-tools;$env:ANDROID_HOME\cmdline-tools\latest\bin"
+```
+
+**macOS / Linux（Bash 或 Zsh，当前窗口生效）**：
+
+```bash
+export JAVA_HOME="$(dirname "$(dirname "$(readlink -f "$(command -v java)")")")"
+export ANDROID_HOME="$HOME/Android/Sdk"             # macOS 改为：$HOME/Library/Android/sdk
+export ANDROID_SDK_ROOT="$ANDROID_HOME"
+export PATH="$JAVA_HOME/bin:$ANDROID_HOME/platform-tools:$ANDROID_HOME/cmdline-tools/latest/bin:$PATH"
+```
+
+若要永久生效，请将对应命令写入 Windows 的用户环境变量，或 macOS/Linux 的 `~/.zshrc`、`~/.bashrc`。
+
+执行以下命令核对环境。任何一项找不到时，不要急于构建，应先修正路径。
 
 ```bash
 node --version
-corepack enable
-corepack prepare pnpm@9.12.0 --activate
-pnpm --version
+java -version
 adb --version
 ```
 
-如果系统无法找到 `adb`，请将 Android SDK 的 `platform-tools` 目录加入 `PATH`。Windows 用户通常可通过 Android Studio 的 **SDK Manager** 确认 SDK 位置；macOS/Linux 用户可将 `ANDROID_HOME` 或 `ANDROID_SDK_ROOT` 指向本机 Android SDK 目录。
+预期 Node 主版本为 `v22`，Java 主版本为 `21`。Windows 命令提示符中可用 `where adb`，macOS/Linux 中可用 `which adb` 检查 Platform Tools 是否进入 `PATH`。
 
-## 2. 解压、安装依赖和基础校验
+## 4. 安装项目依赖与基础校验
 
-解压源码包后，在项目根目录执行：
+进入包含 `package.json` 的源码根目录，执行以下命令。`pnpm-lock.yaml` 已随源码提供，`--frozen-lockfile` 会防止依赖版本在你的电脑上被意外更新。
 
 ```bash
 corepack enable
@@ -41,101 +108,212 @@ pnpm check
 pnpm test
 ```
 
-如果只需要本地 Android 调试或生成 Debug APK，不需要配置 Expo Token。`EXPO_TOKEN` 只用于你主动使用 EAS 云构建时的账号认证；不要把 Token 写进源码、提交到 Git 或发到聊天中。
+如果最后两条命令通过，说明 TypeScript 与单元测试环境可用。首次执行 `pnpm install`、Gradle Wrapper 和 Android 构建时都可能下载依赖；建议保持稳定网络并预留至少 **25 GB** 可用磁盘空间。
 
-## 3. 连接设备或启动模拟器
+本源码压缩包**不包含任何签名密钥**。当前工程的 `assembleRelease` 为个人侧载方便，默认引用 `android/app/debug.keystore`；因此第一次构建前，请在源码根目录创建自己的调试密钥：
 
-你可以在 Android Studio 启动模拟器，或在真机开启“开发者选项”和“USB 调试”后连接数据线。然后执行：
+```bash
+keytool -genkeypair -v \
+  -keystore android/app/debug.keystore \
+  -storepass android \
+  -alias androiddebugkey \
+  -keypass android \
+  -keyalg RSA -keysize 2048 -validity 10000 \
+  -dname "CN=Android Debug,O=Android,C=US"
+```
+
+Windows PowerShell 可将以上命令写成一行，或用反引号作为续行符。此密钥只用于你自己的测试和侧载。请一直保存它：以后要覆盖安装你自己构建的同包名 APK，必须继续使用同一份密钥。不要将 `debug.keystore` 或后续创建的发布 `.jks` 文件上传到 Git、网盘公开链接或聊天群。
+
+> 当前源码中已包含 `android/` 目录。**首次直接构建不要先执行 `expo prebuild --clean`**，避免无必要地重建原生目录。只有当你修改了 `app.config.ts`、`plugins/with-openwrt-ssh.js`、原生模块依赖，或从不含 `android/` 的源码分支开始时，才在根目录执行：`pnpm exec expo prebuild --platform android --clean`。该步骤会重新注入本项目的 SSH 原生模块。
+
+## 5. 构建适合手机安装的 ARM64 APK
+
+这是推荐命令。它使用一个 Gradle worker、关闭 Gradle 常驻守护进程，并只构建手机最常见的 ARM64 原生库，从而显著降低内存占用。
+
+### Windows PowerShell
+
+```powershell
+cd android
+.\gradlew.bat :app:assembleRelease `
+  -PreactNativeArchitectures=arm64-v8a `
+  --no-daemon `
+  --max-workers=1
+```
+
+### macOS / Linux
+
+```bash
+cd android
+./gradlew :app:assembleRelease \
+  -PreactNativeArchitectures=arm64-v8a \
+  --no-daemon \
+  --max-workers=1
+```
+
+Gradle 成功结束后，APK 位于：
+
+```text
+android/app/build/outputs/apk/release/app-release.apk
+```
+
+请先复制并改名，防止下一次构建覆盖它。
+
+```bash
+# macOS / Linux
+cp app/build/outputs/apk/release/app-release.apk ../openwrt-status-v1.0.12-arm64.apk
+```
+
+```powershell
+# Windows PowerShell
+Copy-Item .\app\build\outputs\apk\release\app-release.apk ..\openwrt-status-v1.0.12-arm64.apk
+```
+
+Gradle Wrapper 可在 Windows 使用 `gradlew.bat`，在 macOS/Linux 使用 `./gradlew`；Debug APK 与 Release APK 均由各自的 `assemble<Variant>` 任务输出。[1]
+
+## 6. 安装到真机并验证
+
+在手机中打开 **设置 → 关于手机**，连续点击“版本号”七次启用开发者选项；随后在开发者选项中启用 **USB 调试**。接入 USB 后执行：
 
 ```bash
 adb devices
 ```
 
-确认列表中能看到设备状态为 `device`。真机需要能访问局域网中的 OpenWrt 路由器，才能完整测试 SSH、文件管理和软件包管理功能。
-
-## 4. 首次本地编译与安装
-
-项目的自定义 SSH 模块由 Expo 配置插件在预构建阶段写入 Android 原生工程。首次构建或修改 `app.config.ts`、原生插件、原生依赖后，请在根目录执行：
+当状态显示为 `device` 时，安装 APK：
 
 ```bash
-pnpm exec expo prebuild --platform android --clean
-pnpm exec expo run:android --device
+adb install -r ../openwrt-status-v1.0.12-arm64.apk
 ```
 
-该流程会生成 `android/` 目录，编译、安装 Debug 版本并启动 Metro。Expo 官方说明，`expo run:android` 会在原生目录不存在时先运行预构建，随后把 Debug 版本安装至设备或模拟器。[1]
+Android 官方文档说明，调试包可直接安装；命令行 APK 输出在模块的 `build/outputs/apk/` 下，也可通过 `adb install` 装入已连接的实体机。[1]
 
-> 本项目**保留 Expo / React Native 新架构**，没有关闭 `newArchEnabled`。`expo-build-properties` 已配置四种 Android ABI；其中两个 ARM ABI 面向实体机，两个 x86 ABI 便于 Android 模拟器或 x86 设备。Expo 的 `buildArchs` 支持这四种 ABI。[3]
+### 安装前的关键提醒
 
-完成首次安装后，如果只修改 TypeScript、TSX、样式或业务逻辑，可直接执行：
+1. **`INSTALL_FAILED_UPDATE_INCOMPATIBLE` 或“应用未安装”**：通常表示设备中已有相同包名但由不同证书签名的版本。先记录现有路由器连接信息，再执行：
 
-```bash
-pnpm exec expo start
-```
+   ```bash
+   adb uninstall com.app.openwrtstatusapp
+   adb install ../openwrt-status-v1.0.12-arm64.apk
+   ```
 
-然后在终端按 `a` 打开 Android 设备；这类 JavaScript/TypeScript 修改通常不需要重新编译原生代码。[1]
+   卸载会清除应用本地数据，包括已保存的路由器资料，因此务必先记录路由器地址、账号和 SSH 端口。
 
-## 5. 导出可安装的本地 Debug APK
+2. **不要把旧 APK 手工解压、合并 ABI 或重新压缩后再安装**。这会破坏签名或原生库对齐。应直接分发 Gradle 生成的 APK；Android 签名验证要求 APK 内容在签名后保持不变。[3]
 
-如需生成可直接发送到手机安装的 Debug APK，请先完成预构建，然后执行：
+3. **Android 16 / 16KB 页面设备**：如你使用了任何人工重签、压缩或调整 APK 的操作，必须先完成 `zipalign`，再进行签名。Android 官方也明确要求：`zipalign` 必须在 `apksigner` 之前执行。[3]
 
-```bash
-pnpm exec expo prebuild --platform android --clean
-cd android
-./gradlew assembleDebug
-```
+## 7. 生成 Debug APK（便于日常调试）
 
-如需显式输出全部已配置的 ABI，请直接使用上述命令。若只需快速调试单一设备，可临时指定 ABI；例如为 64 位 ARM 真机构建：
+如果只是自己改界面、排错或测试路由器连接，用 Debug APK 更快：
 
-```bash
-./gradlew assembleDebug -PreactNativeArchitectures=arm64-v8a
-```
-
-在 Windows PowerShell 中，将 `./gradlew` 替换为 `./gradlew.bat`。不要把这个临时参数写入项目配置，否则会缩小最终 APK 的兼容范围。
-
-Windows PowerShell/CMD 请使用：
+### Windows
 
 ```powershell
 cd android
-.\gradlew.bat assembleDebug
+.\gradlew.bat :app:assembleDebug -PreactNativeArchitectures=arm64-v8a --no-daemon --max-workers=1
 ```
 
-APK 输出路径通常为：
+### macOS / Linux
+
+```bash
+cd android
+./gradlew :app:assembleDebug -PreactNativeArchitectures=arm64-v8a --no-daemon --max-workers=1
+```
+
+输出路径为：
 
 ```text
 android/app/build/outputs/apk/debug/app-debug.apk
 ```
 
-该 APK 使用 Debug 签名，适合真机安装与内部测试；不适合上架应用商店。
+可直接使用 `adb install -r app/build/outputs/apk/debug/app-debug.apk`。如果之后只改了 TS、TSX、样式或业务逻辑，也可以在项目根目录执行 `pnpm exec expo start`，再在 Android 开发版中刷新 JavaScript；但改动原生 SSH 插件、`app.config.ts` 或原生依赖后必须重新预构建并编译。
 
-## 6. 本地发布构建与签名说明
+## 8. 构建四 ABI 通用 APK
 
-如果需要生成用于 Google Play 的 AAB，必须准备并妥善保管自己的上传密钥。Expo 官方建议先生成 Android 原生工程，配置签名信息后执行 Gradle 的 `bundleRelease`，产物在 `android/app/build/outputs/bundle/release/`。[2]
-
-> 不要将 `.jks` 密钥库、密钥密码或 `gradle.properties` 中的签名密码提交到 Git、发给他人或放入源码压缩包。
-
-若仅需向个人设备分发，请优先使用上一节的 Debug APK。若需要由你的 Expo 账号生成已配置的安装 APK，也可在自己的电脑中登录 Expo 后执行：
+仅当你要同时支持 ARM64、32 位 ARM、x86 和 x86_64 时才执行此节。完整构建消耗的内存、磁盘和时间都更多；建议电脑至少有 **16 GB 内存** 和 **35 GB 可用磁盘**。本项目保留 `arm64-v8a`、`armeabi-v7a`、`x86`、`x86_64` 四种 ABI 配置。
 
 ```bash
-pnpm exec eas build --platform android --profile preview
+# Windows：将 ./gradlew 替换为 .\gradlew.bat
+cd android
+./gradlew :app:assembleRelease --no-daemon --max-workers=1
 ```
 
-当前 `preview` 配置会生成 APK，`production` 配置会生成 AAB。
+直接由 Gradle 生成的完整 APK 比手工合并多个 APK 更安全。若电脑内存不足，优先构建 ARM64 APK；不要尝试手动解压多个单 ABI APK 后合并其中的 `lib/` 目录。
 
-## 7. 常见问题
+## 9. 可选：使用自己的发布密钥重新签名
 
-| 现象 | 建议处理 |
+当前项目的 `release` 构建为了方便个人安装，暂时使用项目 Debug keystore 签名。它适合侧载、真机测试，但不适合发布到 Google Play。若你要长期分发或上架，请创建并永久保存自己的密钥；密钥丢失后无法给同一个已发布应用正常更新。[2]
+
+### 9.1 创建密钥
+
+在一个不参与 Git 同步、并已备份的目录中执行：
+
+```bash
+keytool -genkeypair -v \
+  -keystore openwrt-status-release.jks \
+  -alias openwrt-status \
+  -keyalg RSA -keysize 2048 -validity 10000
+```
+
+Windows PowerShell 中把反斜杠续行改为反引号，或直接写成一行。请使用仅自己掌握的强密码，不要把 `.jks`、别名密码或证书发给任何人，也不要加入 Git。
+
+### 9.2 对 APK 进行 16KB 对齐并重新签名
+
+先在 Android SDK 的 `build-tools/<版本>/` 目录找到 `zipalign` 与 `apksigner`。Windows 典型路径：
+
+```text
+%LOCALAPPDATA%\Android\Sdk\build-tools\<版本>\zipalign.exe
+%LOCALAPPDATA%\Android\Sdk\build-tools\<版本>\apksigner.bat
+```
+
+macOS/Linux 典型路径：
+
+```text
+$ANDROID_HOME/build-tools/<版本>/zipalign
+$ANDROID_HOME/build-tools/<版本>/apksigner
+```
+
+以下命令以已经由 Gradle 生成的 `app-release.apk` 为输入。先对齐，再签名，最后验证：
+
+```bash
+zipalign -P 16 -f -v 4 app-release.apk app-release-aligned.apk
+
+apksigner sign \
+  --ks /安全路径/openwrt-status-release.jks \
+  --ks-key-alias openwrt-status \
+  --out openwrt-status-v1.0.12-arm64-signed.apk \
+  app-release-aligned.apk
+
+apksigner verify --verbose --print-certs openwrt-status-v1.0.12-arm64-signed.apk
+```
+
+`apksigner verify` 会确认 APK 签名能否在该应用支持的 Android 版本上通过验证；官方文档同时说明，若需要 `zipalign`，必须在签名前运行。[3]
+
+> 重新签名后，手机上的旧版本若使用不同密钥，将不能“覆盖安装”。这是 Android 的安全机制，并非 APK 损坏；需要先卸载旧包或使用原始相同密钥签名。
+
+## 10. 常见错误与处理
+
+| 现象 | 原因与处理 |
 |---|---|
-| `adb` 找不到设备 | 重新开启 USB 调试，安装手机厂商 USB 驱动，执行 `adb kill-server && adb start-server`。 |
-| Gradle 下载或依赖失败 | 检查网络、Android Studio SDK 配置和 JDK；首次构建需要下载 Gradle 与 Maven 依赖。 |
-| SSH 功能在 Expo Go 中不可用 | 正常现象。此项目需要通过 `expo run:android` 或 APK 安装原生模块。 |
-| 修改 SSH 插件后没有生效 | 重新执行 `pnpm exec expo prebuild --platform android --clean` 后再编译。 |
-| 安装提示签名冲突 | 卸载设备上的旧包，或使用同一签名密钥重新构建。 |
-| 新架构 CMake 编译占用较高 | 保持已启用的新架构，关闭不必要的 Android Studio、模拟器和 Metro，再使用单 ABI 调试命令；最终发布时取消 ABI 限制。 |
+| `JAVA_HOME is not set`、Gradle 找错 Java | 安装 JDK 21，设置 `JAVA_HOME`，重新打开终端并确认 `java -version`。 |
+| `SDK location not found` | 在 Android Studio 的 SDK Manager 确认 SDK 路径，设置 `ANDROID_HOME` 与 `ANDROID_SDK_ROOT`。 |
+| 缺少 NDK、CMake 或 Android Platform | 打开 Android Studio SDK Manager，按 Gradle 报错安装对应的 SDK Platform、NDK (Side by side) 或 CMake。 |
+| Gradle 在 CMake / `configureCMake*` 阶段内存不足 | 关闭模拟器、浏览器和 Android Studio；执行 ARM64 单 ABI 命令，并保留 `--no-daemon --max-workers=1`。不要关闭新架构。 |
+| `Could not resolve` / 下载超时 | 检查网络、代理和系统时间；首次下载 Gradle/Maven/Node 依赖可能较慢。不要删除 `pnpm-lock.yaml`。 |
+| `INSTALL_FAILED_UPDATE_INCOMPATIBLE` | 新旧 APK 证书不同。记录路由器配置后执行 `adb uninstall com.app.openwrtstatusapp`，再安装。 |
+| 安卓安装器提示 APK 无法安装 | 确保 APK 没被聊天软件二次压缩；不要手工合并 APK；用 `apksigner verify --verbose` 验证，并直接安装 Gradle 输出文件。 |
+| 修改 SSH 原生插件后没生效 | 在项目根目录执行 `pnpm exec expo prebuild --platform android --clean`，再重新执行 Gradle 构建。 |
+| `adb devices` 显示 `unauthorized` | 解锁手机并在弹窗中允许 USB 调试；必要时执行 `adb kill-server` 后重新连接。 |
+
+## 11. 建议的构建顺序
+
+先使用 ARM64 Debug APK 确认 Java、SDK、设备连接和 SSH 原生模块均正常；再生成 ARM64 Release APK；只有在需要模拟器或多 ABI 分发时才执行完整四 ABI 构建。这样可以大幅缩短排错时间，也避免在第一次构建时因资源不足误判项目有问题。
+
+在真机上安装 v1.0.12 后，请优先确认以下路径：**路由器列表与添加路由器页的深色模式、性能基准测试中输入域名 Ping、以及 `https://github.com/MMCKB/OpenWRT/releases/tag/JDCloud` 指定标签的固件检查**。
 
 ## References
 
-[1] [Expo: Create a debug build locally](https://docs.expo.dev/guides/local-app-development/)
+[1] [Android Developers：通过命令行构建应用](https://developer.android.com/build/building-cmdline)
 
-[2] [Expo: Create a release build locally](https://docs.expo.dev/guides/local-app-production/)
+[2] [Expo Documentation：Create a release build locally](https://docs.expo.dev/guides/local-app-production/)
 
-[3] [Expo BuildProperties: `buildArchs`](https://docs.expo.dev/versions/latest/sdk/build-properties/)
+[3] [Android Developers：apksigner](https://developer.android.com/tools/apksigner)
