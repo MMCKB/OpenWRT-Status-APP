@@ -30,7 +30,7 @@ function ThroughputSparkline({ history, field, color, emptyColor, label }: { his
   );
 }
 
-function WanTrafficPanel({ snapshot, rate, history, refreshing }: { snapshot: TrafficInterfaceSnapshot; rate: TrafficRate | null; history: TrafficRate[]; refreshing: boolean }) {
+function WanTrafficPanel({ snapshot, rate, history, refreshing, compact }: { snapshot: TrafficInterfaceSnapshot; rate: TrafficRate | null; history: TrafficRate[]; refreshing: boolean; compact: boolean }) {
   const colors = useColors();
   const isDark = useColorScheme() === "dark";
   const trackColor = isDark ? "#315B72" : "#D9E6EB";
@@ -53,7 +53,11 @@ function WanTrafficPanel({ snapshot, rate, history, refreshing }: { snapshot: Tr
           <Text style={[styles.liveText, { color: colors.foreground }]}>{refreshing ? "刷新中" : "实时"}</Text>
         </View>
       </View>
-      <View style={styles.metricRow}>
+      {compact ? <View style={[styles.compactMetricRow, { borderTopColor: colors.border }]}>
+        <View style={styles.compactMetric}><Text style={[styles.compactLabel, { color: colors.muted }]}>↓ 下载</Text><Text style={[styles.compactValue, { color: colors.foreground }]}>{formatTrafficRate(rate?.rxBytesPerSecond ?? null)}</Text></View>
+        <View style={[styles.compactDivider, { backgroundColor: colors.border }]} />
+        <View style={styles.compactMetric}><Text style={[styles.compactLabel, { color: colors.muted }]}>↑ 上传</Text><Text style={[styles.compactValue, { color: colors.foreground }]}>{formatTrafficRate(rate?.txBytesPerSecond ?? null)}</Text></View>
+      </View> : <View style={styles.metricRow}>
         <View style={styles.metric}>
           <View style={[styles.iconBox, { backgroundColor: downloadSoft }]}><MaterialIcons name="south" size={18} color="#168A98" /></View>
           <Text style={[styles.metricLabel, { color: colors.muted }]}>下载</Text>
@@ -67,13 +71,13 @@ function WanTrafficPanel({ snapshot, rate, history, refreshing }: { snapshot: Tr
           <Text style={[styles.metricValue, { color: colors.foreground }]}>{formatTrafficRate(rate?.txBytesPerSecond ?? null)}</Text>
           <ThroughputSparkline label={snapshot.label} history={history} field="txBytesPerSecond" color="#8A7DF1" emptyColor={trackColor} />
         </View>
-      </View>
+      </View>}
       <Text style={[styles.panelFooter, { color: colors.muted }]}>{rate ? `采样间隔 ${Math.max(1, Math.round(rate.sampleSeconds))} 秒` : "收到下一次状态刷新后将显示速率"}</Text>
     </View>
   );
 }
 
-export function RealtimeTrafficCard({ interfaces, fetchedAt, refreshing, refreshIntervalSeconds, selectedInterfaceIds }: { interfaces: InterfaceStatus[]; fetchedAt?: string; refreshing: boolean; refreshIntervalSeconds: number; selectedInterfaceIds: string[] }) {
+export function RealtimeTrafficCard({ interfaces, fetchedAt, refreshing, refreshIntervalSeconds, selectedInterfaceIds, viewMode = "full" }: { interfaces: InterfaceStatus[]; fetchedAt?: string; refreshing: boolean; refreshIntervalSeconds: number; selectedInterfaceIds: string[]; viewMode?: "full" | "compact" }) {
   const colors = useColors();
   const snapshots = useMemo(
     () => makeTrafficInterfaceSnapshots(interfaces, fetchedAt ? new Date(fetchedAt).getTime() : Date.now(), selectedInterfaceIds),
@@ -115,11 +119,11 @@ export function RealtimeTrafficCard({ interfaces, fetchedAt, refreshing, refresh
       <View style={styles.header}>
         <View>
           <Text style={[styles.title, { color: colors.foreground }]}>实时流量</Text>
-          <Text style={[styles.subtitle, { color: colors.muted }]}>{sourceLabel} · {intervalLabel}</Text>
+          <Text style={[styles.subtitle, { color: colors.muted }]}>{sourceLabel} · {intervalLabel} · {viewMode === "compact" ? "简约数据" : "完整图表"}</Text>
         </View>
       </View>
       {snapshots.length ? snapshots.map((snapshot) => (
-        <WanTrafficPanel key={snapshot.id} snapshot={snapshot} rate={rates[snapshot.id] ?? null} history={histories[snapshot.id] ?? []} refreshing={refreshing} />
+        <WanTrafficPanel key={snapshot.id} snapshot={snapshot} rate={rates[snapshot.id] ?? null} history={histories[snapshot.id] ?? []} refreshing={refreshing} compact={viewMode === "compact"} />
       )) : <View style={[styles.emptyState, { backgroundColor: colors.background }]}><MaterialIcons name="data-usage" size={20} color={colors.muted} /><Text style={[styles.emptyText, { color: colors.muted }]}>路由器未报告 WAN 接口字节计数</Text></View>}
     </View>
   );
@@ -141,6 +145,7 @@ const styles = StyleSheet.create({
   liveDot: { width: 6, height: 6, borderRadius: 3 },
   liveText: { fontSize: 11, fontWeight: "700" },
   metricRow: { flexDirection: "row", alignItems: "stretch" },
+  compactMetricRow: { flexDirection: "row", alignItems: "center", borderTopWidth: 1, paddingTop: 12 }, compactMetric: { flex: 1, minWidth: 0 }, compactDivider: { width: 1, height: 32, marginHorizontal: 12 }, compactLabel: { fontSize: 12, fontWeight: "700" }, compactValue: { fontSize: 17, lineHeight: 23, fontWeight: "800", marginTop: 2, fontVariant: ["tabular-nums"] },
   metric: { flex: 1, minWidth: 0 },
   divider: { width: 1, marginHorizontal: 13 },
   iconBox: { width: 32, height: 32, borderRadius: 10, alignItems: "center", justifyContent: "center", marginBottom: 10 },

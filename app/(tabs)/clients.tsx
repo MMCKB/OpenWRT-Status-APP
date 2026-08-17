@@ -5,7 +5,7 @@ import { ActivityIndicator, Alert, Pressable, StyleSheet, Text, View } from "rea
 import { ManagementShell, ToolNotice } from "@/components/management-shell";
 import { EmptyState, SectionCard, StatusPill } from "@/components/status-ui";
 import { useColors } from "@/hooks/use-colors";
-import { buildBlockClientCommand, buildClientSnapshotCommand, buildUnblockClientCommand, parseConnectedClients, type ConnectedClient } from "@/lib/openwrt-admin";
+import { buildBlockClientCommand, buildClientSnapshotCommand, buildUnblockClientCommand, parseBlockedClientMacs, parseConnectedClients, type ConnectedClient } from "@/lib/openwrt-admin";
 import { useManagedSsh } from "@/hooks/use-managed-ssh";
 
 export default function ClientsScreen() {
@@ -18,6 +18,7 @@ export default function ClientsScreen() {
     try {
       const output = await execute(buildClientSnapshotCommand());
       setClients(parseConnectedClients(output));
+      setBlocked(parseBlockedClientMacs(output));
     } catch {}
   }, [execute]);
 
@@ -25,12 +26,12 @@ export default function ClientsScreen() {
 
   function changeBlock(client: ConnectedClient) {
     const isBlocked = blocked.has(client.mac);
-    Alert.alert(isBlocked ? "解除拉黑" : "拉黑设备", `${client.hostname ?? client.mac}\n${isBlocked ? "将移除本应用创建的防火墙规则。" : "该设备将无法通过 LAN 访问路由器网络。"}`, [
+    Alert.alert(isBlocked ? "解除拉黑" : "拉黑设备", `${client.hostname ?? client.mac}\n${isBlocked ? "将移除本应用创建的防火墙规则并立即重载。" : "将写入路由器防火墙规则，并拒绝该 LAN 客户端访问路由器及转发网络。"}`, [
       { text: "取消", style: "cancel" },
       { text: isBlocked ? "解除" : "拉黑", style: isBlocked ? "default" : "destructive", onPress: () => void (async () => {
         try {
           await execute(isBlocked ? buildUnblockClientCommand(client.mac) : buildBlockClientCommand(client.mac));
-          setBlocked((current) => { const next = new Set(current); isBlocked ? next.delete(client.mac) : next.add(client.mac); return next; });
+          await refresh();
         } catch {}
       })() },
     ]);

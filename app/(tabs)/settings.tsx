@@ -23,7 +23,7 @@ const themeOptions: { label: string; value: ThemePreference; icon: React.Compone
 ];
 
 export default function SettingsScreen() {
-  const { settings, updateRefreshInterval, updateTrafficInterfaceIds, selectedStatus } = useRouterStore();
+  const { settings, updateRefreshInterval, updateTrafficInterfaceIds, updateStatusTrafficView, selectedStatus } = useRouterStore();
   const { colorScheme, themePreference, setThemePreference } = useThemeContext();
   const colors = useColors();
   const router = useRouter();
@@ -66,6 +66,15 @@ export default function SettingsScreen() {
             return <Pressable key={id} accessibilityRole="checkbox" accessibilityState={{ checked: selected }} onPress={() => toggleTrafficInterface(id)} style={({ pressed }) => [styles.interfaceOption, index > 0 && { borderTopWidth: 1, borderTopColor: colors.border }, pressed && styles.pressed]}><View style={[styles.interfaceCheck, { borderColor: selected ? colors.primary : colors.border, backgroundColor: selected ? colors.primary : colors.background }]}>{selected ? <MaterialIcons name="check" size={15} color="#FFFFFF" /> : null}</View><View style={styles.infoText}><Text style={[styles.infoTitle, { color: colors.foreground }]}>{item.name}</Text><Text style={[styles.infoDescription, { color: colors.muted }]}>{item.device || "未报告设备"} · {item.up ? "已连接" : "未连接"}</Text></View></Pressable>;
           })}</View> : <Text style={[styles.emptyTrafficText, { color: colors.muted }]}>连接路由器并完成一次状态刷新后，可在这里选择流量网口。</Text>}
         </SectionCard>
+        <SectionCard title="状态页流量展示">
+          <Text style={[styles.cardDescription, { color: colors.muted }]}>“完整图表”保留上下行趋势；“简约数据”隐藏曲线和大图标，在多网口时占用更少空间。</Text>
+          <View style={styles.viewModeRow}>{(["full", "compact"] as const).map((mode) => {
+            const selected = settings.statusTrafficView === mode;
+            const label = mode === "full" ? "完整图表" : "简约数据";
+            const icon = mode === "full" ? "show-chart" : "format-list-bulleted";
+            return <Pressable key={mode} accessibilityRole="button" accessibilityState={{ selected }} onPress={() => void updateStatusTrafficView(mode)} style={({ pressed }) => [styles.viewModeOption, { borderColor: selected ? colors.primary : colors.border, backgroundColor: selected ? colors.primary : colors.surface }, pressed && styles.pressed]}><MaterialIcons name={icon} size={18} color={selected ? "#FFFFFF" : colors.primary} /><Text style={[styles.viewModeText, { color: selected ? "#FFFFFF" : colors.foreground }]}>{label}</Text></Pressable>;
+          })}</View>
+        </SectionCard>
         <SectionCard title="数据与隐私">
           <InfoRow icon="vpn-key" title="凭证仅存储在本机" description="LuCI 密码会保存在设备安全存储中；配置资料保存在本地，不会同步至云端。" colors={colors} softPrimary={softPrimary} />
           <InfoRow icon="wifi" title="仅访问已保存的路由器" description="状态读取通过 OpenWrt 的 LuCI ubus 接口完成。请在可信局域网内使用。" colors={colors} softPrimary={softPrimary} divider />
@@ -100,6 +109,7 @@ const styles = StyleSheet.create({
   intervalGrid: { flexDirection: "row", flexWrap: "wrap", gap: 8, padding: 15 },
   interval: { borderRadius: 10, borderWidth: 1, minWidth: "46%", alignItems: "center", paddingVertical: 11 },
   intervalText: { fontSize: 13, fontWeight: "700" }, pressed: { opacity: 0.72 },
+  viewModeRow: { flexDirection: "row", gap: 8, padding: 15 }, viewModeOption: { flex: 1, minHeight: 48, borderWidth: 1, borderRadius: 11, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 7 }, viewModeText: { fontSize: 13, fontWeight: "800" },
   interfaceList: { paddingHorizontal: 15, paddingBottom: 4 }, interfaceOption: { minHeight: 62, flexDirection: "row", alignItems: "center", gap: 11 }, interfaceCheck: { width: 23, height: 23, borderRadius: 7, borderWidth: 1, alignItems: "center", justifyContent: "center" }, emptyTrafficText: { paddingHorizontal: 15, paddingVertical: 18, fontSize: 13, lineHeight: 19 },
   infoRow: { flexDirection: "row", alignItems: "flex-start", gap: 12, padding: 15 }, infoIcon: { width: 34, height: 34, borderRadius: 10, alignItems: "center", justifyContent: "center" }, infoText: { flex: 1 }, infoTitle: { fontSize: 14, fontWeight: "800" }, infoDescription: { fontSize: 13, lineHeight: 19, marginTop: 4 },
   maintenanceRow: { minHeight: 74, flexDirection: "row", alignItems: "center", gap: 12, padding: 15 },

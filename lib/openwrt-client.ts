@@ -289,6 +289,21 @@ export async function fetchRouterStatus(
   return buildRouterStatus(routerId, required[0], required[1], interfaces, wireless, warnings, deviceCounters);
 }
 
+/** Fetches only the interface counters needed by the status-page traffic chart. */
+export async function fetchRouterTraffic(
+  rawEndpoint: string,
+  username: string,
+  password: string,
+): Promise<{ interfaces: InterfaceStatus[]; fetchedAt: string }> {
+  const endpoint = normalizeRouterEndpoint(rawEndpoint);
+  const token = await login(endpoint, username, password);
+  const [interfaces, devices] = await Promise.all([
+    ubusCall(endpoint, token, "network.interface", "dump", {}),
+    ubusCall(endpoint, token, "network.device", "status", {}).catch(() => ({})),
+  ]);
+  return { interfaces: mapInterfaces(interfaces, devices), fetchedAt: new Date().toISOString() };
+}
+
 export function formatBytes(value: number | null) {
   if (value === null || !Number.isFinite(value)) return "未报告";
   const units = ["B", "KB", "MB", "GB", "TB"];

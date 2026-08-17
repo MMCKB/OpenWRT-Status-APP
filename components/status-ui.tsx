@@ -25,7 +25,7 @@ export function StatusPill({ label, tone = "normal" }: { label: string; tone?: T
 export function MetricTile({ icon, label, value, caption, tone = "normal" }: { icon: React.ComponentProps<typeof MaterialIcons>["name"]; label: string; value: string; caption?: string; tone?: Tone }) {
   const colors = useColors();
   const toneColor = toneColors(tone, useColorScheme() === "dark");
-  return <View style={[styles.metricTile, { backgroundColor: colors.surface, borderColor: colors.border }]}><View style={[styles.iconBox, { backgroundColor: toneColor.background }]}><MaterialIcons name={icon} size={19} color={toneColor.dot} /></View><Text style={[styles.metricLabel, { color: colors.muted }]}>{label}</Text><Text style={[styles.metricValue, { color: colors.foreground }]} numberOfLines={1}>{value}</Text>{caption ? <Text style={[styles.metricCaption, { color: colors.muted }]} numberOfLines={1}>{caption}</Text> : null}</View>;
+  return <View style={[styles.metricTile, { backgroundColor: colors.surface, borderColor: colors.border }]}><View style={[styles.iconBox, { backgroundColor: toneColor.background }]}><MaterialIcons name={icon} size={19} color={toneColor.dot} /></View><Text style={[styles.metricLabel, { color: colors.muted }]}>{label}</Text><Text style={[styles.metricValue, { color: colors.foreground }]}>{value}</Text>{caption ? <Text style={[styles.metricCaption, { color: colors.muted }]}>{caption}</Text> : null}</View>;
 }
 
 export function SectionCard({ title, action, children }: { title: string; action?: ReactNode; children: ReactNode }) {
@@ -47,7 +47,7 @@ export const sharedStyles = StyleSheet.create({
 
 const styles = StyleSheet.create({
   pill: { flexDirection: "row", alignItems: "center", alignSelf: "flex-start", gap: 6, borderRadius: 999, paddingHorizontal: 10, paddingVertical: 6 }, dot: { width: 7, height: 7, borderRadius: 4 }, pillText: { fontSize: 12, fontWeight: "700" },
-  metricTile: { flex: 1, minWidth: 0, borderRadius: 18, padding: 14, borderWidth: 1 }, iconBox: { width: 34, height: 34, borderRadius: 10, alignItems: "center", justifyContent: "center", marginBottom: 12 }, metricLabel: { fontSize: 12, fontWeight: "600", marginBottom: 4 }, metricValue: { fontSize: 18, fontWeight: "800", fontVariant: ["tabular-nums"] }, metricCaption: { fontSize: 11, marginTop: 4 },
+  metricTile: { flex: 1, minWidth: 0, borderRadius: 18, padding: 14, borderWidth: 1 }, iconBox: { width: 34, height: 34, borderRadius: 10, alignItems: "center", justifyContent: "center", marginBottom: 12 }, metricLabel: { fontSize: 12, lineHeight: 17, fontWeight: "600", marginBottom: 4 }, metricValue: { fontSize: 18, lineHeight: 24, fontWeight: "800", fontVariant: ["tabular-nums"], flexShrink: 1 }, metricCaption: { fontSize: 11, lineHeight: 16, marginTop: 4, flexShrink: 1 },
   sectionWrap: { gap: 9 }, sectionHeader: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", paddingHorizontal: 2 }, sectionTitle: { fontSize: 17, fontWeight: "800" }, card: { borderRadius: 18, borderWidth: 1, overflow: "hidden" },
   emptyState: { alignItems: "center", paddingHorizontal: 28, paddingVertical: 40 }, emptyIcon: { width: 64, height: 64, borderRadius: 32, alignItems: "center", justifyContent: "center", marginBottom: 16 }, emptyTitle: { fontSize: 20, fontWeight: "800", textAlign: "center" }, emptyDescription: { fontSize: 14, lineHeight: 21, textAlign: "center", marginTop: 8 },
 });

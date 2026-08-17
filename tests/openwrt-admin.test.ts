@@ -7,6 +7,9 @@ import {
   buildRestoreCommand,
   buildServiceCommand,
   buildWanDiagnosticCommand,
+  buildWifiDeleteCommand,
+  buildUnblockClientCommand,
+  parseBlockedClientMacs,
   parseConnectedClients,
   parseServiceStates,
   parseWifiConfigs,
@@ -20,7 +23,16 @@ describe("OpenWrt 管理命令与解析", () => {
 
   it("仅为有效 MAC 生成防火墙拉黑命令", () => {
     expect(buildBlockClientCommand("AA:bb:CC:dd:EE:ff")).toContain("openwrt_app_block_aa_bb_cc_dd_ee_ff");
+    expect(buildBlockClientCommand("AA:bb:CC:dd:EE:ff")).toContain("uci commit firewall");
+    expect(buildUnblockClientCommand("AA:bb:CC:dd:EE:ff")).toContain("uci -q delete firewall.openwrt_app_block_aa_bb_cc_dd_ee_ff");
+    expect(parseBlockedClientMacs("before\n__BLOCKED__\nAA:bb:CC:dd:EE:ff\n")).toEqual(new Set(["AA:BB:CC:DD:EE:FF"]));
     expect(() => buildBlockClientCommand("not-a-mac")).toThrow("MAC 地址格式无效");
+  });
+
+  it("删除指定无线段并在访客网络时清理关联配置", () => {
+    expect(buildWifiDeleteCommand("home")).toBe("uci -q delete wireless.home; uci commit wireless; wifi reload");
+    expect(buildWifiDeleteCommand("openwrt_app_guest")).toContain("uci -q delete firewall.openwrt_app_guest_to_wan");
+    expect(() => buildWifiDeleteCommand("home; reboot")).toThrow("无线配置段格式无效");
   });
 
   it("解析无线 UCI 配置和服务快照", () => {

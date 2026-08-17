@@ -10,6 +10,7 @@ import { useManagedSsh } from "@/hooks/use-managed-ssh";
 import {
   buildGuestNetworkCommand,
   buildWifiClientSnapshotCommand,
+  buildWifiDeleteCommand,
   buildWifiQrValue,
   buildWifiSnapshotCommand,
   buildWifiSsidCommand,
@@ -82,6 +83,13 @@ export default function WirelessManagerScreen() {
     ]);
   }, [draftSsids, execute, refresh]);
 
+  const deleteNetwork = useCallback((network: WifiConfigEntry) => {
+    Alert.alert("删除无线网络", `确定删除 “${network.ssid}” 吗？此操作会删除该无线配置并重新加载 Wi‑Fi。${network.section === "openwrt_app_guest" ? "同时会清理应用创建的访客网络、DHCP 和防火墙配置。" : ""}`, [
+      { text: "取消", style: "cancel" },
+      { text: "确认删除", style: "destructive", onPress: () => { void execute(buildWifiDeleteCommand(network.section)).then(refresh).catch(() => undefined); } },
+    ]);
+  }, [execute, refresh]);
+
   const createGuest = useCallback(() => {
     const radio = networks[0]?.device;
     if (!radio) return;
@@ -102,7 +110,7 @@ export default function WirelessManagerScreen() {
       <SectionCard title="无线网络" action={<Pressable accessibilityRole="button" onPress={() => void refresh()} disabled={disabled} style={({ pressed }) => [styles.refresh, pressed && styles.pressed]}><MaterialIcons name="refresh" size={19} color={colors.primary} /></Pressable>}>
         {isLoading ? <View style={styles.center}><ActivityIndicator color={colors.primary} /><Text style={[styles.helper, { color: colors.muted }]}>正在读取无线配置…</Text></View> : networks.length ? networks.map((network, index) => <View key={network.section} style={[styles.network, index > 0 && { borderTopColor: colors.border, borderTopWidth: 1 }]}>
           <View style={styles.networkTop}><View style={styles.networkCopy}><Text style={[styles.sectionId, { color: colors.muted }]}>{network.device}</Text><TextInput value={draftSsids[network.section] ?? network.ssid} onChangeText={(value) => setDraftSsids((previous) => ({ ...previous, [network.section]: value }))} maxLength={32} editable={!disabled} style={[styles.ssidInput, { color: colors.foreground, borderColor: colors.border, backgroundColor: colors.background }]} /><Pressable accessibilityRole="button" onPress={() => saveSsid(network)} disabled={disabled || (draftSsids[network.section] ?? network.ssid) === network.ssid} style={({ pressed }) => [styles.saveSsid, { borderColor: colors.primary }, pressed && styles.pressed]}><Text style={[styles.saveSsidText, { color: colors.primary }]}>保存名称</Text></Pressable></View><Switch value={!network.disabled} onValueChange={(value) => toggleNetwork(network, value)} disabled={disabled} trackColor={{ false: colors.border, true: colors.primary }} /></View>
-          <StatusPill label={network.disabled ? "已关闭" : "已开启"} tone={network.disabled ? "warning" : "success"} />
+          <View style={styles.networkActions}><StatusPill label={network.disabled ? "已关闭" : "已开启"} tone={network.disabled ? "warning" : "success"} /><Pressable accessibilityRole="button" accessibilityLabel={`删除 ${network.ssid}`} onPress={() => deleteNetwork(network)} disabled={disabled} style={({ pressed }) => [styles.deleteButton, { borderColor: colors.error }, pressed && styles.pressed, disabled && styles.disabled]}><MaterialIcons name="delete-outline" size={16} color={colors.error} /><Text style={[styles.deleteText, { color: colors.error }]}>删除</Text></Pressable></View>
         </View>) : <View style={styles.center}><Text style={[styles.helper, { color: colors.muted }]}>未读取到可编辑的无线配置。</Text></View>}
       </SectionCard>
       <SectionCard title={`无线客户端 · ${clients.length}`}>
@@ -117,5 +125,5 @@ export default function WirelessManagerScreen() {
 }
 
 const styles = StyleSheet.create({
-  refresh: { padding: 4 }, center: { minHeight: 72, alignItems: "center", justifyContent: "center", gap: 8, padding: 16 }, helper: { fontSize: 12, lineHeight: 18 }, network: { padding: 15, gap: 10 }, networkTop: { flexDirection: "row", gap: 12, alignItems: "flex-start" }, networkCopy: { flex: 1, gap: 7 }, sectionId: { fontSize: 11, fontWeight: "700", textTransform: "uppercase" }, ssidInput: { borderWidth: 1, borderRadius: 10, minHeight: 42, paddingHorizontal: 11, fontSize: 15, fontWeight: "700" }, saveSsid: { alignSelf: "flex-start", borderWidth: 1, borderRadius: 9, paddingHorizontal: 10, paddingVertical: 7 }, saveSsidText: { fontSize: 12, fontWeight: "800" }, clientRow: { minHeight: 68, padding: 14, flexDirection: "row", alignItems: "center", gap: 11 }, clientIcon: { width: 35, height: 35, borderRadius: 11, alignItems: "center", justifyContent: "center" }, clientCopy: { flex: 1, gap: 3 }, clientMac: { fontSize: 14, fontWeight: "800" }, guestForm: { padding: 15, gap: 11 }, input: { borderWidth: 1, borderRadius: 11, minHeight: 46, paddingHorizontal: 12, fontSize: 15 }, guestButton: { minHeight: 48, borderRadius: 12, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 8 }, guestButtonText: { color: "#FFFFFF", fontSize: 15, fontWeight: "800" }, qrArea: { alignItems: "center", gap: 10, borderRadius: 14, paddingVertical: 18, marginTop: 2 }, qrCaption: { color: "#12313A", fontSize: 13, fontWeight: "700" }, error: { fontSize: 13, lineHeight: 19 }, pressed: { opacity: 0.72 }, disabled: { opacity: 0.45 },
+  refresh: { padding: 4 }, center: { minHeight: 72, alignItems: "center", justifyContent: "center", gap: 8, padding: 16 }, helper: { fontSize: 12, lineHeight: 18 }, network: { padding: 15, gap: 10 }, networkTop: { flexDirection: "row", gap: 12, alignItems: "flex-start" }, networkCopy: { flex: 1, gap: 7 }, sectionId: { fontSize: 11, fontWeight: "700", textTransform: "uppercase" }, ssidInput: { borderWidth: 1, borderRadius: 10, minHeight: 42, paddingHorizontal: 11, fontSize: 15, fontWeight: "700" }, saveSsid: { alignSelf: "flex-start", borderWidth: 1, borderRadius: 9, paddingHorizontal: 10, paddingVertical: 7 }, saveSsidText: { fontSize: 12, fontWeight: "800" }, networkActions: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 10 }, deleteButton: { minHeight: 31, borderWidth: 1, borderRadius: 9, paddingHorizontal: 9, flexDirection: "row", alignItems: "center", gap: 4 }, deleteText: { fontSize: 12, fontWeight: "800" }, clientRow: { minHeight: 68, padding: 14, flexDirection: "row", alignItems: "center", gap: 11 }, clientIcon: { width: 35, height: 35, borderRadius: 11, alignItems: "center", justifyContent: "center" }, clientCopy: { flex: 1, gap: 3 }, clientMac: { fontSize: 14, fontWeight: "800" }, guestForm: { padding: 15, gap: 11 }, input: { borderWidth: 1, borderRadius: 11, minHeight: 46, paddingHorizontal: 12, fontSize: 15 }, guestButton: { minHeight: 48, borderRadius: 12, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 8 }, guestButtonText: { color: "#FFFFFF", fontSize: 15, fontWeight: "800" }, qrArea: { alignItems: "center", gap: 10, borderRadius: 14, paddingVertical: 18, marginTop: 2 }, qrCaption: { color: "#12313A", fontSize: 13, fontWeight: "700" }, error: { fontSize: 13, lineHeight: 19 }, pressed: { opacity: 0.72 }, disabled: { opacity: 0.45 },
 });

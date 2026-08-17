@@ -81,13 +81,13 @@ export function parseConnectedClients(output: string): ConnectedClient[] {
 }
 
 export function buildClientSnapshotCommand() {
-  return "printf '__LEASES__\\n'; ubus call dhcp ipv4leases 2>/dev/null | jsonfilter -e '@.device[*]' 2>/dev/null; cat /tmp/dhcp.leases 2>/dev/null; printf '__NEIGH__\\n'; ip neigh show 2>/dev/null";
+  return "printf '__LEASES__\\n'; ubus call dhcp ipv4leases 2>/dev/null | jsonfilter -e '@.device[*]' 2>/dev/null; cat /tmp/dhcp.leases 2>/dev/null; printf '__NEIGH__\\n'; ip neigh show 2>/dev/null; printf '__BLOCKED__\\n'; uci -q show firewall | grep -E '^firewall\\.openwrt_app_block_.*\\.src_mac=' 2>/dev/null";
 }
 
 export function buildBlockClientCommand(mac: string) {
   const normalized = requireMac(mac);
   const section = `openwrt_app_block_${normalized.replace(/:/g, "_").toLowerCase()}`;
-  return `uci -q delete firewall.${section}; uci set firewall.${section}=rule; uci set firewall.${section}.name=${shellQuote(`OpenWrt App block ${normalized}`)}; uci set firewall.${section}.src='lan'; uci add_list firewall.${section}.src_mac=${shellQuote(normalized)}; uci set firewall.${section}.target='REJECT'; uci commit firewall; /etc/init.d/firewall reload`;
+  return `uci -q delete firewall.${section}; uci set firewall.${section}=rule; uci set firewall.${section}.name=${shellQuote(`OpenWrt App block ${normalized}`)}; uci set firewall.${section}.src='lan'; uci set firewall.${section}.dest='*'; uci add_list firewall.${section}.src_mac=${shellQuote(normalized)}; uci set firewall.${section}.target='REJECT'; uci commit firewall; /etc/init.d/firewall reload`;
 }
 
 export function buildUnblockClientCommand(mac: string) {
@@ -123,6 +123,21 @@ export function buildWifiSsidCommand(section: string, ssid: string) {
   const nextSsid = ssid.trim();
   if (!nextSsid || nextSsid.length > 32) throw new Error("SSID 必须为 1–32 个字符。");
   return `uci set wireless.${safeSection}.ssid=${shellQuote(nextSsid)}; uci commit wireless; wifi reload`;
+}
+
+export function buildWifiDeleteCommand(section: string) {
+  const safeSection = requireIdentifier(section, "无线配置段");
+  const guestCleanup = safeSection === "openwrt_app_guest"
+    ? "; uci -q delete network.guest; uci -q delete dhcp.guest; uci -q delete firewall.guest; uci -q delete firewall.openwrt_app_guest_to_wan; uci commit network; uci commit dhcp; uci commit firewall; /etc/init.d/network reload; /etc/init.d/dnsmasq restart; /etc/init.d/firewall reload"
+    : "";
+  return `uci -q delete wireless.${safeSection}; uci commit wireless${guestCleanup}; wifi reload`;
+}
+
+export function parseBlockedClientMacs(output: string) {
+  const markerIndex = output.indexOf("__BLOCKED__");
+  if (markerIndex < 0) return new Set<string>();
+  const matches = output.slice(markerIndex).match(/([0-9A-Fa-f]{2}(?::[0-9A-Fa-f]{2}){5})/g) ?? [];
+  return new Set(matches.map((mac) => mac.toUpperCase()));
 }
 
 export function buildWifiSnapshotCommand() {

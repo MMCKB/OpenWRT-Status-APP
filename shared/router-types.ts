@@ -14,6 +14,8 @@ export interface RouterSettings {
   refreshIntervalSeconds: number;
   /** Empty means automatically display the primary WAN; otherwise uses explicit interface IDs. */
   trafficInterfaceIds: string[];
+  /** Full includes rate charts; compact keeps only concise throughput values. */
+  statusTrafficView: "full" | "compact";
 }
 
 export interface SystemStatus {

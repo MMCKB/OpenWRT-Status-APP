@@ -1,6 +1,6 @@
 import { createContext, type ReactNode, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
 
-import { fetchRouterStatus, normalizeRouterEndpoint } from "@/lib/openwrt-client";
+import { fetchRouterStatus, fetchRouterTraffic, normalizeRouterEndpoint } from "@/lib/openwrt-client";
 import { recordWanTrafficHistory } from "@/lib/traffic-history";
 import {
   loadPassword,
@@ -25,6 +25,7 @@ interface RouterContextValue {
   selectedStatus: RouterStatus | null;
   isReady: boolean;
   isRefreshing: boolean;
+  isTrafficRefreshing: boolean;
   setSelectedRouter: (routerId: string) => Promise<void>;
   saveProfile: (draft: RouterDraft, password: string, sshPassword: string, id?: string) => Promise<RouterProfile>;
   deleteProfile: (routerId: string) => Promise<void>;
@@ -32,6 +33,7 @@ interface RouterContextValue {
   refreshStatus: () => Promise<RouterStatus | null>;
   updateRefreshInterval: (seconds: number) => Promise<void>;
   updateTrafficInterfaceIds: (interfaceIds: string[]) => Promise<void>;
+  updateStatusTrafficView: (view: "full" | "compact") => Promise<void>;
   getSelectedCredentials: () => Promise<{ luciPassword: string | null; sshPassword: string } | null>;
 }
 
@@ -43,11 +45,13 @@ function makeId() {
 
 export function RouterProvider({ children }: { children: ReactNode }) {
   const [profiles, setProfiles] = useState<RouterProfile[]>([]);
-  const [settings, setSettings] = useState<RouterSettings>({ selectedRouterId: null, refreshIntervalSeconds: 60, trafficInterfaceIds: [] });
+  const [settings, setSettings] = useState<RouterSettings>({ selectedRouterId: null, refreshIntervalSeconds: 60, trafficInterfaceIds: [], statusTrafficView: "full" });
   const [selectedStatus, setSelectedStatus] = useState<RouterStatus | null>(null);
   const [isReady, setIsReady] = useState(false);
   const [isRefreshing, setIsRefreshing] = useState(false);
+  const [isTrafficRefreshing, setIsTrafficRefreshing] = useState(false);
   const refreshInFlightRef = useRef(false);
+  const trafficRefreshInFlightRef = useRef(false);
 
   const selectedProfile = useMemo(
     () => profiles.find((profile) => profile.id === settings.selectedRouterId) ?? null,
@@ -116,13 +120,35 @@ export function RouterProvider({ children }: { children: ReactNode }) {
     }
   }, [profiles, selectedProfile, selectedStatus]);
 
+  const refreshTraffic = useCallback(async () => {
+    if (!selectedProfile || trafficRefreshInFlightRef.current) return;
+    trafficRefreshInFlightRef.current = true;
+    setIsTrafficRefreshing(true);
+    try {
+      const password = await loadPassword(selectedProfile.id);
+      if (!password) return;
+      const traffic = await fetchRouterTraffic(selectedProfile.baseUrl, selectedProfile.username, password);
+      setSelectedStatus((current) => current ? { ...current, interfaces: traffic.interfaces, fetchedAt: traffic.fetchedAt, online: true, error: undefined } : current);
+      void recordWanTrafficHistory(selectedProfile.id, traffic.interfaces, traffic.fetchedAt);
+    } catch {
+      // A transient counter sample must not replace the full status or interrupt other pages.
+    } finally {
+      trafficRefreshInFlightRef.current = false;
+      setIsTrafficRefreshing(false);
+    }
+  }, [selectedProfile]);
+
   useEffect(() => {
     if (!isReady || !selectedProfile || settings.refreshIntervalSeconds <= 0) return;
     const timer = setInterval(() => {
-      void refreshStatus();
+      if (settings.refreshIntervalSeconds === 1) {
+        void refreshTraffic();
+      } else {
+        void refreshStatus();
+      }
     }, Math.max(1, settings.refreshIntervalSeconds) * 1000);
     return () => clearInterval(timer);
-  }, [isReady, refreshStatus, selectedProfile, settings.refreshIntervalSeconds]);
+  }, [isReady, refreshStatus, refreshTraffic, selectedProfile, settings.refreshIntervalSeconds]);
 
   const setSelectedRouter = useCallback(async (routerId: string) => {
     const next = { ...settings, selectedRouterId: routerId };
@@ -193,6 +219,12 @@ export function RouterProvider({ children }: { children: ReactNode }) {
     await saveSettings(next);
   }, [settings]);
 
+  const updateStatusTrafficView = useCallback(async (view: "full" | "compact") => {
+    const next = { ...settings, statusTrafficView: view };
+    setSettings(next);
+    await saveSettings(next);
+  }, [settings]);
+
   const getSelectedCredentials = useCallback(async () => {
     if (!selectedProfile) return null;
     const [luciPassword, sshPassword] = await Promise.all([
@@ -211,6 +243,7 @@ export function RouterProvider({ children }: { children: ReactNode }) {
     selectedStatus,
     isReady,
     isRefreshing,
+    isTrafficRefreshing,
     setSelectedRouter,
     saveProfile,
     deleteProfile,
@@ -218,8 +251,9 @@ export function RouterProvider({ children }: { children: ReactNode }) {
     refreshStatus,
     updateRefreshInterval,
     updateTrafficInterfaceIds,
+    updateStatusTrafficView,
     getSelectedCredentials,
-  }), [profiles, settings, selectedProfile, selectedStatus, isReady, isRefreshing, setSelectedRouter, saveProfile, deleteProfile, testConnection, refreshStatus, updateRefreshInterval, updateTrafficInterfaceIds, getSelectedCredentials]);
+  }), [profiles, settings, selectedProfile, selectedStatus, isReady, isRefreshing, isTrafficRefreshing, setSelectedRouter, saveProfile, deleteProfile, testConnection, refreshStatus, updateRefreshInterval, updateTrafficInterfaceIds, updateStatusTrafficView, getSelectedCredentials]);
 
   return <RouterContext.Provider value={value}>{children}</RouterContext.Provider>;
 }

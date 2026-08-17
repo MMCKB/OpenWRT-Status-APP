@@ -13,6 +13,7 @@ const defaultSettings: RouterSettings = {
   selectedRouterId: null,
   refreshIntervalSeconds: 60,
   trafficInterfaceIds: [],
+  statusTrafficView: "full",
 };
 
 function passwordKey(routerId: string) {
@@ -75,6 +76,7 @@ export async function loadSettings(): Promise<RouterSettings> {
       trafficInterfaceIds: Array.isArray(decoded.trafficInterfaceIds)
         ? decoded.trafficInterfaceIds.filter((item): item is string => typeof item === "string")
         : defaultSettings.trafficInterfaceIds,
+      statusTrafficView: decoded.statusTrafficView === "compact" ? "compact" : "full",
     };
   } catch {
     return defaultSettings;
