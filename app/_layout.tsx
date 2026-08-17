@@ -22,6 +22,7 @@ import type { EdgeInsets, Metrics, Rect } from "react-native-safe-area-context";
 import { trpc, createTRPCClient } from "@/lib/trpc";
 import { initManusRuntime, subscribeSafeAreaInsets } from "@/lib/_core/manus-runtime";
 import { SplashLoader } from "@/components/splash-loader";
+import { RouterProvider, useRouterStore } from "@/lib/router-provider";
 
 const DEFAULT_WEB_INSETS: EdgeInsets = { top: 0, right: 0, bottom: 0, left: 0 };
 const DEFAULT_WEB_FRAME: Rect = { x: 0, y: 0, width: 0, height: 0 };
@@ -90,27 +91,12 @@ export default function RootLayout() {
       <GestureHandlerRootView style={{ flex: 1 }}>
         <trpc.Provider client={trpcClient} queryClient={queryClient}>
           <QueryClientProvider client={queryClient}>
-            <SafeAreaView style={{ flex: 1, backgroundColor: colors.background }} edges={["top", "left", "right"]}>
-              <Stack screenOptions={{ headerShown: false, contentStyle: { backgroundColor: colors.background }, animation: "default" }}>
-                <Stack.Screen name="(tabs)" />
-                <Stack.Screen name="files" options={{ gestureEnabled: true }} />
-                <Stack.Screen name="firmware" options={{ gestureEnabled: true }} />
-                <Stack.Screen name="packages" options={{ gestureEnabled: true }} />
-                <Stack.Screen name="clients" options={{ gestureEnabled: true }} />
-                <Stack.Screen name="traffic" options={{ gestureEnabled: true }} />
-                <Stack.Screen name="diagnostics" options={{ gestureEnabled: true }} />
-                <Stack.Screen name="wireless-manager" options={{ gestureEnabled: true }} />
-                <Stack.Screen name="maintenance-tools" options={{ gestureEnabled: true }} />
-                <Stack.Screen name="quick-actions" options={{ gestureEnabled: true }} />
-                <Stack.Screen name="services-health" options={{ gestureEnabled: true }} />
-                <Stack.Screen name="logs" options={{ gestureEnabled: true }} />
-                <Stack.Screen name="firewall" options={{ gestureEnabled: true }} />
-                <Stack.Screen name="bulk-operations" options={{ gestureEnabled: true }} />
-                <Stack.Screen name="about" options={{ gestureEnabled: true }} />
-                <Stack.Screen name="oauth/callback" />
-              </Stack>
-              <StatusBar style={colorScheme === "dark" ? "light" : "dark"} backgroundColor={colors.background} />
-            </SafeAreaView>
+            <RouterProvider>
+              <SafeAreaView style={{ flex: 1, backgroundColor: colors.background }} edges={["top", "left", "right"]}>
+                <RootNavigator />
+                <StatusBar style={colorScheme === "dark" ? "light" : "dark"} backgroundColor={colors.background} />
+              </SafeAreaView>
+            </RouterProvider>
           </QueryClientProvider>
         </trpc.Provider>
       </GestureHandlerRootView>
@@ -140,5 +126,30 @@ export default function RootLayout() {
     <ThemeProvider>
       <SafeAreaProvider initialMetrics={providerInitialMetrics}>{content}</SafeAreaProvider>
     </ThemeProvider>
+  );
+}
+
+function RootNavigator() {
+  const colors = useColors();
+  const { settings } = useRouterStore();
+  return (
+    <Stack screenOptions={{ headerShown: false, contentStyle: { backgroundColor: colors.background }, animation: "default", gestureEnabled: settings.predictiveBackEnabled }}>
+      <Stack.Screen name="(tabs)" />
+      <Stack.Screen name="files" options={{ gestureEnabled: settings.predictiveBackEnabled }} />
+      <Stack.Screen name="firmware" options={{ gestureEnabled: settings.predictiveBackEnabled }} />
+      <Stack.Screen name="packages" options={{ gestureEnabled: settings.predictiveBackEnabled }} />
+      <Stack.Screen name="clients" options={{ gestureEnabled: settings.predictiveBackEnabled }} />
+      <Stack.Screen name="traffic" options={{ gestureEnabled: settings.predictiveBackEnabled }} />
+      <Stack.Screen name="diagnostics" options={{ gestureEnabled: settings.predictiveBackEnabled }} />
+      <Stack.Screen name="wireless-manager" options={{ gestureEnabled: settings.predictiveBackEnabled }} />
+      <Stack.Screen name="maintenance-tools" options={{ gestureEnabled: settings.predictiveBackEnabled }} />
+      <Stack.Screen name="quick-actions" options={{ gestureEnabled: settings.predictiveBackEnabled }} />
+      <Stack.Screen name="services-health" options={{ gestureEnabled: settings.predictiveBackEnabled }} />
+      <Stack.Screen name="logs" options={{ gestureEnabled: settings.predictiveBackEnabled }} />
+      <Stack.Screen name="firewall" options={{ gestureEnabled: settings.predictiveBackEnabled }} />
+      <Stack.Screen name="bulk-operations" options={{ gestureEnabled: settings.predictiveBackEnabled }} />
+      <Stack.Screen name="about" options={{ gestureEnabled: settings.predictiveBackEnabled }} />
+      <Stack.Screen name="oauth/callback" />
+    </Stack>
   );
 }

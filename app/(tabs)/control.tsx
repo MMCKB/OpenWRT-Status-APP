@@ -1,6 +1,6 @@
 import MaterialIcons from "@expo/vector-icons/MaterialIcons";
 import { useEffect, useRef, useState } from "react";
-import { ActivityIndicator, KeyboardAvoidingView, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from "react-native";
+import { ActivityIndicator, Keyboard, KeyboardAvoidingView, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from "react-native";
 
 import { EmptyState, StatusPill } from "@/components/status-ui";
 import { useColors } from "@/hooks/use-colors";
@@ -30,6 +30,19 @@ export default function ControlScreen() {
   const [historyIndex, setHistoryIndex] = useState(-1);
 
   useEffect(() => () => disconnectInAppSsh(), []);
+
+  useEffect(() => {
+    const showEvent = Platform.OS === "ios" ? "keyboardWillShow" : "keyboardDidShow";
+    const hideEvent = Platform.OS === "ios" ? "keyboardWillHide" : "keyboardDidHide";
+    const show = Keyboard.addListener(showEvent, (event) => {
+      requestAnimationFrame(() => terminalRef.current?.scrollToEnd({ animated: true }));
+    });
+    const hide = Keyboard.addListener(hideEvent, () => undefined);
+    return () => {
+      show.remove();
+      hide.remove();
+    };
+  }, []);
 
   const profile = selectedProfile;
   if (!profile) {
@@ -98,7 +111,11 @@ export default function ControlScreen() {
   }
 
   return (
-    <KeyboardAvoidingView style={[styles.screen, { backgroundColor: colors.background }]} behavior={Platform.OS === "ios" ? "padding" : "height"} keyboardVerticalOffset={0}>
+    <KeyboardAvoidingView
+      style={[styles.screen, { backgroundColor: colors.background }]}
+      behavior={Platform.select({ ios: "padding", android: "height" })}
+      keyboardVerticalOffset={0}
+    >
       <View style={[styles.topBar, { backgroundColor: colors.surface, borderBottomColor: colors.border }]}>
         <View style={styles.identityWrap}>
           <View style={[styles.terminalBadge, { backgroundColor: isDark ? "#143734" : "#E6F5F4" }]}><MaterialIcons name="terminal" size={19} color={colors.primary} /></View>
@@ -135,6 +152,7 @@ export default function ControlScreen() {
           editable={connection === "connected" && !isRunning}
           returnKeyType="send"
           onSubmitEditing={() => void execute()}
+          onFocus={() => requestAnimationFrame(() => terminalRef.current?.scrollToEnd({ animated: true }))}
         />
         <Pressable accessibilityRole="button" accessibilityLabel="执行 SSH 命令" disabled={connection !== "connected" || isRunning || !command.trim()} onPress={() => void execute()} style={({ pressed }) => [styles.sendButton, { backgroundColor: colors.primary }, (connection !== "connected" || isRunning || !command.trim()) && styles.sendDisabled, pressed && styles.toolPressed]}>{isRunning ? <ActivityIndicator size="small" color="#FFFFFF" /> : <MaterialIcons name="arrow-upward" size={20} color="#FFFFFF" />}</Pressable>
       </View>
@@ -156,7 +174,7 @@ const styles = StyleSheet.create({
   platformBanner: { flexDirection: "row", alignItems: "flex-start", gap: 8, paddingHorizontal: 16, paddingVertical: 10, borderBottomWidth: 1 },
   platformText: { flex: 1, fontSize: 12, lineHeight: 18 },
   terminalScroll: { flex: 1 },
-  terminalContent: { flexGrow: 1, padding: 16, paddingBottom: 28 },
+  terminalContent: { flexGrow: 1, padding: 16, paddingBottom: 14 },
   terminalText: { fontSize: 13, lineHeight: 20, fontFamily: Platform.select({ ios: "Menlo", android: "monospace", default: "monospace" }) },
   runningLine: { flexDirection: "row", alignItems: "center", gap: 8, marginTop: 12 },
   runningText: { fontSize: 12, fontFamily: Platform.select({ ios: "Menlo", android: "monospace", default: "monospace" }) },

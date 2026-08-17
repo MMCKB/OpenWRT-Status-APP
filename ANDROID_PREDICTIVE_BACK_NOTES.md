@@ -22,6 +22,10 @@
 
 Expo Router 的 `ExperimentalStack` 才提供原生预测性返回支持，但该 API 从 Expo SDK 56 起才以 alpha 形式提供，不能安全地混入本项目 SDK 54 的标准 Stack。
 
+## 设置页开关的实现边界
+
+`android:enableOnBackInvokedCallback` 是 Android Manifest 的构建期配置，不能由 React Native 在应用运行时安全切换。本应用会将设置页的“预测性返回手势”开关实现为持久化的**返回手势兼容模式**偏好：默认开启可靠的 Android 边缘返回与 Expo Router 栈返回；关闭时仅关闭应用内部对返回手势的补充处理。真正的 Android 13+ 返回预览动画继续保持关闭，以避免 React Navigation 当前已知的“边缘返回直接结束 Activity”问题。
+
 ### 参考
 
 - [Android Developers：Add support for the predictive back gesture](https://developer.android.com/guide/navigation/custom-back/predictive-back-gesture)
