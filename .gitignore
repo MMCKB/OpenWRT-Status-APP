@@ -64,3 +64,4 @@ Thumbs.db
 # Webdev artifacts (checkpoint zips, migrations, etc.)
 .webdev/
 .project-config.json
+/public/download/openwrt-status-debug.apk

@@ -305,14 +305,25 @@ function withOpenWrtSsh(config) {
     const destination = path.join(modConfig.modRequest.platformProjectRoot, "app", "src", "main", "java", ...JAVA_PACKAGE.split("."));
     fs.mkdirSync(destination, { recursive: true });
     Object.entries(SOURCE_FILES).forEach(([name, source]) => fs.writeFileSync(path.join(destination, name), source));
-    const xmlDirectory = path.join(modConfig.modRequest.platformProjectRoot, "app", "src", "main", "res", "xml");
+    const resourcesDirectory = path.join(modConfig.modRequest.platformProjectRoot, "app", "src", "main", "res");
+    const xmlDirectory = path.join(resourcesDirectory, "xml");
+    const valuesDirectory = path.join(resourcesDirectory, "values");
     fs.mkdirSync(xmlDirectory, { recursive: true });
+    fs.mkdirSync(valuesDirectory, { recursive: true });
+    fs.writeFileSync(path.join(valuesDirectory, "openwrt_strings.xml"), `<?xml version="1.0" encoding="utf-8"?>
+<resources>
+  <string name="openwrt_shortcut_quick_short">快捷操作</string>
+  <string name="openwrt_shortcut_quick_long">OpenWrt 快捷操作</string>
+  <string name="openwrt_shortcut_diagnostics_short">网络诊断</string>
+  <string name="openwrt_shortcut_diagnostics_long">按 WAN 网络诊断</string>
+</resources>
+`);
     fs.writeFileSync(path.join(xmlDirectory, "openwrt_status_shortcuts.xml"), `<?xml version="1.0" encoding="utf-8"?>
 <shortcuts xmlns:android="http://schemas.android.com/apk/res/android">
-  <shortcut android:shortcutId="openwrt_quick_actions" android:enabled="true" android:icon="@mipmap/ic_launcher" android:shortcutShortLabel="快捷操作" android:shortcutLongLabel="OpenWrt 快捷操作">
+  <shortcut android:shortcutId="openwrt_quick_actions" android:enabled="true" android:icon="@mipmap/ic_launcher" android:shortcutShortLabel="@string/openwrt_shortcut_quick_short" android:shortcutLongLabel="@string/openwrt_shortcut_quick_long">
     <intent android:action="android.intent.action.VIEW" android:data="${appScheme}:///quick-actions" />
   </shortcut>
-  <shortcut android:shortcutId="openwrt_diagnostics" android:enabled="true" android:icon="@mipmap/ic_launcher" android:shortcutShortLabel="网络诊断" android:shortcutLongLabel="按 WAN 网络诊断">
+  <shortcut android:shortcutId="openwrt_diagnostics" android:enabled="true" android:icon="@mipmap/ic_launcher" android:shortcutShortLabel="@string/openwrt_shortcut_diagnostics_short" android:shortcutLongLabel="@string/openwrt_shortcut_diagnostics_long">
     <intent android:action="android.intent.action.VIEW" android:data="${appScheme}:///diagnostics" />
   </shortcut>
 </shortcuts>
