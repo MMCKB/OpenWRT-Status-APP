@@ -55,7 +55,12 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     // Keep “follow system” live while Android changes uiMode, including a switch
     // made in system settings while this application is temporarily backgrounded.
-    const syncSystemScheme = () => setSystemScheme(readSystemScheme());
+    // Some OEM Android builds do not emit Appearance changes for a foreground
+    // activity, so the short active-only probe closes that native event gap.
+    const syncSystemScheme = () => {
+      const nextScheme = readSystemScheme();
+      setSystemScheme((currentScheme) => currentScheme === nextScheme ? currentScheme : nextScheme);
+    };
     syncSystemScheme();
     const subscription = Appearance.addChangeListener(({ colorScheme: nextScheme }) => {
       setSystemScheme(nextScheme === "dark" ? "dark" : "light");
@@ -68,6 +73,15 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
       appStateSubscription.remove();
     };
   }, []);
+
+  useEffect(() => {
+    if (themePreference !== "system") return;
+    const interval = setInterval(() => {
+      const nextScheme = readSystemScheme();
+      setSystemScheme((currentScheme) => currentScheme === nextScheme ? currentScheme : nextScheme);
+    }, 750);
+    return () => clearInterval(interval);
+  }, [themePreference]);
 
   useEffect(() => {
     applyScheme(colorScheme);

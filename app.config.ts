@@ -47,7 +47,7 @@ const config: ExpoConfig = {
       projectId: "c4d4af65-fe2b-4803-8ba9-5efecb95d126",
     },
   },
-  version: "1.0.4",
+  version: "1.0.5",
   orientation: "portrait",
   icon: "./assets/images/icon.png",
   scheme: env.scheme,
@@ -132,7 +132,8 @@ const config: ExpoConfig = {
       "expo-build-properties",
       {
         android: {
-          buildArchs: ["armeabi-v7a", "arm64-v8a"],
+          // 保留 Expo 新架构；输出兼容实体机与模拟器的四种 Android ABI。
+          buildArchs: ["armeabi-v7a", "arm64-v8a", "x86", "x86_64"],
           minSdkVersion: 24,
           usesCleartextTraffic: true,
           packagingOptions: {

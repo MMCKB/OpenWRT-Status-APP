@@ -20,11 +20,13 @@ import {
   type ApkPackage,
 } from "@/lib/router-package-commands";
 import { useRouterStore } from "@/lib/router-provider";
+import { useThemedStyles } from "@/lib/use-themed-styles";
 
 type ConnectionState = "idle" | "connecting" | "connected" | "error";
 type TabFilter = "installed" | "updates" | "search";
 
 export default function PackagesScreen() {
+  const styles = useThemedStyles(baseStyles);
   const router = useRouter();
   const { profiles, selectedProfile, getSelectedCredentials } = useRouterStore();
 
@@ -372,7 +374,7 @@ export default function PackagesScreen() {
   );
 }
 
-const styles = StyleSheet.create({
+const baseStyles = StyleSheet.create({
   screen: { flex: 1, backgroundColor: "#F6F8FA" },
   blankScreen: { flex: 1, backgroundColor: "#F6F8FA" },
   nav: { minHeight: 58, paddingHorizontal: 20, flexDirection: "row", alignItems: "center", gap: 11, backgroundColor: "#F6F8FA" },

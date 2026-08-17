@@ -10,6 +10,8 @@
 | Android 包名 | `com.app.openwrtstatusapp` |
 | 安装测试 APK 配置 | Debug APK |
 | 商店发布构建 | 已配置 EAS `production` AAB；本地发布需自行签名 |
+| React Native 新架构 | 已保留，`newArchEnabled: true` |
+| Android ABI | `arm64-v8a`、`armeabi-v7a`、`x86`、`x86_64` |
 
 ## 1. 准备开发环境
 
@@ -62,6 +64,8 @@ pnpm exec expo run:android --device
 
 该流程会生成 `android/` 目录，编译、安装 Debug 版本并启动 Metro。Expo 官方说明，`expo run:android` 会在原生目录不存在时先运行预构建，随后把 Debug 版本安装至设备或模拟器。[1]
 
+> 本项目**保留 Expo / React Native 新架构**，没有关闭 `newArchEnabled`。`expo-build-properties` 已配置四种 Android ABI；其中两个 ARM ABI 面向实体机，两个 x86 ABI 便于 Android 模拟器或 x86 设备。Expo 的 `buildArchs` 支持这四种 ABI。[3]
+
 完成首次安装后，如果只修改 TypeScript、TSX、样式或业务逻辑，可直接执行：
 
 ```bash
@@ -79,6 +83,14 @@ pnpm exec expo prebuild --platform android --clean
 cd android
 ./gradlew assembleDebug
 ```
+
+如需显式输出全部已配置的 ABI，请直接使用上述命令。若只需快速调试单一设备，可临时指定 ABI；例如为 64 位 ARM 真机构建：
+
+```bash
+./gradlew assembleDebug -PreactNativeArchitectures=arm64-v8a
+```
+
+在 Windows PowerShell 中，将 `./gradlew` 替换为 `./gradlew.bat`。不要把这个临时参数写入项目配置，否则会缩小最终 APK 的兼容范围。
 
 Windows PowerShell/CMD 请使用：
 
@@ -118,9 +130,12 @@ pnpm exec eas build --platform android --profile preview
 | SSH 功能在 Expo Go 中不可用 | 正常现象。此项目需要通过 `expo run:android` 或 APK 安装原生模块。 |
 | 修改 SSH 插件后没有生效 | 重新执行 `pnpm exec expo prebuild --platform android --clean` 后再编译。 |
 | 安装提示签名冲突 | 卸载设备上的旧包，或使用同一签名密钥重新构建。 |
+| 新架构 CMake 编译占用较高 | 保持已启用的新架构，关闭不必要的 Android Studio、模拟器和 Metro，再使用单 ABI 调试命令；最终发布时取消 ABI 限制。 |
 
 ## References
 
 [1] [Expo: Create a debug build locally](https://docs.expo.dev/guides/local-app-development/)
 
 [2] [Expo: Create a release build locally](https://docs.expo.dev/guides/local-app-production/)
+
+[3] [Expo BuildProperties: `buildArchs`](https://docs.expo.dev/versions/latest/sdk/build-properties/)

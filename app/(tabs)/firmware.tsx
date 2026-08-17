@@ -6,6 +6,7 @@ import { ActivityIndicator, Alert, KeyboardAvoidingView, Platform, Pressable, Sc
 
 import { connectInAppSsh, getInAppSshTarget, isInAppSshSupported, runInAppSshCommand, uploadInAppSshFile } from "@/lib/native-ssh";
 import { useRouterStore } from "@/lib/router-provider";
+import { useThemedStyles } from "@/lib/use-themed-styles";
 
 type FirmwareStep = "select" | "uploading" | "ready" | "upgrading" | "error";
 type FirmwareAsset = { name: string; uri: string; size?: number; mimeType?: string };
@@ -20,6 +21,7 @@ function safeFileName(value: string) {
 }
 
 export default function FirmwareScreen() {
+  const styles = useThemedStyles(baseStyles);
   const router = useRouter();
   const { selectedProfile, getSelectedCredentials } = useRouterStore();
   const [asset, setAsset] = useState<FirmwareAsset | null>(null);
@@ -101,7 +103,7 @@ export default function FirmwareScreen() {
   );
 }
 
-const styles = StyleSheet.create({
+const baseStyles = StyleSheet.create({
   screen: { flex: 1, backgroundColor: "#F6F8FA" }, content: { padding: 20, paddingBottom: 38, gap: 16 },
   blank: { flex: 1, backgroundColor: "#F6F8FA", alignItems: "center", justifyContent: "center", padding: 30 }, blankTitle: { color: "#102A43", fontSize: 22, fontWeight: "800" }, blankText: { color: "#60758B", marginTop: 8, textAlign: "center" },
   nav: { minHeight: 42, flexDirection: "row", alignItems: "center", justifyContent: "space-between" }, back: { width: 42, height: 42, borderRadius: 21, alignItems: "center", justifyContent: "center", backgroundColor: "#EAF1F5" }, navTitle: { color: "#203B55", fontSize: 16, fontWeight: "800" }, navSpacer: { width: 42 },
