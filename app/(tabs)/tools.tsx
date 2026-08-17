@@ -8,6 +8,9 @@ import { SectionCard } from "@/components/status-ui";
 import { useColors } from "@/hooks/use-colors";
 
 const tools = [
+  { title: "文件管理", description: "通过应用内 SSH 浏览、上传、编辑、复制、移动与管理路由器文件。", icon: "folder-open", target: "/files" },
+  { title: "软件包管理", description: "查看已安装 apk 系统包，搜索在线仓库并执行安装、卸载与更新。", icon: "extension", target: "/packages" },
+  { title: "固件升级", description: "选择 sysupgrade 镜像，经 SSH 上传后确认执行升级。", icon: "system-update", target: "/firmware" },
   { title: "已连接设备", description: "查看 DHCP 客户端与在线邻居，可安全拉黑未知设备。", icon: "devices", target: "/clients" },
   { title: "流量统计", description: "按每条 WAN 查看本机采样的日、周、月流量。", icon: "query-stats", target: "/traffic" },
   { title: "网络诊断", description: "按 WAN 执行 Ping、DNS、路由追踪和端口连通性检查。", icon: "network-check", target: "/diagnostics" },
@@ -23,7 +26,7 @@ const tools = [
 export default function ToolsScreen() {
   const colors = useColors();
   const router = useRouter();
-  return <ManagementShell title="网络工具" description="所有写入操作都会通过已保存路由器的应用内 SSH 执行，并在执行前要求确认。"><SectionCard title="路由器管理">{tools.map((item, index) => <Pressable key={item.target} accessibilityRole="button" onPress={() => router.push(item.target as never)} style={({ pressed }) => [styles.row, index > 0 && { borderTopWidth: 1, borderTopColor: colors.border }, pressed && styles.pressed]}><View style={[styles.icon, { backgroundColor: colors.background }]}><MaterialIcons name={item.icon as ComponentProps<typeof MaterialIcons>["name"]} size={21} color={colors.primary} /></View><View style={styles.copy}><Text style={[styles.rowTitle, { color: colors.foreground }]}>{item.title}</Text><Text style={[styles.rowDescription, { color: colors.muted }]}>{item.description}</Text></View><MaterialIcons name="chevron-right" size={22} color={colors.muted} /></Pressable>)}</SectionCard></ManagementShell>;
+  return <ManagementShell title="工具" description="路由器维护、诊断和服务控制集中在这里；写入操作均通过已保存路由器的应用内 SSH 执行。"><SectionCard title="路由器管理">{tools.map((item, index) => <Pressable key={item.target} accessibilityRole="button" onPress={() => router.push(item.target as never)} style={({ pressed }) => [styles.row, index > 0 && { borderTopWidth: 1, borderTopColor: colors.border }, pressed && styles.pressed]}><View style={[styles.icon, { backgroundColor: colors.background }]}><MaterialIcons name={item.icon as ComponentProps<typeof MaterialIcons>["name"]} size={21} color={colors.primary} /></View><View style={styles.copy}><Text style={[styles.rowTitle, { color: colors.foreground }]}>{item.title}</Text><Text style={[styles.rowDescription, { color: colors.muted }]}>{item.description}</Text></View><MaterialIcons name="chevron-right" size={22} color={colors.muted} /></Pressable>)}</SectionCard></ManagementShell>;
 }
 
 const styles = StyleSheet.create({

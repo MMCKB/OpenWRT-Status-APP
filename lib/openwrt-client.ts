@@ -227,6 +227,29 @@ function mapWireless(payload: unknown): WirelessStatus[] {
   });
 }
 
+/**
+ * 部分 OpenWrt 设备会提供 UCI 无线配置但不返回 network.wireless status。
+ * 以只读配置作为状态页回退，避免主页与 SSH 无线管理页出现不一致。
+ */
+function mapWirelessUciFallback(payload: unknown): WirelessStatus[] {
+  const root = asRecord(payload);
+  const values = asRecord(root.values ?? payload);
+  return Object.entries(values).flatMap(([sectionName, value]) => {
+    const section = asRecord(value);
+    const sectionType = asString(section[".type"] ?? section.type);
+    const ssid = asString(section.ssid);
+    if (sectionType !== "wifi-iface" || !ssid) return [];
+    const disabled = asString(section.disabled) === "1";
+    return [{
+      name: asString(section.ifname ?? section.device ?? section[".name"], sectionName),
+      ssid,
+      up: !disabled,
+      channel: asDisplayValue(section.channel, "配置"),
+      clients: null,
+    }];
+  });
+}
+
 export function buildRouterStatus(
   routerId: string,
   boardPayload: unknown,
@@ -279,6 +302,7 @@ export async function fetchRouterStatus(
     ubusCall(endpoint, token, "network.interface", "dump", {}),
     ubusCall(endpoint, token, "network.wireless", "status", {}),
     ubusCall(endpoint, token, "network.device", "status", {}),
+    ubusCall(endpoint, token, "uci", "get", { config: "wireless" }),
   ]);
   const warnings: string[] = [];
   const interfaces = optional[0].status === "fulfilled" ? optional[0].value : {};
@@ -286,7 +310,15 @@ export async function fetchRouterStatus(
   const wireless = optional[1].status === "fulfilled" ? optional[1].value : {};
   if (optional[1].status === "rejected") warnings.push("无线状态暂不可用。");
   const deviceCounters = optional[2].status === "fulfilled" ? optional[2].value : {};
-  return buildRouterStatus(routerId, required[0], required[1], interfaces, wireless, warnings, deviceCounters);
+  const status = buildRouterStatus(routerId, required[0], required[1], interfaces, wireless, warnings, deviceCounters);
+  if (!status.wireless.length && optional[3].status === "fulfilled") {
+    const fallbackWireless = mapWirelessUciFallback(optional[3].value);
+    if (fallbackWireless.length) {
+      status.wireless = fallbackWireless;
+      status.warnings = status.warnings.filter((warning) => warning !== "无线状态暂不可用。");
+    }
+  }
+  return status;
 }
 
 /** Fetches only the interface counters needed by the status-page traffic chart. */

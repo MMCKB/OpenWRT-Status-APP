@@ -91,8 +91,22 @@ export default function RootLayout() {
         <trpc.Provider client={trpcClient} queryClient={queryClient}>
           <QueryClientProvider client={queryClient}>
             <SafeAreaView style={{ flex: 1, backgroundColor: colors.background }} edges={["top", "left", "right"]}>
-              <Stack screenOptions={{ headerShown: false, contentStyle: { backgroundColor: colors.background } }}>
+              <Stack screenOptions={{ headerShown: false, contentStyle: { backgroundColor: colors.background }, animation: "default" }}>
                 <Stack.Screen name="(tabs)" />
+                <Stack.Screen name="files" options={{ gestureEnabled: true }} />
+                <Stack.Screen name="firmware" options={{ gestureEnabled: true }} />
+                <Stack.Screen name="packages" options={{ gestureEnabled: true }} />
+                <Stack.Screen name="clients" options={{ gestureEnabled: true }} />
+                <Stack.Screen name="traffic" options={{ gestureEnabled: true }} />
+                <Stack.Screen name="diagnostics" options={{ gestureEnabled: true }} />
+                <Stack.Screen name="wireless-manager" options={{ gestureEnabled: true }} />
+                <Stack.Screen name="maintenance-tools" options={{ gestureEnabled: true }} />
+                <Stack.Screen name="quick-actions" options={{ gestureEnabled: true }} />
+                <Stack.Screen name="services-health" options={{ gestureEnabled: true }} />
+                <Stack.Screen name="logs" options={{ gestureEnabled: true }} />
+                <Stack.Screen name="firewall" options={{ gestureEnabled: true }} />
+                <Stack.Screen name="bulk-operations" options={{ gestureEnabled: true }} />
+                <Stack.Screen name="about" options={{ gestureEnabled: true }} />
                 <Stack.Screen name="oauth/callback" />
               </Stack>
               <StatusBar style={colorScheme === "dark" ? "light" : "dark"} backgroundColor={colors.background} />

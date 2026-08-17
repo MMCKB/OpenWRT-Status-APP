@@ -79,11 +79,8 @@ export default function SettingsScreen() {
           <InfoRow icon="vpn-key" title="凭证仅存储在本机" description="LuCI 密码会保存在设备安全存储中；配置资料保存在本地，不会同步至云端。" colors={colors} softPrimary={softPrimary} />
           <InfoRow icon="wifi" title="仅访问已保存的路由器" description="状态读取通过 OpenWrt 的 LuCI ubus 接口完成。请在可信局域网内使用。" colors={colors} softPrimary={softPrimary} divider />
         </SectionCard>
-        <SectionCard title="维护">
-          <MaintenanceRow icon="construction" label="网络工具" description="已连接设备、按 WAN 流量统计、网络诊断、无线管理、备份和服务控制。" target="/tools" colors={colors} softPrimary={softPrimary} router={router} />
-          <MaintenanceRow icon="folder-open" label="文件管理" description="通过应用内 SSH 浏览、上传、编辑、复制、移动与管理路由器文件。" target="/files" colors={colors} softPrimary={softPrimary} router={router} />
-          <MaintenanceRow icon="extension" label="软件包管理" description="查看已安装系统包，搜索在线仓库并执行安装、卸载与更新。" target="/packages" colors={colors} softPrimary={softPrimary} router={router} />
-          <MaintenanceRow icon="system-update" label="固件升级" description="选择 sysupgrade 镜像，经 SSH 上传后确认执行升级。" target="/firmware" colors={colors} softPrimary={softPrimary} router={router} warning />
+        <SectionCard title="关于">
+          <MaintenanceRow icon="info-outline" label="OpenWrt 路由器状态" description="查看应用版本、功能说明与本地数据使用说明。" target="/about" colors={colors} softPrimary={softPrimary} router={router} />
         </SectionCard>
         <View style={[styles.note, { backgroundColor: noteSurface }]}><MaterialIcons name="info-outline" size={18} color={colors.muted} /><Text style={[styles.noteText, { color: colors.muted }]}>若使用 HTTP 管理地址，账户和状态数据在本地网络中并未加密。建议优先使用可信网络与 HTTPS。</Text></View>
       </ScrollView>
@@ -106,8 +103,8 @@ const styles = StyleSheet.create({
   themeGrid: { flexDirection: "row", gap: 8, padding: 15 },
   themeOption: { flex: 1, minWidth: 0, minHeight: 76, borderRadius: 12, borderWidth: 1, alignItems: "center", justifyContent: "center", gap: 7, paddingHorizontal: 4 },
   themeLabel: { fontSize: 12, fontWeight: "700", textAlign: "center" },
-  intervalGrid: { flexDirection: "row", flexWrap: "wrap", gap: 8, padding: 15 },
-  interval: { flexBasis: "48%", flexGrow: 1, maxWidth: "50%", borderRadius: 10, borderWidth: 1, alignItems: "center", paddingVertical: 11 },
+  intervalGrid: { flexDirection: "row", flexWrap: "wrap", justifyContent: "space-between", rowGap: 8, padding: 15 },
+  interval: { width: "48.5%", flexGrow: 0, flexShrink: 0, borderRadius: 10, borderWidth: 1, alignItems: "center", paddingVertical: 11 },
   intervalText: { fontSize: 13, fontWeight: "700" }, pressed: { opacity: 0.72 },
   viewModeRow: { flexDirection: "row", gap: 8, padding: 15 }, viewModeOption: { flex: 1, minHeight: 48, borderWidth: 1, borderRadius: 11, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 7 }, viewModeText: { fontSize: 13, fontWeight: "800" },
   interfaceList: { paddingHorizontal: 15, paddingBottom: 4 }, interfaceOption: { minHeight: 62, flexDirection: "row", alignItems: "center", gap: 11 }, interfaceCheck: { width: 23, height: 23, borderRadius: 7, borderWidth: 1, alignItems: "center", justifyContent: "center" }, emptyTrafficText: { paddingHorizontal: 15, paddingVertical: 18, fontSize: 13, lineHeight: 19 },
