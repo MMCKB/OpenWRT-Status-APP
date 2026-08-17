@@ -108,7 +108,14 @@
 - [x] 实现多路由器批量状态刷新、基础诊断与配置备份操作
 - [x] 为新增服务、日志、防火墙和批量操作补充命令及解析回归测试
 - [x] 验证新增页面在深浅色主题与移动窄屏下的布局和既有功能回归
-- [ ] 检查并启用临时 Swap，降低 Gradle 本地构建内存压力
-- [ ] 在 Swap 辅助下重试本地 Android Debug APK 构建并验证产物
-- [ ] 排查并修复 Android APK 启动后停留在启动页（SplashScreen 未隐藏或 JS 包未加载）的问题
-- [ ] 重新在沙箱本地编译可正确进入主界面的 Android Debug APK 并交付下载
+- [x] 检查并启用临时 Swap，降低 Gradle 本地构建内存压力
+- [x] 在 Swap 辅助下重试本地 Android Debug APK 构建并验证产物
+- [x] 排查并修复 Android APK 启动后停留在启动页（SplashScreen 未隐藏或 JS 包未加载）的问题
+- [x] 重新在沙箱本地编译可正确进入主界面的 Android Debug APK 并交付下载
+- [x] 修复 Android APK 中 MaterialIcons 图标字体未显示的问题
+- [x] 增加带动态进度条的启动过渡动画并确保不阻塞主路由加载
+- [x] 本地重新构建并验证包含图标字体和启动动画的 Android APK
+- [x] 彻底清理旧 Android 目录和构建缓存，递增版本号到 1.0.1
+- [x] 修复 MaterialIcons 在离线 Android 包中的字体加载与渲染链路
+- [x] 实现独立可见的启动进度动画遮罩层，确保用户在启动时看到动态进度条
+- [x] 重新生成离线 Bundle 并执行纯净本地编译，生成并交付全新的验证版本 APK
