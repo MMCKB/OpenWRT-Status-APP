@@ -8,6 +8,41 @@ export interface ConnectedClient {
   online: boolean;
 }
 
+export interface DhcpLease {
+  source: "dynamic" | "static";
+  section: string | null;
+  mac: string;
+  hostname: string | null;
+  ipv4: string | null;
+  expiresAt: string | null;
+  leasetime: string | null;
+}
+
+export interface DhcpLeaseSnapshot {
+  dynamic: DhcpLease[];
+  static: DhcpLease[];
+}
+
+export interface DhcpStaticLeaseDraft {
+  section?: string;
+  hostname: string;
+  mac: string;
+  ipv4: string;
+  leasetime?: string;
+}
+
+export interface HostTrafficCounter extends ConnectedClient {
+  rxBytes: number;
+  txBytes: number;
+  timestamp: number;
+}
+
+export interface HostTrafficRate extends HostTrafficCounter {
+  rxBytesPerSecond: number | null;
+  txBytesPerSecond: number | null;
+  sampleSeconds: number | null;
+}
+
 export interface WifiConfigEntry {
   section: string;
   device: string;
@@ -19,6 +54,33 @@ export interface WifiClient {
   mac: string;
   interfaceName: string | null;
   signalDbm: number | null;
+}
+
+export interface WirelessRadio {
+  name: string;
+  currentChannel: number | null;
+}
+
+export interface WirelessScanNetwork {
+  radio: string;
+  ssid: string | null;
+  bssid: string | null;
+  channel: number;
+  signalDbm: number | null;
+}
+
+export interface WirelessOptimizationSnapshot {
+  radios: WirelessRadio[];
+  networks: WirelessScanNetwork[];
+}
+
+export interface WirelessChannelRecommendation {
+  radio: string;
+  currentChannel: number | null;
+  suggestedChannel: number | null;
+  currentScore: number | null;
+  suggestedScore: number | null;
+  reason: string;
 }
 
 export interface ServiceState {
@@ -40,6 +102,15 @@ function requireMac(mac: string) {
   return normalized;
 }
 
+function requireIpv4(value: string, label = "IPv4 地址") {
+  const normalized = value.trim();
+  const parts = normalized.split(".");
+  if (parts.length !== 4 || parts.some((part) => !/^\d{1,3}$/.test(part) || Number(part) > 255)) {
+    throw new Error(`${label}格式无效。`);
+  }
+  return normalized;
+}
+
 function requireIdentifier(value: string, label: string) {
   const normalized = value.trim();
   if (!/^[A-Za-z0-9_.:-]+$/.test(normalized)) throw new Error(`${label}格式无效。`);
@@ -48,6 +119,23 @@ function requireIdentifier(value: string, label: string) {
 
 function shellQuote(value: string) {
   return `'${value.replace(/'/g, `'"'"'`)}'`;
+}
+
+function requireUciSection(value: string, label: string) {
+  const normalized = value.trim();
+  if (/^[A-Za-z0-9_-]+$/.test(normalized) || /^@host\[\d+\]$/.test(normalized)) return normalized;
+  throw new Error(`${label}格式无效。`);
+}
+
+function safeCounter(value: string | undefined) {
+  if (!value || !/^\d+$/.test(value)) return null;
+  const parsed = Number(value);
+  return Number.isSafeInteger(parsed) ? parsed : null;
+}
+
+function normalizeLeaseHostname(value: string | null | undefined) {
+  const normalized = value?.trim();
+  return !normalized || normalized === "*" ? null : normalized;
 }
 
 export function parseConnectedClients(output: string): ConnectedClient[] {
@@ -80,8 +168,148 @@ export function parseConnectedClients(output: string): ConnectedClient[] {
   return [...byMac.values()].sort((a, b) => Number(b.online) - Number(a.online) || (a.hostname ?? a.mac).localeCompare(b.hostname ?? b.mac));
 }
 
+function parseDynamicDhcpLeases(output: string): DhcpLease[] {
+  const leases = new Map<string, DhcpLease>();
+  let inLeases = false;
+  for (const rawLine of output.split(/\r?\n/)) {
+    const line = rawLine.trim();
+    if (line === "__DHCP_LEASES__") { inLeases = true; continue; }
+    if (line === "__DHCP_STATIC__") { inLeases = false; continue; }
+    if (!inLeases) continue;
+    const tokens = line.split(/\s+/);
+    const macIndex = tokens.findIndex((value) => /^([0-9A-Fa-f]{2}:){5}[0-9A-Fa-f]{2}$/.test(value));
+    if (macIndex < 0) continue;
+    const mac = requireMac(tokens[macIndex]);
+    const ipv4 = tokens.find((value) => /^(?:\d{1,3}\.){3}\d{1,3}$/.test(value)) ?? null;
+    const ipv4Index = ipv4 ? tokens.indexOf(ipv4) : -1;
+    leases.set(mac, {
+      source: "dynamic",
+      section: null,
+      mac,
+      hostname: normalizeLeaseHostname(ipv4Index >= 0 ? tokens[ipv4Index + 1] : null),
+      ipv4,
+      expiresAt: /^\d+$/.test(tokens[0] ?? "") ? tokens[0] : null,
+      leasetime: null,
+    });
+  }
+  return [...leases.values()].sort((a, b) => (a.hostname ?? a.mac).localeCompare(b.hostname ?? b.mac));
+}
+
+type UciValues = { type: string; values: Map<string, string[]> };
+
+function parseDhcpUciSections(output: string) {
+  const sections = new Map<string, UciValues>();
+  let inStatic = false;
+  for (const rawLine of output.split(/\r?\n/)) {
+    const line = rawLine.trim();
+    if (line === "__DHCP_STATIC__") { inStatic = true; continue; }
+    if (!inStatic) continue;
+    const match = line.match(/^dhcp\.((?:@)?[A-Za-z0-9_-]+(?:\[\d+\])?)(?:\.([A-Za-z0-9_]+))?=(.*)$/);
+    if (!match) continue;
+    const [, section, property, rawValue] = match;
+    const current = sections.get(section) ?? { type: "", values: new Map<string, string[]>() };
+    if (!property) current.type = cleanQuoted(rawValue);
+    else current.values.set(property, [...(current.values.get(property) ?? []), cleanQuoted(rawValue)]);
+    sections.set(section, current);
+  }
+  return sections;
+}
+
+export function parseDhcpLeaseSnapshot(output: string): DhcpLeaseSnapshot {
+  const dynamic = parseDynamicDhcpLeases(output);
+  const staticLeases: DhcpLease[] = [];
+  for (const [section, values] of parseDhcpUciSections(output)) {
+    if (values.type !== "host") continue;
+    const mac = values.values.get("mac")?.[0];
+    if (!mac || !/^([0-9A-Fa-f]{2}:){5}[0-9A-Fa-f]{2}$/.test(mac)) continue;
+    staticLeases.push({
+      source: "static",
+      section,
+      mac: requireMac(mac),
+      hostname: normalizeLeaseHostname(values.values.get("name")?.[0]),
+      ipv4: values.values.get("ip")?.[0] ?? null,
+      expiresAt: null,
+      leasetime: values.values.get("leasetime")?.[0] ?? null,
+    });
+  }
+  return { dynamic, static: staticLeases.sort((a, b) => (a.hostname ?? a.mac).localeCompare(b.hostname ?? b.mac)) };
+}
+
+export function buildDhcpLeaseSnapshotCommand() {
+  return "printf '__DHCP_LEASES__\\n'; cat /tmp/dhcp.leases 2>/dev/null; printf '__DHCP_STATIC__\\n'; uci show dhcp 2>/dev/null";
+}
+
+function safeLeaseHostname(value: string) {
+  const normalized = value.trim();
+  if (!normalized || normalized.length > 63 || /[\r\n]/.test(normalized)) throw new Error("设备名称应为 1–63 个字符，且不能包含换行。");
+  return normalized;
+}
+
+function safeLeaseTime(value: string | undefined) {
+  const normalized = value?.trim();
+  if (!normalized) return null;
+  if (!/^\d+(?:[smhdw])?$/i.test(normalized)) throw new Error("租约期限仅支持数字或数字加 s/m/h/d/w 单位。");
+  return normalized;
+}
+
+export function buildDhcpStaticLeaseSaveCommand(draft: DhcpStaticLeaseDraft) {
+  const mac = requireMac(draft.mac);
+  const hostname = safeLeaseHostname(draft.hostname);
+  const ipv4 = requireIpv4(draft.ipv4, "固定 IPv4 地址");
+  const leasetime = safeLeaseTime(draft.leasetime);
+  const section = draft.section ? requireUciSection(draft.section, "静态租约段") : `openwrt_app_lease_${mac.replace(/:/g, "_").toLowerCase()}`;
+  const isExistingAnonymousSection = section.startsWith("@host[");
+  const initializeSection = isExistingAnonymousSection ? "" : `uci -q delete dhcp.${section}; uci set dhcp.${section}='host'; `;
+  const leaseTimeCommand = leasetime ? `; uci set dhcp.${section}.leasetime=${shellQuote(leasetime)}` : `; uci -q delete dhcp.${section}.leasetime`;
+  return `${initializeSection}uci set dhcp.${section}.name=${shellQuote(hostname)}; uci set dhcp.${section}.mac=${shellQuote(mac)}; uci set dhcp.${section}.ip=${shellQuote(ipv4)}${leaseTimeCommand}; uci commit dhcp; /etc/init.d/dnsmasq reload`;
+}
+
+export function buildDhcpStaticLeaseDeleteCommand(section: string) {
+  const safeSection = requireUciSection(section, "静态租约段");
+  return `uci -q delete dhcp.${safeSection}; uci commit dhcp; /etc/init.d/dnsmasq reload`;
+}
+
 export function buildClientSnapshotCommand() {
   return "printf '__LEASES__\\n'; ubus call dhcp ipv4leases 2>/dev/null | jsonfilter -e '@.device[*]' 2>/dev/null; cat /tmp/dhcp.leases 2>/dev/null; printf '__NEIGH__\\n'; ip neigh show 2>/dev/null; printf '__BLOCKED__\\n'; uci -q show firewall | grep -E '^firewall\\.openwrt_app_block_.*\\.src_mac=' 2>/dev/null";
+}
+
+export function buildHostTrafficSnapshotCommand() {
+  return "printf '__LEASES__\\n'; cat /tmp/dhcp.leases 2>/dev/null; printf '__NEIGH__\\n'; ip neigh show 2>/dev/null; printf '__HOST_FLOWS__\\n'; (cat /proc/net/nf_conntrack 2>/dev/null || cat /proc/net/ip_conntrack 2>/dev/null) | awk '{ src=\"\"; firstbytes=\"\"; secondbytes=\"\"; seenbytes=0; for (i=1; i<=NF; i++) { if (substr($i,1,4)==\"src=\" && src==\"\") src=substr($i,5); if (substr($i,1,6)==\"bytes=\") { if (seenbytes==0) { firstbytes=substr($i,7); seenbytes=1 } else if (secondbytes==\"\") secondbytes=substr($i,7) } } if (src ~ /^[0-9]+(\\.[0-9]+){3}$/ && firstbytes ~ /^[0-9]+$/ && secondbytes ~ /^[0-9]+$/) { up[src]+=firstbytes; down[src]+=secondbytes } } END { for (ip in up) printf \"FLOW|%s|%.0f|%.0f\\n\", ip, up[ip], down[ip] }' 2>/dev/null";
+}
+
+export function parseHostTrafficCounters(output: string, timestamp = Date.now()): HostTrafficCounter[] {
+  const clientsByIp = new Map(parseConnectedClients(output).filter((client) => Boolean(client.ipv4)).map((client) => [client.ipv4!, client]));
+  const counters: HostTrafficCounter[] = [];
+  let inFlows = false;
+  for (const rawLine of output.split(/\r?\n/)) {
+    const line = rawLine.trim();
+    if (line === "__HOST_FLOWS__") { inFlows = true; continue; }
+    if (!inFlows) continue;
+    const match = line.match(/^FLOW\|((?:\d{1,3}\.){3}\d{1,3})\|(\d+)\|(\d+)$/);
+    if (!match) continue;
+    const [, ipv4, txRaw, rxRaw] = match;
+    const client = clientsByIp.get(ipv4);
+    const txBytes = safeCounter(txRaw);
+    const rxBytes = safeCounter(rxRaw);
+    if (!client || txBytes === null || rxBytes === null) continue;
+    counters.push({ ...client, rxBytes, txBytes, timestamp });
+  }
+  return counters.sort((a, b) => (b.rxBytes + b.txBytes) - (a.rxBytes + a.txBytes));
+}
+
+export function calculateHostTrafficRates(previous: HostTrafficCounter[], current: HostTrafficCounter[]): HostTrafficRate[] {
+  const previousByMac = new Map(previous.map((item) => [item.mac, item]));
+  return current.map((item) => {
+    const before = previousByMac.get(item.mac);
+    const sampleSeconds = before ? (item.timestamp - before.timestamp) / 1000 : null;
+    const usable = sampleSeconds !== null && sampleSeconds > 0;
+    return {
+      ...item,
+      sampleSeconds: usable ? sampleSeconds : null,
+      rxBytesPerSecond: usable ? Math.max(0, item.rxBytes - before!.rxBytes) / sampleSeconds : null,
+      txBytesPerSecond: usable ? Math.max(0, item.txBytes - before!.txBytes) / sampleSeconds : null,
+    };
+  }).sort((a, b) => ((b.rxBytesPerSecond ?? -1) + (b.txBytesPerSecond ?? -1)) - ((a.rxBytesPerSecond ?? -1) + (a.txBytesPerSecond ?? -1)));
 }
 
 export function buildBlockClientCommand(mac: string) {
@@ -168,6 +396,90 @@ export function parseWifiClients(output: string): WifiClient[] {
     if (signal && pending) pending.signalDbm = Number(signal[1]);
   }
   return clients;
+}
+
+export function buildWirelessOptimizationSnapshotCommand() {
+  return "RADIOS=$({ uci -q show wireless | sed -n \"s/^wireless\\.\\([A-Za-z0-9_-]*\\)='wifi-device'$/\\1/p\"; uci -q show wireless | sed -n \"s/^wireless\\.[A-Za-z0-9_-]*\\.device='\\([A-Za-z0-9_-]*\\)'$/\\1/p\"; } | sort -u); for radio in $RADIOS; do channel=$(uci -q get wireless.$radio.channel 2>/dev/null || true); printf 'RADIO|%s|%s\\n' \"$radio\" \"$channel\"; done; ubus call iwinfo devices 2>/dev/null | jsonfilter -e '@.devices[*]' 2>/dev/null | while read -r device; do scan=$(ubus call iwinfo scan \"{\\\"device\\\":\\\"$device\\\"}\" 2>/dev/null | jsonfilter -e '@.results' 2>/dev/null); [ -n \"$scan\" ] && printf 'SCAN|%s|%s\\n' \"$device\" \"$scan\"; done";
+}
+
+function readScanNetworks(radio: string, raw: string): WirelessScanNetwork[] {
+  try {
+    const decoded = JSON.parse(raw) as unknown;
+    const records = Array.isArray(decoded) ? decoded : decoded && typeof decoded === "object" && Array.isArray((decoded as { results?: unknown }).results) ? (decoded as { results: unknown[] }).results : [];
+    return records.flatMap((item) => {
+      if (!item || typeof item !== "object") return [];
+      const record = item as Record<string, unknown>;
+      const channel = Number(record.channel);
+      if (!Number.isInteger(channel) || channel < 1 || channel > 233) return [];
+      const signal = Number(record.signal ?? record.signal_dbm);
+      return [{
+        radio,
+        ssid: typeof record.ssid === "string" && record.ssid.trim() ? record.ssid.trim() : null,
+        bssid: typeof record.bssid === "string" && record.bssid.trim() ? record.bssid.trim().toUpperCase() : null,
+        channel,
+        signalDbm: Number.isFinite(signal) ? signal : null,
+      }];
+    });
+  } catch {
+    return [];
+  }
+}
+
+export function parseWirelessOptimizationSnapshot(output: string): WirelessOptimizationSnapshot {
+  const radios = new Map<string, WirelessRadio>();
+  const networks: WirelessScanNetwork[] = [];
+  const scans: Array<{ device: string; raw: string }> = [];
+  for (const rawLine of output.split(/\r?\n/)) {
+    const line = rawLine.trim();
+    const radio = line.match(/^RADIO\|([A-Za-z0-9_-]+)\|([^|]*)$/);
+    if (radio) {
+      const channel = Number(radio[2]);
+      radios.set(radio[1], { name: radio[1], currentChannel: Number.isInteger(channel) && channel >= 1 && channel <= 233 ? channel : null });
+      continue;
+    }
+    const scan = line.match(/^SCAN\|([A-Za-z0-9_-]+)\|(.+)$/);
+    if (scan) scans.push({ device: scan[1], raw: scan[2] });
+  }
+  for (const scan of scans) {
+    const phyNumber = scan.device.match(/(?:^|[^a-z0-9])phy(\d+)(?:[^a-z0-9]|$)/i)?.[1] ?? scan.device.match(/^radio(\d+)$/i)?.[1];
+    const mappedRadio = radios.has(scan.device) ? scan.device : phyNumber && radios.has(`radio${phyNumber}`) ? `radio${phyNumber}` : radios.size === 1 ? [...radios.keys()][0] : scan.device;
+    networks.push(...readScanNetworks(mappedRadio, scan.raw));
+  }
+  return { radios: [...radios.values()].sort((a, b) => a.name.localeCompare(b.name)), networks };
+}
+
+function signalWeight(signalDbm: number | null) {
+  return Math.max(8, Math.min(80, signalDbm === null ? 32 : 100 + signalDbm));
+}
+
+function congestionScore(channel: number, networks: WirelessScanNetwork[], is24GHz: boolean) {
+  return networks.reduce((score, network) => {
+    const distance = Math.abs(channel - network.channel);
+    const overlap = is24GHz ? Math.max(0, 1 - distance / 5) : distance === 0 ? 1 : 0;
+    return score + signalWeight(network.signalDbm) * overlap;
+  }, 0);
+}
+
+export function recommendWirelessChannel(radio: WirelessRadio, networks: WirelessScanNetwork[]): WirelessChannelRecommendation {
+  const currentChannel = radio.currentChannel;
+  const radioNetworks = networks.filter((network) => network.radio === radio.name);
+  if (currentChannel === null) return { radio: radio.name, currentChannel, suggestedChannel: null, currentScore: null, suggestedScore: null, reason: "路由器未报告当前信道，无法给出可安全应用的建议。" };
+  if (!radioNetworks.length) return { radio: radio.name, currentChannel, suggestedChannel: currentChannel, currentScore: 0, suggestedScore: 0, reason: "未读取到邻近网络；保留当前信道，避免在没有扫描依据时修改无线配置。" };
+  const is24GHz = currentChannel <= 14 || radioNetworks.some((network) => network.channel <= 14);
+  const candidates = is24GHz ? [1, 6, 11] : [...new Set([currentChannel, ...radioNetworks.map((network) => network.channel)])].sort((a, b) => a - b);
+  const scored = candidates.map((channel) => ({ channel, score: congestionScore(channel, radioNetworks, is24GHz) })).sort((a, b) => a.score - b.score || Math.abs(a.channel - currentChannel) - Math.abs(b.channel - currentChannel));
+  const suggested = scored[0];
+  const currentScore = congestionScore(currentChannel, radioNetworks, is24GHz);
+  const reason = suggested.channel === currentChannel
+    ? `当前信道 ${currentChannel} 在本次扫描的 ${radioNetworks.length} 个邻近网络中已是较低拥挤度选项。`
+    : `基于本次扫描的 ${radioNetworks.length} 个邻近网络，信道 ${suggested.channel} 的加权拥挤度低于当前信道 ${currentChannel}。`;
+  return { radio: radio.name, currentChannel, suggestedChannel: suggested.channel, currentScore, suggestedScore: suggested.score, reason };
+}
+
+export function buildWirelessChannelApplyCommand(radio: string, channel: number) {
+  const safeRadio = requireIdentifier(radio, "无线设备");
+  if (!Number.isInteger(channel) || channel < 1 || channel > 233) throw new Error("无线信道应为 1–233 的整数。");
+  return `uci set wireless.${safeRadio}.channel='${channel}'; uci commit wireless; wifi reload`;
 }
 
 function escapeWifiQr(value: string) {
