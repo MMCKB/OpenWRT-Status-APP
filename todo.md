@@ -110,3 +110,5 @@
 - [x] 验证新增页面在深浅色主题与移动窄屏下的布局和既有功能回归
 - [ ] 检查并启用临时 Swap，降低 Gradle 本地构建内存压力
 - [ ] 在 Swap 辅助下重试本地 Android Debug APK 构建并验证产物
+- [ ] 排查并修复 Android APK 启动后停留在启动页（SplashScreen 未隐藏或 JS 包未加载）的问题
+- [ ] 重新在沙箱本地编译可正确进入主界面的 Android Debug APK 并交付下载
