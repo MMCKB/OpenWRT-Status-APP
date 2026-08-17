@@ -65,3 +65,4 @@ Thumbs.db
 .webdev/
 .project-config.json
 /public/download/openwrt-status-debug.apk
+public/download/*.apk
