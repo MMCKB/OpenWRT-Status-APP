@@ -6,19 +6,24 @@ import {
   buildBackupCommand,
   buildDhcpStaticLeaseDeleteCommand,
   buildDhcpStaticLeaseSaveCommand,
+  buildDockerContainerCommand,
+  buildDockerContainerLogsCommand,
+  buildPerformanceBenchmarkCommand,
   buildRestoreCommand,
   buildServiceCommand,
   buildWanDiagnosticCommand,
   buildWirelessChannelApplyCommand,
   buildWifiDeleteCommand,
   buildUnblockClientCommand,
-  calculateHostTrafficRates,
   parseDhcpLeaseSnapshot,
+  parseDockerSnapshot,
+  parseFirmwareDeviceInfo,
+  parsePerformanceBenchmark,
   parseBlockedClientMacs,
   parseConnectedClients,
-  parseHostTrafficCounters,
   parseServiceStates,
   parseWirelessOptimizationSnapshot,
+  parseWeakSignalClients,
   parseWifiConfigs,
   recommendWirelessChannel,
 } from "../lib/openwrt-admin";
@@ -40,18 +45,35 @@ describe("OpenWrt 管理命令与解析", () => {
     expect(() => buildDhcpStaticLeaseDeleteCommand("lease; reboot")).toThrow("静态租约段格式无效");
   });
 
-  it("归并主机流量计数并以采样差分排序实时速率", () => {
-    const first = parseHostTrafficCounters("__LEASES__\n12345 aa:bb:cc:dd:ee:ff 192.168.1.10 phone *\n__NEIGH__\n192.168.1.10 dev br-lan lladdr aa:bb:cc:dd:ee:ff REACHABLE\n__HOST_FLOWS__\nFLOW|192.168.1.10|100|200", 1000);
-    const second = parseHostTrafficCounters("__LEASES__\n12345 aa:bb:cc:dd:ee:ff 192.168.1.10 phone *\n__NEIGH__\n192.168.1.10 dev br-lan lladdr aa:bb:cc:dd:ee:ff REACHABLE\n__HOST_FLOWS__\nFLOW|192.168.1.10|500|800", 3000);
-    expect(calculateHostTrafficRates(first, second)).toEqual([expect.objectContaining({ mac: "AA:BB:CC:DD:EE:FF", txBytesPerSecond: 200, rxBytesPerSecond: 300, sampleSeconds: 2 })]);
-  });
-
   it("从扫描结果生成保守信道建议，并拒绝不安全的无线写入参数", () => {
     const snapshot = parseWirelessOptimizationSnapshot("RADIO|radio0|1\nSCAN|wlan0|[{\"ssid\":\"busy\",\"bssid\":\"aa:bb:cc:dd:ee:ff\",\"channel\":1,\"signal\":-32},{\"ssid\":\"quiet\",\"bssid\":\"11:22:33:44:55:66\",\"channel\":11,\"signal\":-85}]");
     const recommendation = recommendWirelessChannel(snapshot.radios[0], snapshot.networks);
     expect(recommendation.suggestedChannel).toBe(6);
     expect(buildWirelessChannelApplyCommand("radio0", 6)).toBe("uci set wireless.radio0.channel='6'; uci commit wireless; wifi reload");
     expect(() => buildWirelessChannelApplyCommand("radio0; reboot", 6)).toThrow("无线设备格式无效");
+  });
+
+  it("合并无线 station 信号与 DHCP 客户端，并按弱信号优先排序", () => {
+    const clients = parseWeakSignalClients("__WIFI_IFACE__|wlan0\nStation aa:bb:cc:dd:ee:ff (on wlan0)\n\tsignal: -79 dBm\nStation 11:22:33:44:55:66 (on wlan0)\n\tsignal: -52 dBm\n__LEASES__\n12345 aa:bb:cc:dd:ee:ff 192.168.1.20 weak-phone *\n12345 11:22:33:44:55:66 192.168.1.30 tv *\n__NEIGH__\n192.168.1.20 dev br-lan lladdr aa:bb:cc:dd:ee:ff REACHABLE\n192.168.1.30 dev br-lan lladdr 11:22:33:44:55:66 REACHABLE");
+    expect(clients[0]).toMatchObject({ mac: "AA:BB:CC:DD:EE:FF", hostname: "weak-phone", quality: "weak", qualityLabel: "弱信号" });
+    expect(clients[1]).toMatchObject({ mac: "11:22:33:44:55:66", quality: "good" });
+  });
+
+  it("解析 Docker 容器状态资源并阻止不安全的容器命令", () => {
+    const snapshot = parseDockerSnapshot("__DOCKER_AVAILABLE__\nCONTAINER|a1b2c3|adguard|adguard/home:latest|Up 2 hours|0.0.0.0:3000->3000/tcp\nCONTAINER|d4e5f6|old|alpine|Exited (0) 1 hour ago|\n__DOCKER_STATS__\nSTAT|a1b2c3|0.54%|32MiB / 128MiB");
+    expect(snapshot).toMatchObject({ available: true });
+    expect(snapshot.containers[0]).toMatchObject({ id: "a1b2c3", running: true, cpuPercent: "0.54%", memoryUsage: "32MiB / 128MiB" });
+    expect(buildDockerContainerCommand("a1b2c3", "restart")).toBe("docker restart a1b2c3");
+    expect(buildDockerContainerLogsCommand("a1b2c3")).toContain("docker logs --tail 200 a1b2c3");
+    expect(() => buildDockerContainerCommand("a1; reboot", "start")).toThrow("Docker 容器格式无效");
+  });
+
+  it("解析性能基准数据和路由器本机固件信息", () => {
+    const benchmark = parsePerformanceBenchmark("TARGET|1.1.1.1\n__BENCHMARK_PING__\n8 packets transmitted, 7 packets received, 12.5% packet loss\nrtt min/avg/max/mdev = 10.000/20.500/31.000/2.000 ms\n__BENCHMARK_DNS__\nName: openwrt.org\nAddress: 1.2.3.4\n__BENCHMARK_SYSTEM__\nLOAD|0.25\nMEM|128000|64000");
+    expect(benchmark).toMatchObject({ target: "1.1.1.1", packetsSent: 8, packetsReceived: 7, packetLossPercent: 12.5, latencyAvgMs: 20.5, dnsReachable: true, loadAverage: 0.25, memoryAvailableKb: 64000 });
+    expect(buildPerformanceBenchmarkCommand("1.1.1.1")).toContain("ping -c 8 -W 2 1.1.1.1");
+    expect(() => buildPerformanceBenchmarkCommand("1.1.1.1; reboot")).toThrow("测速目标格式无效");
+    expect(parseFirmwareDeviceInfo('{"model":"Example Router","board_name":"example,router","release":{"distribution":"OpenWrt","version":"25.12.0","revision":"r123","target":"ath79/generic"}}')).toMatchObject({ model: "Example Router", version: "25.12.0", target: "ath79/generic" });
   });
 
   it("仅为有效 MAC 生成防火墙拉黑命令", () => {

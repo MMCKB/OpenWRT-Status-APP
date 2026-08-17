@@ -8,6 +8,7 @@ const PROFILES_KEY = "openwrt.router-profiles.v1";
 const SETTINGS_KEY = "openwrt.router-settings.v1";
 const PASSWORD_PREFIX = "openwrt.router-password.";
 const SSH_PASSWORD_PREFIX = "openwrt.router-ssh-password.";
+const FIRMWARE_RELEASE_PREFIX = "openwrt.router-firmware-release.";
 
 const defaultSettings: RouterSettings = {
   selectedRouterId: null,
@@ -23,6 +24,10 @@ function passwordKey(routerId: string) {
 
 function sshPasswordKey(routerId: string) {
   return `${SSH_PASSWORD_PREFIX}${routerId}`;
+}
+
+function firmwareReleaseKey(routerId: string) {
+  return `${FIRMWARE_RELEASE_PREFIX}${routerId}`;
 }
 
 async function setSecret(key: string, value: string) {
@@ -114,4 +119,14 @@ export async function loadSshPassword(routerId: string) {
 
 export async function removeSshPassword(routerId: string) {
   await removeSecret(sshPasswordKey(routerId));
+}
+
+export async function loadFirmwareReleaseUrl(routerId: string) {
+  return AsyncStorage.getItem(firmwareReleaseKey(routerId));
+}
+
+export async function saveFirmwareReleaseUrl(routerId: string, url: string) {
+  const normalized = url.trim();
+  if (normalized) await AsyncStorage.setItem(firmwareReleaseKey(routerId), normalized);
+  else await AsyncStorage.removeItem(firmwareReleaseKey(routerId));
 }

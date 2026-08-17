@@ -31,18 +31,6 @@ export interface DhcpStaticLeaseDraft {
   leasetime?: string;
 }
 
-export interface HostTrafficCounter extends ConnectedClient {
-  rxBytes: number;
-  txBytes: number;
-  timestamp: number;
-}
-
-export interface HostTrafficRate extends HostTrafficCounter {
-  rxBytesPerSecond: number | null;
-  txBytesPerSecond: number | null;
-  sampleSeconds: number | null;
-}
-
 export interface WifiConfigEntry {
   section: string;
   device: string;
@@ -81,6 +69,54 @@ export interface WirelessChannelRecommendation {
   currentScore: number | null;
   suggestedScore: number | null;
   reason: string;
+}
+
+export interface WeakSignalClient extends WifiClient {
+  hostname: string | null;
+  ipv4: string | null;
+  online: boolean;
+  quality: "weak" | "fair" | "good" | "unknown";
+  qualityLabel: string;
+}
+
+export interface DockerContainer {
+  id: string;
+  name: string;
+  image: string;
+  status: string;
+  running: boolean;
+  ports: string | null;
+  cpuPercent: string | null;
+  memoryUsage: string | null;
+}
+
+export interface DockerSnapshot {
+  available: boolean;
+  containers: DockerContainer[];
+}
+
+export interface PerformanceBenchmark {
+  target: string;
+  packetsSent: number | null;
+  packetsReceived: number | null;
+  packetLossPercent: number | null;
+  latencyMinMs: number | null;
+  latencyAvgMs: number | null;
+  latencyMaxMs: number | null;
+  dnsReachable: boolean | null;
+  loadAverage: number | null;
+  memoryTotalKb: number | null;
+  memoryAvailableKb: number | null;
+}
+
+export interface FirmwareDeviceInfo {
+  model: string | null;
+  boardName: string | null;
+  distribution: string | null;
+  version: string | null;
+  revision: string | null;
+  target: string | null;
+  description: string | null;
 }
 
 export interface ServiceState {
@@ -273,45 +309,6 @@ export function buildClientSnapshotCommand() {
   return "printf '__LEASES__\\n'; ubus call dhcp ipv4leases 2>/dev/null | jsonfilter -e '@.device[*]' 2>/dev/null; cat /tmp/dhcp.leases 2>/dev/null; printf '__NEIGH__\\n'; ip neigh show 2>/dev/null; printf '__BLOCKED__\\n'; uci -q show firewall | grep -E '^firewall\\.openwrt_app_block_.*\\.src_mac=' 2>/dev/null";
 }
 
-export function buildHostTrafficSnapshotCommand() {
-  return "printf '__LEASES__\\n'; cat /tmp/dhcp.leases 2>/dev/null; printf '__NEIGH__\\n'; ip neigh show 2>/dev/null; printf '__HOST_FLOWS__\\n'; (cat /proc/net/nf_conntrack 2>/dev/null || cat /proc/net/ip_conntrack 2>/dev/null) | awk '{ src=\"\"; firstbytes=\"\"; secondbytes=\"\"; seenbytes=0; for (i=1; i<=NF; i++) { if (substr($i,1,4)==\"src=\" && src==\"\") src=substr($i,5); if (substr($i,1,6)==\"bytes=\") { if (seenbytes==0) { firstbytes=substr($i,7); seenbytes=1 } else if (secondbytes==\"\") secondbytes=substr($i,7) } } if (src ~ /^[0-9]+(\\.[0-9]+){3}$/ && firstbytes ~ /^[0-9]+$/ && secondbytes ~ /^[0-9]+$/) { up[src]+=firstbytes; down[src]+=secondbytes } } END { for (ip in up) printf \"FLOW|%s|%.0f|%.0f\\n\", ip, up[ip], down[ip] }' 2>/dev/null";
-}
-
-export function parseHostTrafficCounters(output: string, timestamp = Date.now()): HostTrafficCounter[] {
-  const clientsByIp = new Map(parseConnectedClients(output).filter((client) => Boolean(client.ipv4)).map((client) => [client.ipv4!, client]));
-  const counters: HostTrafficCounter[] = [];
-  let inFlows = false;
-  for (const rawLine of output.split(/\r?\n/)) {
-    const line = rawLine.trim();
-    if (line === "__HOST_FLOWS__") { inFlows = true; continue; }
-    if (!inFlows) continue;
-    const match = line.match(/^FLOW\|((?:\d{1,3}\.){3}\d{1,3})\|(\d+)\|(\d+)$/);
-    if (!match) continue;
-    const [, ipv4, txRaw, rxRaw] = match;
-    const client = clientsByIp.get(ipv4);
-    const txBytes = safeCounter(txRaw);
-    const rxBytes = safeCounter(rxRaw);
-    if (!client || txBytes === null || rxBytes === null) continue;
-    counters.push({ ...client, rxBytes, txBytes, timestamp });
-  }
-  return counters.sort((a, b) => (b.rxBytes + b.txBytes) - (a.rxBytes + a.txBytes));
-}
-
-export function calculateHostTrafficRates(previous: HostTrafficCounter[], current: HostTrafficCounter[]): HostTrafficRate[] {
-  const previousByMac = new Map(previous.map((item) => [item.mac, item]));
-  return current.map((item) => {
-    const before = previousByMac.get(item.mac);
-    const sampleSeconds = before ? (item.timestamp - before.timestamp) / 1000 : null;
-    const usable = sampleSeconds !== null && sampleSeconds > 0;
-    return {
-      ...item,
-      sampleSeconds: usable ? sampleSeconds : null,
-      rxBytesPerSecond: usable ? Math.max(0, item.rxBytes - before!.rxBytes) / sampleSeconds : null,
-      txBytesPerSecond: usable ? Math.max(0, item.txBytes - before!.txBytes) / sampleSeconds : null,
-    };
-  }).sort((a, b) => ((b.rxBytesPerSecond ?? -1) + (b.txBytesPerSecond ?? -1)) - ((a.rxBytesPerSecond ?? -1) + (a.txBytesPerSecond ?? -1)));
-}
-
 export function buildBlockClientCommand(mac: string) {
   const normalized = requireMac(mac);
   const section = `openwrt_app_block_${normalized.replace(/:/g, "_").toLowerCase()}`;
@@ -396,6 +393,32 @@ export function parseWifiClients(output: string): WifiClient[] {
     if (signal && pending) pending.signalDbm = Number(signal[1]);
   }
   return clients;
+}
+
+function signalQuality(signalDbm: number | null): Pick<WeakSignalClient, "quality" | "qualityLabel"> {
+  if (signalDbm === null) return { quality: "unknown", qualityLabel: "未报告信号" };
+  if (signalDbm <= -75) return { quality: "weak", qualityLabel: "弱信号" };
+  if (signalDbm <= -67) return { quality: "fair", qualityLabel: "需关注" };
+  return { quality: "good", qualityLabel: "良好" };
+}
+
+export function buildWeakSignalSnapshotCommand() {
+  return `${buildWifiClientSnapshotCommand()}; ${buildClientSnapshotCommand()}`;
+}
+
+export function parseWeakSignalClients(output: string): WeakSignalClient[] {
+  const clientByMac = new Map(parseConnectedClients(output).map((client) => [client.mac, client]));
+  const weight = { weak: 0, fair: 1, unknown: 2, good: 3 } as const;
+  return parseWifiClients(output).map((client) => {
+    const connected = clientByMac.get(client.mac);
+    return {
+      ...client,
+      hostname: connected?.hostname ?? null,
+      ipv4: connected?.ipv4 ?? null,
+      online: connected?.online ?? true,
+      ...signalQuality(client.signalDbm),
+    };
+  }).sort((a, b) => weight[a.quality] - weight[b.quality] || (a.signalDbm ?? 1) - (b.signalDbm ?? 1) || (a.hostname ?? a.mac).localeCompare(b.hostname ?? b.mac));
 }
 
 export function buildWirelessOptimizationSnapshotCommand() {
@@ -540,6 +563,104 @@ export function buildServiceCommand(name: string, action: "start" | "stop" | "re
   if (managedBy === "docker") return `docker ${action === "restart" ? "restart" : action} ${safeName}`;
   if (!MANAGED_OPENWRT_SERVICES.includes(safeName as (typeof MANAGED_OPENWRT_SERVICES)[number])) throw new Error("不支持控制此系统服务。");
   return `/etc/init.d/${safeName} ${action}`;
+}
+
+export function buildDockerSnapshotCommand() {
+  return "if ! command -v docker >/dev/null 2>&1; then echo '__DOCKER_UNAVAILABLE__'; else echo '__DOCKER_AVAILABLE__'; docker ps -a --format 'CONTAINER|{{.ID}}|{{.Names}}|{{.Image}}|{{.Status}}|{{.Ports}}' 2>&1; echo '__DOCKER_STATS__'; docker stats --no-stream --format 'STAT|{{.ID}}|{{.CPUPerc}}|{{.MemUsage}}' 2>/dev/null; fi";
+}
+
+export function parseDockerSnapshot(output: string): DockerSnapshot {
+  const available = output.includes("__DOCKER_AVAILABLE__");
+  if (!available) return { available: false, containers: [] };
+  const containers = new Map<string, DockerContainer>();
+  for (const rawLine of output.split(/\r?\n/)) {
+    const line = rawLine.trim();
+    const parts = line.split("|");
+    if (parts[0] === "CONTAINER" && parts.length >= 6) {
+      const [, id, name, image, status, ...portParts] = parts;
+      if (!/^[A-Za-z0-9]+$/.test(id) || !name || !image) continue;
+      containers.set(id, { id, name, image, status, running: /^Up\b/i.test(status), ports: portParts.join("|").trim() || null, cpuPercent: null, memoryUsage: null });
+    }
+    if (parts[0] === "STAT" && parts.length >= 4) {
+      const [, id, cpuPercent, ...memoryParts] = parts;
+      const current = containers.get(id);
+      if (current) containers.set(id, { ...current, cpuPercent: cpuPercent.trim() || null, memoryUsage: memoryParts.join("|").trim() || null });
+    }
+  }
+  return { available: true, containers: [...containers.values()].sort((a, b) => Number(b.running) - Number(a.running) || a.name.localeCompare(b.name)) };
+}
+
+export function buildDockerContainerCommand(id: string, action: "start" | "stop" | "restart") {
+  const safeId = requireIdentifier(id, "Docker 容器");
+  return `docker ${action} ${safeId}`;
+}
+
+export function buildDockerContainerLogsCommand(id: string) {
+  const safeId = requireIdentifier(id, "Docker 容器");
+  return `docker logs --tail 200 ${safeId} 2>&1`;
+}
+
+export function buildPerformanceBenchmarkCommand(target = "1.1.1.1", dnsTarget = "openwrt.org") {
+  const safeTarget = requireIdentifier(target, "测速目标");
+  const safeDnsTarget = requireIdentifier(dnsTarget, "DNS 测试域名");
+  return `printf 'TARGET|%s\\n' ${safeTarget}; printf '__BENCHMARK_PING__\\n'; ping -c 8 -W 2 ${safeTarget} 2>&1; printf '__BENCHMARK_DNS__\\n'; nslookup ${safeDnsTarget} 127.0.0.1 2>&1; printf '__BENCHMARK_SYSTEM__\\n'; awk '{printf "LOAD|%s\\n", $1}' /proc/loadavg; awk '/^MemTotal:/{total=$2}/^MemAvailable:/{available=$2}END{printf "MEM|%s|%s\\n", total, available}' /proc/meminfo`;
+}
+
+function nullableNumber(value: string | undefined) {
+  if (!value) return null;
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
+export function parsePerformanceBenchmark(output: string): PerformanceBenchmark {
+  let target = "未报告";
+  let packetsSent: number | null = null;
+  let packetsReceived: number | null = null;
+  let packetLossPercent: number | null = null;
+  let latencyMinMs: number | null = null;
+  let latencyAvgMs: number | null = null;
+  let latencyMaxMs: number | null = null;
+  let dnsReachable: boolean | null = null;
+  let loadAverage: number | null = null;
+  let memoryTotalKb: number | null = null;
+  let memoryAvailableKb: number | null = null;
+  for (const rawLine of output.split(/\r?\n/)) {
+    const line = rawLine.trim();
+    const targetMatch = line.match(/^TARGET\|(.+)$/);
+    if (targetMatch) { target = targetMatch[1]; continue; }
+    const packetMatch = line.match(/(\d+) packets transmitted, (\d+) (?:packets )?received.*?(\d+(?:\.\d+)?)% packet loss/i);
+    if (packetMatch) { packetsSent = Number(packetMatch[1]); packetsReceived = Number(packetMatch[2]); packetLossPercent = Number(packetMatch[3]); continue; }
+    const latencyMatch = line.match(/(?:rtt|round-trip) min\/avg\/max(?:\/mdev)?\s*=\s*([\d.]+)\/([\d.]+)\/([\d.]+)/i);
+    if (latencyMatch) { latencyMinMs = Number(latencyMatch[1]); latencyAvgMs = Number(latencyMatch[2]); latencyMaxMs = Number(latencyMatch[3]); continue; }
+    const loadMatch = line.match(/^LOAD\|(.+)$/);
+    if (loadMatch) { loadAverage = nullableNumber(loadMatch[1]); continue; }
+    const memoryMatch = line.match(/^MEM\|(\d*)\|(\d*)$/);
+    if (memoryMatch) { memoryTotalKb = nullableNumber(memoryMatch[1]); memoryAvailableKb = nullableNumber(memoryMatch[2]); continue; }
+  }
+  const dnsStart = output.indexOf("__BENCHMARK_DNS__");
+  const systemStart = output.indexOf("__BENCHMARK_SYSTEM__");
+  if (dnsStart >= 0) {
+    const dnsOutput = output.slice(dnsStart, systemStart >= 0 ? systemStart : undefined);
+    dnsReachable = !/(?:connection timed out|network unreachable|can't find|not found|server failure)/i.test(dnsOutput) && /(?:Name:|Address:|answer)/i.test(dnsOutput);
+  }
+  return { target, packetsSent, packetsReceived, packetLossPercent, latencyMinMs, latencyAvgMs, latencyMaxMs, dnsReachable, loadAverage, memoryTotalKb, memoryAvailableKb };
+}
+
+export function buildFirmwareDeviceInfoCommand() {
+  return "ubus call system board 2>/dev/null";
+}
+
+export function parseFirmwareDeviceInfo(output: string): FirmwareDeviceInfo {
+  try {
+    const start = output.indexOf("{");
+    if (start < 0) throw new Error("missing JSON");
+    const board = JSON.parse(output.slice(start)) as { model?: unknown; board_name?: unknown; release?: Record<string, unknown> };
+    const release = board.release ?? {};
+    const stringValue = (value: unknown) => typeof value === "string" && value.trim() ? value.trim() : null;
+    return { model: stringValue(board.model), boardName: stringValue(board.board_name), distribution: stringValue(release.distribution), version: stringValue(release.version), revision: stringValue(release.revision), target: stringValue(release.target), description: stringValue(release.description) };
+  } catch {
+    return { model: null, boardName: null, distribution: null, version: null, revision: null, target: null, description: null };
+  }
 }
 
 export const BACKUP_REMOTE_PATH = "/tmp/openwrt-status-app-backup.tar.gz";

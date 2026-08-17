@@ -139,12 +139,15 @@ function RootNavigator() {
       <Stack.Screen name="firmware" options={{ gestureEnabled: settings.predictiveBackEnabled }} />
       <Stack.Screen name="packages" options={{ gestureEnabled: settings.predictiveBackEnabled }} />
       <Stack.Screen name="clients" options={{ gestureEnabled: settings.predictiveBackEnabled }} />
-      <Stack.Screen name="traffic-ranking" options={{ gestureEnabled: settings.predictiveBackEnabled }} />
       <Stack.Screen name="dhcp-leases" options={{ gestureEnabled: settings.predictiveBackEnabled }} />
       <Stack.Screen name="traffic" options={{ gestureEnabled: settings.predictiveBackEnabled }} />
       <Stack.Screen name="diagnostics" options={{ gestureEnabled: settings.predictiveBackEnabled }} />
       <Stack.Screen name="wireless-manager" options={{ gestureEnabled: settings.predictiveBackEnabled }} />
       <Stack.Screen name="wireless-optimizer" options={{ gestureEnabled: settings.predictiveBackEnabled }} />
+      <Stack.Screen name="weak-signal" options={{ gestureEnabled: settings.predictiveBackEnabled }} />
+      <Stack.Screen name="docker" options={{ gestureEnabled: settings.predictiveBackEnabled }} />
+      <Stack.Screen name="performance-benchmark" options={{ gestureEnabled: settings.predictiveBackEnabled }} />
+      <Stack.Screen name="firmware-release" options={{ gestureEnabled: settings.predictiveBackEnabled }} />
       <Stack.Screen name="maintenance-tools" options={{ gestureEnabled: settings.predictiveBackEnabled }} />
       <Stack.Screen name="quick-actions" options={{ gestureEnabled: settings.predictiveBackEnabled }} />
       <Stack.Screen name="services-health" options={{ gestureEnabled: settings.predictiveBackEnabled }} />
