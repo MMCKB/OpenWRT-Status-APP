@@ -7,6 +7,7 @@ import { ActivityIndicator, Alert, KeyboardAvoidingView, Platform, Pressable, Sc
 import { connectInAppSsh, getInAppSshTarget, isInAppSshSupported, runInAppSshCommand, uploadInAppSshFile } from "@/lib/native-ssh";
 import { useRouterStore } from "@/lib/router-provider";
 import { useThemedStyles } from "@/lib/use-themed-styles";
+import { useColorScheme } from "@/hooks/use-color-scheme";
 
 type FirmwareStep = "select" | "uploading" | "ready" | "upgrading" | "error";
 type FirmwareAsset = { name: string; uri: string; size?: number; mimeType?: string };
@@ -22,6 +23,7 @@ function safeFileName(value: string) {
 
 export default function FirmwareScreen() {
   const styles = useThemedStyles(baseStyles);
+  const colorScheme = useColorScheme();
   const router = useRouter();
   const { selectedProfile, getSelectedCredentials } = useRouterStore();
   const [asset, setAsset] = useState<FirmwareAsset | null>(null);
@@ -36,6 +38,9 @@ export default function FirmwareScreen() {
   const profile = selectedProfile;
   const target = getInAppSshTarget(profile);
   const canUpgrade = step === "ready" && !!remotePath;
+  const warningColors = colorScheme === "dark"
+    ? { background: "#4A3514", border: "#C48D28", icon: "#FFD36B", title: "#FFF4D0", body: "#FFE0A0" }
+    : { background: "#FFF3D9", border: "#F0D59A", icon: "#A96D00", title: "#7E5200", body: "#855D14" };
 
   async function chooseFirmware() {
     try {
@@ -87,7 +92,7 @@ export default function FirmwareScreen() {
     <KeyboardAvoidingView style={styles.screen} behavior={Platform.OS === "ios" ? "padding" : undefined}>
       <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
         <View style={styles.nav}><Pressable accessibilityRole="button" accessibilityLabel="返回设置" onPress={() => router.back()} style={styles.back}><MaterialIcons name="arrow-back" size={22} color="#203B55" /></Pressable><Text style={styles.navTitle}>固件升级</Text><View style={styles.navSpacer} /></View>
-        <View style={styles.warning}><MaterialIcons name="warning-amber" size={23} color="#A96D00" /><View style={styles.warningText}><Text style={styles.warningTitle}>高风险操作</Text><Text style={styles.warningBody}>升级会替换路由器系统。仅使用与当前型号完全匹配的 sysupgrade 镜像，并在持续供电的可信网络中操作。</Text></View></View>
+        <View style={[styles.warning, { backgroundColor: warningColors.background, borderColor: warningColors.border }]}><MaterialIcons name="warning-amber" size={23} color={warningColors.icon} /><View style={styles.warningText}><Text style={[styles.warningTitle, { color: warningColors.title }]}>高风险操作</Text><Text style={[styles.warningBody, { color: warningColors.body }]}>升级会替换路由器系统。仅使用与当前型号完全匹配的 sysupgrade 镜像，并在持续供电的可信网络中操作。</Text></View></View>
         <View style={styles.deviceCard}><Text style={styles.eyebrow}>升级目标</Text><Text style={styles.deviceTarget}>{target}</Text><Text style={styles.deviceHint}>仅在新版 Android APK 中可上传和升级</Text></View>
         {!isInAppSshSupported() ? <View style={styles.error}><Text style={styles.errorText}>此功能仅在 Android APK 中可用，Web 与 iOS 预览无法使用内嵌 SSH 文件传输。</Text></View> : null}
         <Text style={styles.sectionTitle}>1. 选择固件</Text>

@@ -40,7 +40,7 @@ function WanTrafficPanel({ snapshot, rate, history, refreshing, compact }: { sna
 
   return (
     <View style={[styles.interfacePanel, { backgroundColor: isDark ? "#143149" : "#F9FCFC", borderColor: colors.border }]}>
-      <View style={styles.interfaceHeader}>
+      <View style={[styles.interfaceHeader, compact && styles.compactInterfaceHeader]}>
         <View style={styles.interfaceIdentity}>
           <View style={[styles.interfaceIcon, { backgroundColor: liveBackground }]}><MaterialIcons name="router" size={16} color={colors.primary} /></View>
           <View style={styles.interfaceText}>
@@ -48,15 +48,14 @@ function WanTrafficPanel({ snapshot, rate, history, refreshing, compact }: { sna
             <Text style={[styles.interfaceDevice, { color: colors.muted }]} numberOfLines={1}>{snapshot.device || "WAN 接口"}</Text>
           </View>
         </View>
-        <View style={[styles.livePill, { backgroundColor: liveBackground }]}>
+        {!compact ? <View style={[styles.livePill, { backgroundColor: liveBackground }]}>
           <View style={[styles.liveDot, { backgroundColor: refreshing ? colors.warning : colors.success }]} />
           <Text style={[styles.liveText, { color: colors.foreground }]}>{refreshing ? "刷新中" : "实时"}</Text>
-        </View>
+        </View> : null}
       </View>
-      {compact ? <View style={[styles.compactMetricRow, { borderTopColor: colors.border }]}>
-        <View style={styles.compactMetric}><Text style={[styles.compactLabel, { color: colors.muted }]}>↓ 下载</Text><Text style={[styles.compactValue, { color: colors.foreground }]}>{formatTrafficRate(rate?.rxBytesPerSecond ?? null)}</Text></View>
-        <View style={[styles.compactDivider, { backgroundColor: colors.border }]} />
-        <View style={styles.compactMetric}><Text style={[styles.compactLabel, { color: colors.muted }]}>↑ 上传</Text><Text style={[styles.compactValue, { color: colors.foreground }]}>{formatTrafficRate(rate?.txBytesPerSecond ?? null)}</Text></View>
+      {compact ? <View style={styles.compactMetricRow}>
+        <View style={styles.compactMetric}><View style={styles.compactMetricLabel}><MaterialIcons name="south" size={14} color="#20A6B4" /><Text style={[styles.compactLabel, { color: colors.muted }]}>下载</Text></View><Text style={[styles.compactValue, { color: colors.foreground }]}>{formatTrafficRate(rate?.rxBytesPerSecond ?? null)}</Text></View>
+        <View style={styles.compactMetric}><View style={styles.compactMetricLabel}><MaterialIcons name="north" size={14} color="#8A7DF1" /><Text style={[styles.compactLabel, { color: colors.muted }]}>上传</Text></View><Text style={[styles.compactValue, { color: colors.foreground }]}>{formatTrafficRate(rate?.txBytesPerSecond ?? null)}</Text></View>
       </View> : <View style={styles.metricRow}>
         <View style={styles.metric}>
           <View style={[styles.iconBox, { backgroundColor: downloadSoft }]}><MaterialIcons name="south" size={18} color="#168A98" /></View>
@@ -135,7 +134,7 @@ const styles = StyleSheet.create({
   title: { fontSize: 18, fontWeight: "800" },
   subtitle: { fontSize: 12, marginTop: 4 },
   interfacePanel: { borderRadius: 16, borderWidth: 1, padding: 14 },
-  interfaceHeader: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 10, marginBottom: 14 },
+  interfaceHeader: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 10, marginBottom: 14 }, compactInterfaceHeader: { marginBottom: 10 },
   interfaceIdentity: { flex: 1, minWidth: 0, flexDirection: "row", alignItems: "center", gap: 9 },
   interfaceIcon: { width: 32, height: 32, borderRadius: 10, alignItems: "center", justifyContent: "center" },
   interfaceText: { flex: 1, minWidth: 0 },
@@ -145,7 +144,7 @@ const styles = StyleSheet.create({
   liveDot: { width: 6, height: 6, borderRadius: 3 },
   liveText: { fontSize: 11, fontWeight: "700" },
   metricRow: { flexDirection: "row", alignItems: "stretch" },
-  compactMetricRow: { flexDirection: "row", alignItems: "center", borderTopWidth: 1, paddingTop: 12 }, compactMetric: { flex: 1, minWidth: 0 }, compactDivider: { width: 1, height: 32, marginHorizontal: 12 }, compactLabel: { fontSize: 12, fontWeight: "700" }, compactValue: { fontSize: 17, lineHeight: 23, fontWeight: "800", marginTop: 2, fontVariant: ["tabular-nums"] },
+  compactMetricRow: { flexDirection: "row", alignItems: "center", justifyContent: "flex-end", gap: 18 }, compactMetric: { minWidth: 0, alignItems: "flex-end" }, compactMetricLabel: { flexDirection: "row", alignItems: "center", gap: 3 }, compactLabel: { fontSize: 11, fontWeight: "700" }, compactValue: { fontSize: 16, lineHeight: 21, fontWeight: "800", marginTop: 2, fontVariant: ["tabular-nums"] },
   metric: { flex: 1, minWidth: 0 },
   divider: { width: 1, marginHorizontal: 13 },
   iconBox: { width: 32, height: 32, borderRadius: 10, alignItems: "center", justifyContent: "center", marginBottom: 10 },

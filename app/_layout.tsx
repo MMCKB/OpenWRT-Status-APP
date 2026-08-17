@@ -1,11 +1,11 @@
 import "@/global.css";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { Stack, usePathname, useRouter } from "expo-router";
+import { Stack } from "expo-router";
 import { StatusBar } from "expo-status-bar";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
 import "react-native-reanimated";
-import { BackHandler, Platform } from "react-native";
+import { Platform } from "react-native";
 import "@/lib/_core/nativewind-pressable";
 import { ThemeProvider } from "@/lib/theme-provider";
 import { useThemeContext } from "@/lib/theme-provider";
@@ -29,29 +29,6 @@ const DEFAULT_WEB_FRAME: Rect = { x: 0, y: 0, width: 0, height: 0 };
 export const unstable_settings = {
   anchor: "(tabs)",
 };
-
-function AndroidBackFallback() {
-  const router = useRouter();
-  const pathname = usePathname();
-
-  useEffect(() => {
-    if (Platform.OS !== "android") return;
-    const subscription = BackHandler.addEventListener("hardwareBackPress", () => {
-      if (router.canGoBack()) {
-        router.back();
-        return true;
-      }
-      if (pathname !== "/" && pathname !== "/index") {
-        router.replace("/" as never);
-        return true;
-      }
-      return false;
-    });
-    return () => subscription.remove();
-  }, [pathname, router]);
-
-  return null;
-}
 
 export default function RootLayout() {
   const initialInsets = initialWindowMetrics?.insets ?? DEFAULT_WEB_INSETS;
@@ -114,7 +91,6 @@ export default function RootLayout() {
         <trpc.Provider client={trpcClient} queryClient={queryClient}>
           <QueryClientProvider client={queryClient}>
             <SafeAreaView style={{ flex: 1, backgroundColor: colors.background }} edges={["top", "left", "right"]}>
-              <AndroidBackFallback />
               <Stack screenOptions={{ headerShown: false, contentStyle: { backgroundColor: colors.background } }}>
                 <Stack.Screen name="(tabs)" />
                 <Stack.Screen name="oauth/callback" />

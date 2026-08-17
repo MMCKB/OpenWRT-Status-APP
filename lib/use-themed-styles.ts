@@ -33,14 +33,20 @@ const DARK_COLOR_MAP: Record<string, keyof ReturnType<typeof useColors>> = {
   "#A43131": "error",
   "#FDEBEC": "error",
   "#FFF0F0": "error",
-  "#FFF3D9": "warning",
-  "#F0D59A": "warning",
-  "#9A6500": "warning",
-  "#A96D00": "warning",
-  "#7E5200": "warning",
-  "#805B16": "warning",
-  "#855D14": "warning",
-  "#785000": "warning",
+};
+
+// Warning surfaces must retain their own foreground tones in dark mode. Mapping
+// every amber value to the one `warning` palette token made warning copy and
+// icons blend into the warning background, as seen on the firmware page.
+const DARK_WARNING_COLOR_MAP: Record<string, string> = {
+  "#FFF3D9": "#4A3514",
+  "#F0D59A": "#C48D28",
+  "#9A6500": "#FFE0A0",
+  "#A96D00": "#FFD36B",
+  "#7E5200": "#FFF4D0",
+  "#805B16": "#FFE7B2",
+  "#855D14": "#FFE0A0",
+  "#785000": "#FFF0C2",
 };
 
 /**
@@ -62,7 +68,7 @@ export function useThemedStyles<T extends StyleRecord>(baseStyles: T): T {
             if (typeof value !== "string") return [key, value];
             if (key === "color" && value === "#FFFFFF") return [key, value];
             const token = DARK_COLOR_MAP[value];
-            return [key, token ? colors[token] : value];
+            return [key, token ? colors[token] : DARK_WARNING_COLOR_MAP[value] ?? value];
           }),
         ),
       ]),

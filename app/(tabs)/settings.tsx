@@ -107,7 +107,7 @@ const styles = StyleSheet.create({
   themeOption: { flex: 1, minWidth: 0, minHeight: 76, borderRadius: 12, borderWidth: 1, alignItems: "center", justifyContent: "center", gap: 7, paddingHorizontal: 4 },
   themeLabel: { fontSize: 12, fontWeight: "700", textAlign: "center" },
   intervalGrid: { flexDirection: "row", flexWrap: "wrap", gap: 8, padding: 15 },
-  interval: { borderRadius: 10, borderWidth: 1, minWidth: "46%", alignItems: "center", paddingVertical: 11 },
+  interval: { flexBasis: "48%", flexGrow: 1, maxWidth: "50%", borderRadius: 10, borderWidth: 1, alignItems: "center", paddingVertical: 11 },
   intervalText: { fontSize: 13, fontWeight: "700" }, pressed: { opacity: 0.72 },
   viewModeRow: { flexDirection: "row", gap: 8, padding: 15 }, viewModeOption: { flex: 1, minHeight: 48, borderWidth: 1, borderRadius: 11, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 7 }, viewModeText: { fontSize: 13, fontWeight: "800" },
   interfaceList: { paddingHorizontal: 15, paddingBottom: 4 }, interfaceOption: { minHeight: 62, flexDirection: "row", alignItems: "center", gap: 11 }, interfaceCheck: { width: 23, height: 23, borderRadius: 7, borderWidth: 1, alignItems: "center", justifyContent: "center" }, emptyTrafficText: { paddingHorizontal: 15, paddingVertical: 18, fontSize: 13, lineHeight: 19 },

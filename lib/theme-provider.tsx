@@ -28,8 +28,11 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
   const [themePreference, setThemePreferenceState] = useState<ThemePreference>("system");
   const colorScheme = resolveColorScheme(themePreference, systemScheme);
 
-  const applyScheme = useCallback((scheme: ColorScheme) => {
-    nativewindColorScheme.set(scheme);
+  const applyScheme = useCallback((scheme: ColorScheme, preference: ThemePreference) => {
+    // `set("light" | "dark")` delegates to React Native Appearance and pins
+    // its value. In system mode that prevented Appearance from observing later
+    // Android uiMode changes. Keep NativeWind in automatic mode instead.
+    nativewindColorScheme.set(preference === "system" ? "system" : scheme);
     if (typeof document !== "undefined") {
       const root = document.documentElement;
       root.dataset.theme = scheme;
@@ -84,11 +87,12 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
   }, [themePreference]);
 
   useEffect(() => {
-    applyScheme(colorScheme);
+    applyScheme(colorScheme, themePreference);
     void SystemUI.setBackgroundColorAsync(SchemeColors[colorScheme].background).catch(() => undefined);
-  }, [applyScheme, colorScheme]);
+  }, [applyScheme, colorScheme, themePreference]);
 
   const setThemePreference = useCallback(async (preference: ThemePreference) => {
+    if (preference === "system") setSystemScheme(readSystemScheme());
     setThemePreferenceState(preference);
     await AsyncStorage.setItem(THEME_PREFERENCE_KEY, preference);
   }, []);
