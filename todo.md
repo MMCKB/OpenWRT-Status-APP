@@ -195,7 +195,16 @@
 - [x] 构建弱信号、Docker、性能基准和固件版本检查的移动端管理界面
 - [x] 为新增解析、GitHub 版本比较、下载校验和高风险操作补充测试
 - [x] 验证深浅色主题、网络异常与固件更新二次确认流程
-- [ ] 在沙箱本地重新构建并核验包含新功能的四 ABI Release APK
+- [x] 在沙箱本地重新构建并核验包含新功能的四 ABI Release APK
 - [x] 移除实时设备流量排行页面、工具入口、导航注册及相关数据调用，保留 WAN 实时流量监控
 - [x] 回归验证移除实时设备流量排行后其余新增管理功能与导航完整可用
-- [ ] 在移除流量排行后的代码基础上重新生成并核验 Android Release APK
+- [x] 在移除流量排行后的代码基础上重新生成并核验 Android Release APK
+- [x] 扩展构建用交换空间并以低内存参数重试四 ABI Android Release APK
+- [x] 清理可再生成的 Gradle 与 Android 构建缓存，释放四 ABI 打包所需磁盘空间
+- [x] 将构建用交换空间调整至 24GB，并保留足够磁盘空间用于 Android 打包
+- [x] 在 24GB 交换空间下诊断 Gradle 守护进程终止并重试四 ABI Release 构建
+- [x] 保持 24GB 交换空间，以单线程低内存参数直接尝试四 ABI Android Release 编译
+- [x] 将构建用交换空间调整至 20GB，释放 Gradle 与 APK 打包的可写磁盘空间
+- [x] 在 20GB 交换空间下恢复 Gradle 写入并完成四 ABI Release 编译与核验
+- [x] 改用逐 ABI 编译并重新签名合并的方式生成四 ABI 通用 Release APK，降低 CMake 峰值资源占用
+- [x] 评估并清理不影响本项目构建的缓存与未使用 Android SDK 组件，为额外 6GB 交换空间腾出容量
