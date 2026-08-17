@@ -34,7 +34,6 @@ interface RouterContextValue {
   updateRefreshInterval: (seconds: number) => Promise<void>;
   updateTrafficInterfaceIds: (interfaceIds: string[]) => Promise<void>;
   updateStatusTrafficView: (view: "full" | "compact") => Promise<void>;
-  updatePredictiveBackEnabled: (enabled: boolean) => Promise<void>;
   getSelectedCredentials: () => Promise<{ luciPassword: string | null; sshPassword: string } | null>;
 }
 
@@ -46,7 +45,7 @@ function makeId() {
 
 export function RouterProvider({ children }: { children: ReactNode }) {
   const [profiles, setProfiles] = useState<RouterProfile[]>([]);
-  const [settings, setSettings] = useState<RouterSettings>({ selectedRouterId: null, refreshIntervalSeconds: 60, trafficInterfaceIds: [], statusTrafficView: "full", predictiveBackEnabled: true });
+  const [settings, setSettings] = useState<RouterSettings>({ selectedRouterId: null, refreshIntervalSeconds: 60, trafficInterfaceIds: [], statusTrafficView: "full" });
   const [selectedStatus, setSelectedStatus] = useState<RouterStatus | null>(null);
   const [isReady, setIsReady] = useState(false);
   const [isRefreshing, setIsRefreshing] = useState(false);
@@ -226,12 +225,6 @@ export function RouterProvider({ children }: { children: ReactNode }) {
     await saveSettings(next);
   }, [settings]);
 
-  const updatePredictiveBackEnabled = useCallback(async (enabled: boolean) => {
-    const next = { ...settings, predictiveBackEnabled: enabled };
-    setSettings(next);
-    await saveSettings(next);
-  }, [settings]);
-
   const getSelectedCredentials = useCallback(async () => {
     if (!selectedProfile) return null;
     const [luciPassword, sshPassword] = await Promise.all([
@@ -259,9 +252,8 @@ export function RouterProvider({ children }: { children: ReactNode }) {
     updateRefreshInterval,
     updateTrafficInterfaceIds,
     updateStatusTrafficView,
-    updatePredictiveBackEnabled,
     getSelectedCredentials,
-  }), [profiles, settings, selectedProfile, selectedStatus, isReady, isRefreshing, isTrafficRefreshing, setSelectedRouter, saveProfile, deleteProfile, testConnection, refreshStatus, updateRefreshInterval, updateTrafficInterfaceIds, updateStatusTrafficView, updatePredictiveBackEnabled, getSelectedCredentials]);
+  }), [profiles, settings, selectedProfile, selectedStatus, isReady, isRefreshing, isTrafficRefreshing, setSelectedRouter, saveProfile, deleteProfile, testConnection, refreshStatus, updateRefreshInterval, updateTrafficInterfaceIds, updateStatusTrafficView, getSelectedCredentials]);
 
   return <RouterContext.Provider value={value}>{children}</RouterContext.Provider>;
 }

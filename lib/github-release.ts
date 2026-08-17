@@ -34,10 +34,12 @@ export function parseGithubReleaseUrl(value: string) {
   }
   if (parsed.protocol !== "https:" || !GITHUB_HOSTS.has(parsed.hostname.toLowerCase())) throw releaseUrlError();
   const segments = parsed.pathname.split("/").filter(Boolean);
-  if (segments.length < 3 || segments[2] !== "releases" || !/^[A-Za-z0-9_.-]+$/.test(segments[0]) || !/^[A-Za-z0-9_.-]+$/.test(segments[1])) {
+  const isRepositoryRelease = segments.length === 3;
+  const isTaggedRelease = segments.length === 5 && segments[3] === "tag" && /^[A-Za-z0-9_.-]+$/.test(segments[4]);
+  if ((!isRepositoryRelease && !isTaggedRelease) || segments[2] !== "releases" || !/^[A-Za-z0-9_.-]+$/.test(segments[0]) || !/^[A-Za-z0-9_.-]+$/.test(segments[1])) {
     throw releaseUrlError();
   }
-  return { owner: segments[0], repository: segments[1] };
+  return { owner: segments[0], repository: segments[1], tagName: isTaggedRelease ? segments[4] : null };
 }
 
 function isFirmwareCandidate(name: string) {
@@ -60,11 +62,14 @@ function stringValue(value: unknown) {
 }
 
 export async function fetchLatestGithubRelease(sourceUrl: string): Promise<GithubRelease> {
-  const { owner, repository } = parseGithubReleaseUrl(sourceUrl);
-  const response = await fetch(`https://api.github.com/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repository)}/releases/latest`, {
+  const { owner, repository, tagName: requestedTag } = parseGithubReleaseUrl(sourceUrl);
+  const releasePath = requestedTag
+    ? `/releases/tags/${encodeURIComponent(requestedTag)}`
+    : "/releases/latest";
+  const response = await fetch(`https://api.github.com/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repository)}${releasePath}`, {
     headers: { Accept: "application/vnd.github+json", "X-GitHub-Api-Version": "2022-11-28" },
   });
-  if (response.status === 404) throw new Error("未找到公开的最新 Release。请确认链接正确、仓库公开且已发布非预发行版本。");
+  if (response.status === 404) throw new Error(requestedTag ? `未找到公开的 Release 标签“${requestedTag}”。请确认链接、标签名称和仓库可见性。` : "未找到公开的最新 Release。请确认链接正确、仓库公开且已发布非预发行版本。");
   if (!response.ok) throw new Error(`GitHub 版本查询失败（HTTP ${response.status}）。`);
   const payload = await response.json() as Record<string, unknown>;
   const tagName = stringValue(payload.tag_name);

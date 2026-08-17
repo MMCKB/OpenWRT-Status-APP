@@ -23,7 +23,7 @@ const themeOptions: { label: string; value: ThemePreference; icon: React.Compone
 ];
 
 export default function SettingsScreen() {
-  const { settings, updateRefreshInterval, updateTrafficInterfaceIds, updateStatusTrafficView, updatePredictiveBackEnabled, selectedStatus } = useRouterStore();
+  const { settings, updateRefreshInterval, updateTrafficInterfaceIds, updateStatusTrafficView, selectedStatus } = useRouterStore();
   const { colorScheme, themePreference, setThemePreference } = useThemeContext();
   const colors = useColors();
   const router = useRouter();
@@ -75,13 +75,6 @@ export default function SettingsScreen() {
             return <Pressable key={mode} accessibilityRole="button" accessibilityState={{ selected }} onPress={() => void updateStatusTrafficView(mode)} style={({ pressed }) => [styles.viewModeOption, { borderColor: selected ? colors.primary : colors.border, backgroundColor: selected ? colors.primary : colors.surface }, pressed && styles.pressed]}><MaterialIcons name={icon} size={18} color={selected ? "#FFFFFF" : colors.primary} /><Text style={[styles.viewModeText, { color: selected ? "#FFFFFF" : colors.foreground }]}>{label}</Text></Pressable>;
           })}</View>
         </SectionCard>
-        <SectionCard title="Android 返回手势">
-          <Text style={[styles.cardDescription, { color: colors.muted }]}>开启后，工具和管理等二级页面优先使用原生导航栈处理 Android 系统边缘返回。此兼容路径避免 Expo SDK 54 的预测性返回预览问题；系统预览动画是否可用仍由设备、系统版本和框架支持决定。</Text>
-          <Pressable accessibilityRole="switch" accessibilityState={{ checked: settings.predictiveBackEnabled }} onPress={() => void updatePredictiveBackEnabled(!settings.predictiveBackEnabled)} style={({ pressed }) => [styles.backGestureRow, { borderTopColor: colors.border }, pressed && styles.pressed]}>
-            <View style={styles.infoText}><Text style={[styles.infoTitle, { color: colors.foreground }]}>启用边缘返回兼容模式</Text><Text style={[styles.infoDescription, { color: colors.muted }]}>{settings.predictiveBackEnabled ? "已启用：二级页面优先返回上一页" : "已关闭：完全交由系统默认返回处理"}</Text></View>
-            <View style={[styles.switchTrack, { backgroundColor: settings.predictiveBackEnabled ? colors.primary : colors.border }]}><View style={[styles.switchThumb, settings.predictiveBackEnabled ? styles.switchThumbOn : styles.switchThumbOff]} /></View>
-          </Pressable>
-        </SectionCard>
         <SectionCard title="数据与隐私">
           <InfoRow icon="vpn-key" title="凭证仅存储在本机" description="LuCI 密码会保存在设备安全存储中；配置资料保存在本地，不会同步至云端。" colors={colors} softPrimary={softPrimary} />
           <InfoRow icon="wifi" title="仅访问已保存的路由器" description="状态读取通过 OpenWrt 的 LuCI ubus 接口完成。请在可信局域网内使用。" colors={colors} softPrimary={softPrimary} divider />
@@ -117,6 +110,5 @@ const styles = StyleSheet.create({
   interfaceList: { paddingHorizontal: 15, paddingBottom: 4 }, interfaceOption: { minHeight: 62, flexDirection: "row", alignItems: "center", gap: 11 }, interfaceCheck: { width: 23, height: 23, borderRadius: 7, borderWidth: 1, alignItems: "center", justifyContent: "center" }, emptyTrafficText: { paddingHorizontal: 15, paddingVertical: 18, fontSize: 13, lineHeight: 19 },
   infoRow: { flexDirection: "row", alignItems: "flex-start", gap: 12, padding: 15 }, infoIcon: { width: 34, height: 34, borderRadius: 10, alignItems: "center", justifyContent: "center" }, infoText: { flex: 1 }, infoTitle: { fontSize: 14, fontWeight: "800" }, infoDescription: { fontSize: 13, lineHeight: 19, marginTop: 4 },
   maintenanceRow: { minHeight: 74, flexDirection: "row", alignItems: "center", gap: 12, padding: 15 },
-  backGestureRow: { minHeight: 70, borderTopWidth: 1, marginTop: 14, padding: 15, flexDirection: "row", alignItems: "center", gap: 12 }, switchTrack: { width: 46, height: 28, borderRadius: 14, padding: 3, justifyContent: "center" }, switchThumb: { width: 22, height: 22, borderRadius: 11, backgroundColor: "#FFFFFF" }, switchThumbOn: { alignSelf: "flex-end" }, switchThumbOff: { alignSelf: "flex-start" },
   note: { flexDirection: "row", alignItems: "flex-start", gap: 9, padding: 14, borderRadius: 14 }, noteText: { flex: 1, fontSize: 13, lineHeight: 19 },
 });

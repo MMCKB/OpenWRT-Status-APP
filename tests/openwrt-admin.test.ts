@@ -72,6 +72,7 @@ describe("OpenWrt 管理命令与解析", () => {
     const benchmark = parsePerformanceBenchmark("TARGET|1.1.1.1\n__BENCHMARK_PING__\n8 packets transmitted, 7 packets received, 12.5% packet loss\nrtt min/avg/max/mdev = 10.000/20.500/31.000/2.000 ms\n__BENCHMARK_DNS__\nName: openwrt.org\nAddress: 1.2.3.4\n__BENCHMARK_SYSTEM__\nLOAD|0.25\nMEM|128000|64000");
     expect(benchmark).toMatchObject({ target: "1.1.1.1", packetsSent: 8, packetsReceived: 7, packetLossPercent: 12.5, latencyAvgMs: 20.5, dnsReachable: true, loadAverage: 0.25, memoryAvailableKb: 64000 });
     expect(buildPerformanceBenchmarkCommand("1.1.1.1")).toContain("ping -c 8 -W 2 1.1.1.1");
+    expect(buildPerformanceBenchmarkCommand("openwrt.org")).toContain("ping -c 8 -W 2 openwrt.org");
     expect(() => buildPerformanceBenchmarkCommand("1.1.1.1; reboot")).toThrow("测速目标格式无效");
     expect(parseFirmwareDeviceInfo('{"model":"Example Router","board_name":"example,router","release":{"distribution":"OpenWrt","version":"25.12.0","revision":"r123","target":"ath79/generic"}}')).toMatchObject({ model: "Example Router", version: "25.12.0", target: "ath79/generic" });
   });

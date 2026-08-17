@@ -37,7 +37,7 @@ export default function FirmwareReleaseScreen() {
   const [release, setRelease] = useState<GithubRelease | null>(null);
   const [deviceInfo, setDeviceInfo] = useState<FirmwareDeviceInfo | null>(null);
   const [loading, setLoading] = useState(false);
-  const [activity, setActivity] = useState("填写公开 GitHub 仓库的 Release 链接后，检查最新版本与固件资产。");
+  const [activity, setActivity] = useState("填写公开 GitHub Release 链接后，检查对应发布的版本与固件资产。");
 
   useEffect(() => {
     let active = true;
@@ -53,13 +53,14 @@ export default function FirmwareReleaseScreen() {
     setLoading(true);
     setActivity("正在从 GitHub 查询公开 Release，并读取路由器当前固件版本…");
     try {
-      parseGithubReleaseUrl(sourceUrl);
+      const source = parseGithubReleaseUrl(sourceUrl);
       await saveFirmwareReleaseUrl(selectedProfile.id, sourceUrl);
       const latest = await fetchLatestGithubRelease(sourceUrl);
       const current = parseFirmwareDeviceInfo(await execute(buildFirmwareDeviceInfoCommand()));
       setRelease(latest);
       setDeviceInfo(current);
-      setActivity(latest.assets.some((asset) => asset.firmwareCandidate) ? "已读取最新 Release。请手动确认型号、目标平台和镜像类型后再选择下载。" : "已读取最新 Release，但未识别到常见固件镜像资产。");
+      const releaseLabel = source.tagName ? `指定标签“${latest.tagName}”` : "最新 Release";
+      setActivity(latest.assets.some((asset) => asset.firmwareCandidate) ? `已读取${releaseLabel}。请手动确认型号、目标平台和镜像类型后再选择下载。` : `已读取${releaseLabel}，但未识别到常见固件镜像资产。`);
     } catch (reason) {
       setRelease(null);
       setActivity(reason instanceof Error ? reason.message : "GitHub 版本检查失败。");
@@ -110,9 +111,9 @@ export default function FirmwareReleaseScreen() {
   const disabled = loading || isRunning || !hasRouter || !isSupported;
   return <ManagementShell title="GitHub 固件检查" description="从你配置的公开 GitHub Release 检查版本并手动选择固件。不会自动升级或校验镜像适配性。">
     <SectionCard title="Release 链接"><View style={styles.cardBody}>
-      <Text style={[styles.caption, { color: colors.muted }]}>支持 GitHub 仓库的 Release 页面，例如 https://github.com/owner/repository/releases。链接按当前路由器分别保存。</Text>
+      <Text style={[styles.caption, { color: colors.muted }]}>支持仓库 Release 页面或指定标签页，例如 https://github.com/owner/repository/releases 及 /releases/tag/JDCloud。链接按当前路由器分别保存。</Text>
       <TextInput value={sourceUrl} onChangeText={setSourceUrl} editable={!disabled} autoCapitalize="none" autoCorrect={false} keyboardType="url" placeholder="GitHub Release 链接" placeholderTextColor={colors.muted} style={[styles.input, { color: colors.foreground, borderColor: colors.border, backgroundColor: colors.background }]} />
-      <Pressable accessibilityRole="button" disabled={!sourceUrl.trim() || disabled} onPress={() => void checkRelease()} style={({ pressed }) => [styles.primary, { backgroundColor: colors.primary }, (!sourceUrl.trim() || disabled) && styles.disabled, pressed && styles.pressed]}>{loading ? <ActivityIndicator color="#FFFFFF" /> : <Text style={styles.primaryText}>检查最新 Release</Text>}</Pressable>
+      <Pressable accessibilityRole="button" disabled={!sourceUrl.trim() || disabled} onPress={() => void checkRelease()} style={({ pressed }) => [styles.primary, { backgroundColor: colors.primary }, (!sourceUrl.trim() || disabled) && styles.disabled, pressed && styles.pressed]}>{loading ? <ActivityIndicator color="#FFFFFF" /> : <Text style={styles.primaryText}>检查 Release</Text>}</Pressable>
       <Text style={[styles.status, { color: colors.muted }]}>{activity}</Text>
       {!isSupported ? <Text style={[styles.error, { color: colors.error }]}>此功能需要安装 Android APK；Web 预览无法进行 SSH 上传与升级。</Text> : null}
     </View></SectionCard>

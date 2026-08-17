@@ -6,8 +6,8 @@ afterEach(() => vi.unstubAllGlobals());
 
 describe("GitHub Release 固件源", () => {
   it("只接受标准 HTTPS GitHub Release 链接", () => {
-    expect(parseGithubReleaseUrl("https://github.com/openwrt/openwrt/releases")).toEqual({ owner: "openwrt", repository: "openwrt" });
-    expect(parseGithubReleaseUrl("https://github.com/openwrt/openwrt/releases/tag/v25.12.0")).toEqual({ owner: "openwrt", repository: "openwrt" });
+    expect(parseGithubReleaseUrl("https://github.com/openwrt/openwrt/releases")).toEqual({ owner: "openwrt", repository: "openwrt", tagName: null });
+    expect(parseGithubReleaseUrl("https://github.com/openwrt/openwrt/releases/tag/v25.12.0")).toEqual({ owner: "openwrt", repository: "openwrt", tagName: "v25.12.0" });
     expect(() => parseGithubReleaseUrl("http://github.com/openwrt/openwrt/releases")).toThrow("GitHub 仓库的 Release 链接");
     expect(() => parseGithubReleaseUrl("https://example.com/openwrt/openwrt/releases")).toThrow("GitHub 仓库的 Release 链接");
   });
@@ -37,5 +37,19 @@ describe("GitHub Release 固件源", () => {
     const release = await fetchLatestGithubRelease("https://github.com/openwrt/openwrt/releases");
     expect(release.tagName).toBe("v25.12.2");
     expect(release.assets).toEqual([expect.objectContaining({ id: 1, firmwareCandidate: true, name: "openwrt-sysupgrade.bin" })]);
+  });
+
+  it("指定标签链接会查询对应 Release，而不是回退为仓库最新发布", async () => {
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      status: 200,
+      json: async () => ({ tag_name: "JDCloud", html_url: "https://github.com/MMCKB/OpenWRT/releases/tag/JDCloud", assets: [] }),
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    const release = await fetchLatestGithubRelease("https://github.com/MMCKB/OpenWRT/releases/tag/JDCloud");
+
+    expect(fetchMock).toHaveBeenCalledWith("https://api.github.com/repos/MMCKB/OpenWRT/releases/tags/JDCloud", expect.any(Object));
+    expect(release.tagName).toBe("JDCloud");
   });
 });

@@ -22,7 +22,7 @@ import type { EdgeInsets, Metrics, Rect } from "react-native-safe-area-context";
 import { trpc, createTRPCClient } from "@/lib/trpc";
 import { initManusRuntime, subscribeSafeAreaInsets } from "@/lib/_core/manus-runtime";
 import { SplashLoader } from "@/components/splash-loader";
-import { RouterProvider, useRouterStore } from "@/lib/router-provider";
+import { RouterProvider } from "@/lib/router-provider";
 
 const DEFAULT_WEB_INSETS: EdgeInsets = { top: 0, right: 0, bottom: 0, left: 0 };
 const DEFAULT_WEB_FRAME: Rect = { x: 0, y: 0, width: 0, height: 0 };
@@ -131,30 +131,29 @@ export default function RootLayout() {
 
 function RootNavigator() {
   const colors = useColors();
-  const { settings } = useRouterStore();
   return (
-    <Stack screenOptions={{ headerShown: false, contentStyle: { backgroundColor: colors.background }, animation: "default", gestureEnabled: settings.predictiveBackEnabled }}>
+    <Stack screenOptions={{ headerShown: false, contentStyle: { backgroundColor: colors.background }, animation: "default", gestureEnabled: true }}>
       <Stack.Screen name="(tabs)" />
-      <Stack.Screen name="files" options={{ gestureEnabled: settings.predictiveBackEnabled }} />
-      <Stack.Screen name="firmware" options={{ gestureEnabled: settings.predictiveBackEnabled }} />
-      <Stack.Screen name="packages" options={{ gestureEnabled: settings.predictiveBackEnabled }} />
-      <Stack.Screen name="clients" options={{ gestureEnabled: settings.predictiveBackEnabled }} />
-      <Stack.Screen name="dhcp-leases" options={{ gestureEnabled: settings.predictiveBackEnabled }} />
-      <Stack.Screen name="traffic" options={{ gestureEnabled: settings.predictiveBackEnabled }} />
-      <Stack.Screen name="diagnostics" options={{ gestureEnabled: settings.predictiveBackEnabled }} />
-      <Stack.Screen name="wireless-manager" options={{ gestureEnabled: settings.predictiveBackEnabled }} />
-      <Stack.Screen name="wireless-optimizer" options={{ gestureEnabled: settings.predictiveBackEnabled }} />
-      <Stack.Screen name="weak-signal" options={{ gestureEnabled: settings.predictiveBackEnabled }} />
-      <Stack.Screen name="docker" options={{ gestureEnabled: settings.predictiveBackEnabled }} />
-      <Stack.Screen name="performance-benchmark" options={{ gestureEnabled: settings.predictiveBackEnabled }} />
-      <Stack.Screen name="firmware-release" options={{ gestureEnabled: settings.predictiveBackEnabled }} />
-      <Stack.Screen name="maintenance-tools" options={{ gestureEnabled: settings.predictiveBackEnabled }} />
-      <Stack.Screen name="quick-actions" options={{ gestureEnabled: settings.predictiveBackEnabled }} />
-      <Stack.Screen name="services-health" options={{ gestureEnabled: settings.predictiveBackEnabled }} />
-      <Stack.Screen name="logs" options={{ gestureEnabled: settings.predictiveBackEnabled }} />
-      <Stack.Screen name="firewall" options={{ gestureEnabled: settings.predictiveBackEnabled }} />
-      <Stack.Screen name="bulk-operations" options={{ gestureEnabled: settings.predictiveBackEnabled }} />
-      <Stack.Screen name="about" options={{ gestureEnabled: settings.predictiveBackEnabled }} />
+      <Stack.Screen name="files" />
+      <Stack.Screen name="firmware" />
+      <Stack.Screen name="packages" />
+      <Stack.Screen name="clients" />
+      <Stack.Screen name="dhcp-leases" />
+      <Stack.Screen name="traffic" />
+      <Stack.Screen name="diagnostics" />
+      <Stack.Screen name="wireless-manager" />
+      <Stack.Screen name="wireless-optimizer" />
+      <Stack.Screen name="weak-signal" />
+      <Stack.Screen name="docker" />
+      <Stack.Screen name="performance-benchmark" />
+      <Stack.Screen name="firmware-release" />
+      <Stack.Screen name="maintenance-tools" />
+      <Stack.Screen name="quick-actions" />
+      <Stack.Screen name="services-health" />
+      <Stack.Screen name="logs" />
+      <Stack.Screen name="firewall" />
+      <Stack.Screen name="bulk-operations" />
+      <Stack.Screen name="about" />
       <Stack.Screen name="oauth/callback" />
     </Stack>
   );
