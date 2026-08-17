@@ -47,7 +47,7 @@ const config: ExpoConfig = {
       projectId: "c4d4af65-fe2b-4803-8ba9-5efecb95d126",
     },
   },
-  version: "1.0.1",
+  version: "1.0.2",
   orientation: "portrait",
   icon: "./assets/images/icon.png",
   scheme: env.scheme,
@@ -94,6 +94,7 @@ const config: ExpoConfig = {
   },
   plugins: [
     "expo-router",
+    "expo-system-ui",
     "expo-document-picker",
     "./plugins/with-openwrt-ssh",
     [

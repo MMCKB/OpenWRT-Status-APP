@@ -15,4 +15,15 @@ describe("主题偏好解析", () => {
     expect(resolveColorScheme("system", "dark")).toBe("dark");
     expect(resolveColorScheme("system", "light")).toBe("light");
   });
+
+  it("跟随系统时应在系统外观变化后重新解析颜色方案", () => {
+    const preference = "system";
+    expect(resolveColorScheme(preference, "light")).toBe("light");
+    expect(resolveColorScheme(preference, "dark")).toBe("dark");
+  });
+
+  it("系统外观变化不能覆盖用户手动选择的深色主题", () => {
+    expect(resolveColorScheme("dark", "light")).toBe("dark");
+    expect(resolveColorScheme("dark", "dark")).toBe("dark");
+  });
 });

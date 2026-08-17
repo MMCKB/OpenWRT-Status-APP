@@ -24,23 +24,20 @@ export function SplashLoader({ children }: { children: React.ReactNode }) {
   }, []);
 
   useEffect(() => {
-    const timer = setInterval(() => {
-      setProgress((current) => {
-        const ceiling = fontsLoaded ? 96 : 86;
-        const step = fontsLoaded ? 18 : 8;
-        return Math.min(ceiling, current + step);
-      });
-    }, 140);
+    // The route tree must never be gated by a font request. A failed or delayed font
+    // request used to leave this view at 100% forever on some Android releases.
+    const progressTimer = setInterval(() => {
+      setProgress((current) => Math.min(94, current + 12));
+    }, 100);
+    const completeTimer = setTimeout(() => setProgress(100), fontsLoaded ? 520 : 760);
+    const readyTimer = setTimeout(() => setIsReady(true), fontsLoaded ? 760 : 1_000);
 
-    return () => clearInterval(timer);
+    return () => {
+      clearInterval(progressTimer);
+      clearTimeout(completeTimer);
+      clearTimeout(readyTimer);
+    };
   }, [fontsLoaded]);
-
-  useEffect(() => {
-    if (!fontsLoaded || progress < 86) return;
-    setProgress(100);
-    const timer = setTimeout(() => setIsReady(true), 320);
-    return () => clearTimeout(timer);
-  }, [fontsLoaded, progress]);
 
   if (!isReady) {
     return (

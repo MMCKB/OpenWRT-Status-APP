@@ -29,7 +29,7 @@ export default function SettingsScreen() {
   const noteSurface = colorScheme === "dark" ? "#193A52" : "#EEF3F6";
 
   return (
-    <View style={sharedStyles.screen}>
+    <View style={[sharedStyles.screen, { backgroundColor: colors.background }]}>
       <ScrollView contentContainerStyle={sharedStyles.content}>
         <View><Text style={[styles.title, { color: colors.foreground }]}>设置</Text><Text style={[styles.subtitle, { color: colors.muted }]}>控制状态读取、界面外观与本地数据</Text></View>
         <SectionCard title="外观">

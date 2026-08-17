@@ -1,7 +1,8 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { createContext, useCallback, useContext, useEffect, useMemo, useState } from "react";
-import { View, useColorScheme as useSystemColorScheme } from "react-native";
+import { Appearance, View } from "react-native";
 import { colorScheme as nativewindColorScheme, vars } from "nativewind";
+import * as SystemUI from "expo-system-ui";
 
 import { SchemeColors, type ColorScheme } from "@/constants/theme";
 import { resolveColorScheme, type ThemePreference } from "@/lib/theme-utils";
@@ -18,8 +19,12 @@ type ThemeContextValue = {
 const THEME_PREFERENCE_KEY = "openwrt.theme-preference.v1";
 const ThemeContext = createContext<ThemeContextValue | null>(null);
 
+function readSystemScheme(): ColorScheme {
+  return Appearance.getColorScheme() === "dark" ? "dark" : "light";
+}
+
 export function ThemeProvider({ children }: { children: React.ReactNode }) {
-  const systemScheme = useSystemColorScheme() === "dark" ? "dark" : "light";
+  const [systemScheme, setSystemScheme] = useState<ColorScheme>(readSystemScheme);
   const [themePreference, setThemePreferenceState] = useState<ThemePreference>("system");
   const colorScheme = resolveColorScheme(themePreference, systemScheme);
 
@@ -48,7 +53,17 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   useEffect(() => {
+    // Keep the in-app “follow system” preference live while Android changes uiMode.
+    setSystemScheme(readSystemScheme());
+    const subscription = Appearance.addChangeListener(({ colorScheme: nextScheme }) => {
+      setSystemScheme(nextScheme === "dark" ? "dark" : "light");
+    });
+    return () => subscription.remove();
+  }, []);
+
+  useEffect(() => {
     applyScheme(colorScheme);
+    void SystemUI.setBackgroundColorAsync(SchemeColors[colorScheme].background).catch(() => undefined);
   }, [applyScheme, colorScheme]);
 
   const setThemePreference = useCallback(async (preference: ThemePreference) => {

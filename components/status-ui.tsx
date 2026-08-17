@@ -40,7 +40,7 @@ export function EmptyState({ icon, title, description }: { icon: React.Component
 }
 
 export const sharedStyles = StyleSheet.create({
-  screen: { flex: 1 }, content: { padding: 20, paddingBottom: 32, gap: 20 },
+  screen: { flex: 1 }, content: { flexGrow: 1, padding: 20, paddingBottom: 32, gap: 20 },
   primaryButton: { minHeight: 48, borderRadius: 14, backgroundColor: "#007E7A", alignItems: "center", justifyContent: "center", paddingHorizontal: 18 }, primaryButtonPressed: { opacity: 0.86, transform: [{ scale: 0.98 }] }, primaryButtonText: { color: "#FFFFFF", fontSize: 16, fontWeight: "700" },
   secondaryButton: { minHeight: 48, borderRadius: 14, backgroundColor: "#EAF1F5", alignItems: "center", justifyContent: "center", paddingHorizontal: 18 }, secondaryButtonText: { color: "#005F5C", fontSize: 16, fontWeight: "700" },
 });
