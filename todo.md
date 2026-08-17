@@ -171,3 +171,7 @@
 - [x] 使 SSH 终端命令输入栏在 Android 键盘打开时紧贴键盘上沿且始终完整可见
 - [x] 审查并实现设置页中的预测性返回手势开关及其原生安全行为
 - [x] 重新本地构建并核验包含本轮稳定性与终端布局修复的 Android Release APK
+
+- [x] 查阅 Expo Router、React Navigation、React Native 与 Android 仓库的预测性返回已知问题及兼容实现
+- [x] 对照当前原生回调、Manifest 和导航栈定位预测性返回未生效的阻塞点
+- [x] 实施可验证的预测性返回原生与导航层修复并本地构建 Release APK

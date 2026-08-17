@@ -75,10 +75,10 @@ export default function SettingsScreen() {
             return <Pressable key={mode} accessibilityRole="button" accessibilityState={{ selected }} onPress={() => void updateStatusTrafficView(mode)} style={({ pressed }) => [styles.viewModeOption, { borderColor: selected ? colors.primary : colors.border, backgroundColor: selected ? colors.primary : colors.surface }, pressed && styles.pressed]}><MaterialIcons name={icon} size={18} color={selected ? "#FFFFFF" : colors.primary} /><Text style={[styles.viewModeText, { color: selected ? "#FFFFFF" : colors.foreground }]}>{label}</Text></Pressable>;
           })}</View>
         </SectionCard>
-        <SectionCard title="返回手势">
-          <Text style={[styles.cardDescription, { color: colors.muted }]}>开启后，工具和管理等二级页面会使用原生导航栈处理 Android 系统边缘返回。预测性返回动画由设备系统版本和系统手势导航设置决定。</Text>
+        <SectionCard title="Android 返回手势">
+          <Text style={[styles.cardDescription, { color: colors.muted }]}>开启后，工具和管理等二级页面优先使用原生导航栈处理 Android 系统边缘返回。此兼容路径避免 Expo SDK 54 的预测性返回预览问题；系统预览动画是否可用仍由设备、系统版本和框架支持决定。</Text>
           <Pressable accessibilityRole="switch" accessibilityState={{ checked: settings.predictiveBackEnabled }} onPress={() => void updatePredictiveBackEnabled(!settings.predictiveBackEnabled)} style={({ pressed }) => [styles.backGestureRow, { borderTopColor: colors.border }, pressed && styles.pressed]}>
-            <View style={styles.infoText}><Text style={[styles.infoTitle, { color: colors.foreground }]}>启用返回手势兼容模式</Text><Text style={[styles.infoDescription, { color: colors.muted }]}>{settings.predictiveBackEnabled ? "已启用：二级页面优先返回上一页" : "已关闭：完全交由系统默认返回处理"}</Text></View>
+            <View style={styles.infoText}><Text style={[styles.infoTitle, { color: colors.foreground }]}>启用边缘返回兼容模式</Text><Text style={[styles.infoDescription, { color: colors.muted }]}>{settings.predictiveBackEnabled ? "已启用：二级页面优先返回上一页" : "已关闭：完全交由系统默认返回处理"}</Text></View>
             <View style={[styles.switchTrack, { backgroundColor: settings.predictiveBackEnabled ? colors.primary : colors.border }]}><View style={[styles.switchThumb, settings.predictiveBackEnabled ? styles.switchThumbOn : styles.switchThumbOff]} /></View>
           </Pressable>
         </SectionCard>
