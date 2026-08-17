@@ -175,3 +175,7 @@
 - [x] 查阅 Expo Router、React Navigation、React Native 与 Android 仓库的预测性返回已知问题及兼容实现
 - [x] 对照当前原生回调、Manifest 和导航栈定位预测性返回未生效的阻塞点
 - [x] 实施可验证的预测性返回原生与导航层修复并本地构建 Release APK
+
+- [x] 盘点 TypeScript、Kotlin、Java、Gradle、Android SDK 与 Expo 依赖的当前版本
+- [x] 评估各组件可升级的长期支持版本与 Expo SDK 54 兼容边界
+- [x] 制定优先长期支持版本的分级升级方案，避免破坏已验证的四 ABI 本地构建
