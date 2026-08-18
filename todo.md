@@ -241,3 +241,6 @@
 - [x] 编写项目 README、开源许可证与安全贡献说明
 - [ ] 将当前 v1.0.14 源码安全推送至 MMCKB/OpenWRT-Status-APP 并验证工作流
 - [x] 采用不依赖 GitHub Secret 的临时 debug keystore CI 签名方案，并记录跨运行覆盖升级的限制
+- [ ] 为 GitHub PAT 授予 MMCKB/OpenWRT-Status-APP 的 Contents 与 Workflows 写入权限后，重新推送 v1.0.14 并核验远程构建
+- [x] 以只读 API 核对当前令牌的认证方式、仓库规则与工作流权限，确认 main 未受保护、无规则集，GitHub 403 来自令牌写入授权而非仓库规则
+- [x] 查阅 GitHub 官方资料，定位“PAT 可读但 Git 推送 403”与工作流文件写入的令牌权限要求，并记录可验证修复方案
