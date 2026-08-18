@@ -3,6 +3,8 @@ import { describe, expect, it } from "vitest";
 import {
   buildBatchConfigBackupCommand,
   buildBatchRouterDiagnosticCommand,
+  buildPluginConfigApplyCommand,
+  buildPluginConfigSnapshotCommand,
   buildPluginLogCommand,
   buildPortForwardCreateCommand,
   buildPortForwardDeleteCommand,
@@ -11,6 +13,7 @@ import {
   buildProxyServiceConfigUrl,
   buildProxyServiceSnapshotCommand,
   buildRouterLogCommand,
+  parsePluginConfigSnapshot,
   parseFirewallSnapshot,
   parseHealthSnapshot,
   parseProxyServiceStates,
@@ -126,6 +129,46 @@ describe("高级 OpenWrt 服务与网络管理", () => {
     expect(() =>
       buildProxyServiceConfigUrl("http://192.168.1.1\nreboot", "ddns"),
     ).toThrow("路由器地址格式不正确");
+  });
+
+  it("仅为内置服务读取并安全保存应用内配置", () => {
+    expect(buildPluginConfigSnapshotCommand("passwall2")).toContain(
+      "'/etc/config/passwall2'",
+    );
+    expect(
+      parsePluginConfigSnapshot(
+        "ddns",
+        "__PLUGIN_CONFIG__|ddns|present\nconfig service 'cloudflare'\n\toption enabled '1'\n",
+      ),
+    ).toMatchObject({
+      exists: true,
+      configPath: "/etc/config/ddns",
+      content: "config service 'cloudflare'\n\toption enabled '1'",
+    });
+    expect(
+      parsePluginConfigSnapshot(
+        "openclash",
+        "__PLUGIN_CONFIG__|openclash|missing\n",
+      ),
+    ).toMatchObject({ exists: false, content: "" });
+    const command = buildPluginConfigApplyCommand(
+      "passwall",
+      "config global 'global'\n\toption enabled '1'\n",
+    );
+    expect(command).toContain("base64 -d");
+    expect(command).toContain(
+      "mktemp /tmp/openwrt-status-passwall-config.XXXXXX",
+    );
+    expect(command).toContain('rm -f "$temp"');
+    expect(command).toContain("'/etc/config/passwall'");
+    expect(command).toContain("'/etc/config/passwall.openwrt-status.bak'");
+    expect(command).toContain("/etc/init.d/passwall restart");
+    expect(() => buildPluginConfigApplyCommand("ddns", "\n")).toThrow(
+      "配置内容不能为空",
+    );
+    expect(() =>
+      buildPluginConfigSnapshotCommand("ddns; reboot" as never),
+    ).toThrow("不支持的服务");
   });
 
   it("解析匿名 UCI 区段，并仅允许安全格式的端口转发操作", () => {

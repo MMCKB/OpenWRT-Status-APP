@@ -1,6 +1,6 @@
 import * as FileSystem from "expo-file-system/legacy";
 import * as Sharing from "expo-sharing";
-import * as WebBrowser from "expo-web-browser";
+import { useRouter } from "expo-router";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   ActivityIndicator,
@@ -24,7 +24,6 @@ import {
   buildHealthSnapshotCommand,
   buildPluginLogCommand,
   buildProxyServiceActionCommand,
-  buildProxyServiceConfigUrl,
   buildProxyServiceSnapshotCommand,
   buildRouterHealthReportMarkdown,
   parseHealthSnapshot,
@@ -42,6 +41,7 @@ function serviceTone(service: ProxyServiceState) {
 }
 
 export default function ServicesHealthScreen() {
+  const router = useRouter();
   const colors = useColors();
   const { selectedProfile, selectedStatus } = useRouterStore();
   const { execute, error, hasRouter, isRunning, isSupported } = useManagedSsh();
@@ -149,22 +149,8 @@ export default function ServicesHealthScreen() {
     }
   }
 
-  async function openServiceConfig(service: ProxyServiceState) {
-    if (!selectedProfile) {
-      setNotice("请先选择路由器资料后再打开服务配置。");
-      return;
-    }
-    try {
-      await WebBrowser.openBrowserAsync(
-        buildProxyServiceConfigUrl(selectedProfile.baseUrl, service.id),
-      );
-    } catch (reason) {
-      setNotice(
-        reason instanceof Error
-          ? reason.message
-          : `无法打开 ${service.label} 的 LuCI 配置页。`,
-      );
-    }
+  function openServiceConfig(service: ProxyServiceState) {
+    router.push({ pathname: "/service-config", params: { id: service.id } });
   }
 
   async function exportReport() {
@@ -197,7 +183,7 @@ export default function ServicesHealthScreen() {
   return (
     <ManagementShell
       title="服务与健康"
-      description="自动检测 OpenClash、PassWall、PassWall2、AdGuard Home 与 DDNS；Docker 容器在独立工具页管理。服务操作仅通过应用内 SSH 在路由器本机执行。"
+      description="应用内管理 OpenClash、PassWall、PassWall2、AdGuard Home 与 DDNS；Docker 容器仍在独立工具页。状态、日志、配置与服务操作均通过应用内 SSH 在路由器本机执行。"
     >
       <SectionCard
         title="网络服务状态"
@@ -272,14 +258,13 @@ export default function ServicesHealthScreen() {
                   </Text>
                 </Pressable>
                 <Pressable
-                  disabled={!selectedProfile || !service.installed || isRunning}
-                  onPress={() => void openServiceConfig(service)}
+                  disabled={disabled || !service.installed}
+                  onPress={() => openServiceConfig(service)}
                   style={({ pressed }) => [
                     styles.smallAction,
                     { borderColor: colors.border },
                     pressed && styles.pressed,
-                    (!selectedProfile || !service.installed || isRunning) &&
-                      styles.disabled,
+                    (disabled || !service.installed) && styles.disabled,
                   ]}
                 >
                   <Text

@@ -29,6 +29,14 @@ export interface ProxyServiceState {
   running: boolean;
 }
 
+export interface PluginConfigSnapshot {
+  id: ProxyServiceId;
+  label: string;
+  configPath: string;
+  exists: boolean;
+  content: string;
+}
+
 export interface DiskUsage {
   mount: string;
   totalKb: number | null;
@@ -103,6 +111,7 @@ const PROXY_SERVICES = [
     logFile: null,
     logPattern: "openclash|clash|mihomo",
     luciPath: "admin/services/openclash",
+    configPath: "/etc/config/openclash",
   },
   {
     id: "adguardhome",
@@ -112,6 +121,7 @@ const PROXY_SERVICES = [
     logFile: null,
     logPattern: "AdGuardHome|adguard",
     luciPath: "admin/services/adguardhome",
+    configPath: "/etc/config/AdGuardHome",
   },
   {
     id: "passwall",
@@ -121,6 +131,7 @@ const PROXY_SERVICES = [
     logFile: "/tmp/log/passwall.log",
     logPattern: "passwall",
     luciPath: "admin/services/passwall",
+    configPath: "/etc/config/passwall",
   },
   {
     id: "passwall2",
@@ -130,6 +141,7 @@ const PROXY_SERVICES = [
     logFile: "/tmp/log/passwall2.log",
     logPattern: "passwall2",
     luciPath: "admin/services/passwall2",
+    configPath: "/etc/config/passwall2",
   },
   {
     id: "ddns",
@@ -139,6 +151,7 @@ const PROXY_SERVICES = [
     logFile: null,
     logPattern: "ddns",
     luciPath: "admin/services/ddns",
+    configPath: "/etc/config/ddns",
   },
 ] as const;
 
@@ -210,6 +223,16 @@ function serviceDefinition(id: ProxyServiceId) {
   return service;
 }
 
+export function getProxyServiceDefinition(id: ProxyServiceId) {
+  const service = serviceDefinition(id);
+  return {
+    id: service.id,
+    label: service.label,
+    initName: service.initName,
+    configPath: service.configPath,
+  };
+}
+
 export function buildProxyServiceSnapshotCommand() {
   return PROXY_SERVICES.map(
     (service) =>
@@ -273,6 +296,63 @@ export function buildPluginLogCommand(id: ProxyServiceId, limit = 100) {
   const systemLog = `(logread) 2>&1 | grep -Ei ${shellQuote(service.logPattern)} | tail -n ${safeLimit}`;
   if (!service.logFile) return systemLog;
   return `if [ -r ${shellQuote(service.logFile)} ]; then tail -n ${safeLimit} ${shellQuote(service.logFile)}; else ${systemLog}; fi`;
+}
+
+/** 仅读取内置服务明确允许的 UCI 配置文件，并用固定标记封装返回内容。 */
+export function buildPluginConfigSnapshotCommand(id: ProxyServiceId) {
+  const service = serviceDefinition(id);
+  return `if [ -r ${shellQuote(service.configPath)} ]; then printf '__PLUGIN_CONFIG__|${service.id}|present\\n'; sed -n '1,2000p' ${shellQuote(service.configPath)}; else printf '__PLUGIN_CONFIG__|${service.id}|missing\\n'; fi`;
+}
+
+export function parsePluginConfigSnapshot(
+  id: ProxyServiceId,
+  output: string,
+): PluginConfigSnapshot {
+  const service = serviceDefinition(id);
+  const normalized = output.replace(/\r\n/g, "\n");
+  const marker = `__PLUGIN_CONFIG__|${service.id}|`;
+  const start = normalized.indexOf(marker);
+  if (start < 0) throw new Error("服务配置返回格式无效。");
+  const headerEnd = normalized.indexOf("\n", start);
+  const header = normalized
+    .slice(start, headerEnd < 0 ? undefined : headerEnd)
+    .trim();
+  const exists = header === `${marker}present`;
+  if (!exists && header !== `${marker}missing`) {
+    throw new Error("服务配置返回格式无效。");
+  }
+  return {
+    id: service.id,
+    label: service.label,
+    configPath: service.configPath,
+    exists,
+    content:
+      exists && headerEnd >= 0 ? normalized.slice(headerEnd + 1).trimEnd() : "",
+  };
+}
+
+function utf8Base64(value: string) {
+  return btoa(
+    encodeURIComponent(value).replace(/%([0-9A-F]{2})/g, (_, hex: string) =>
+      String.fromCharCode(Number.parseInt(hex, 16)),
+    ),
+  );
+}
+
+/** 使用 base64 传递正文，避免把用户配置直接拼接到 Shell；保存后只重启当前服务。 */
+export function buildPluginConfigApplyCommand(
+  id: ProxyServiceId,
+  content: string,
+) {
+  const service = serviceDefinition(id);
+  if (!content.trim()) throw new Error("配置内容不能为空。");
+  if (content.includes("\0")) throw new Error("配置内容不能包含空字符。");
+  if (content.length > 256_000) {
+    throw new Error("配置内容过大，请通过文件管理处理。");
+  }
+  const encoded = utf8Base64(content);
+  const backupPath = `${service.configPath}.openwrt-status.bak`;
+  return `[ -x /etc/init.d/${service.initName} ] || { echo '${service.label} 未安装。'; exit 2; }; umask 077; temp=$(mktemp /tmp/openwrt-status-${service.id}-config.XXXXXX) || { echo '无法创建临时配置文件。'; exit 1; }; printf %s ${shellQuote(encoded)} | base64 -d > "$temp" || { rm -f "$temp"; echo '配置解码失败。'; exit 1; }; if [ -e ${shellQuote(service.configPath)} ]; then cp ${shellQuote(service.configPath)} ${shellQuote(backupPath)} || { rm -f "$temp"; echo '无法备份原配置。'; exit 1; }; fi; mv "$temp" ${shellQuote(service.configPath)} && /etc/init.d/${service.initName} restart`;
 }
 
 /**

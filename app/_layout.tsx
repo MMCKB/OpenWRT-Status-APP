@@ -20,7 +20,10 @@ import {
 import type { EdgeInsets, Metrics, Rect } from "react-native-safe-area-context";
 
 import { trpc, createTRPCClient } from "@/lib/trpc";
-import { initManusRuntime, subscribeSafeAreaInsets } from "@/lib/_core/manus-runtime";
+import {
+  initManusRuntime,
+  subscribeSafeAreaInsets,
+} from "@/lib/_core/manus-runtime";
 import { SplashLoader } from "@/components/splash-loader";
 import { AppDialogProvider } from "@/components/app-dialog";
 import { RouterProvider } from "@/lib/router-provider";
@@ -73,7 +76,10 @@ export default function RootLayout() {
 
   // Ensure minimum 8px padding for top and bottom on mobile
   const providerInitialMetrics = useMemo(() => {
-    const metrics = initialWindowMetrics ?? { insets: initialInsets, frame: initialFrame };
+    const metrics = initialWindowMetrics ?? {
+      insets: initialInsets,
+      frame: initialFrame,
+    };
     return {
       ...metrics,
       insets: {
@@ -87,23 +93,29 @@ export default function RootLayout() {
   function ThemedAppContent() {
     const colors = useColors();
     const { colorScheme } = useThemeContext();
-  return (
-    <SplashLoader>
-      <GestureHandlerRootView style={{ flex: 1 }}>
-        <trpc.Provider client={trpcClient} queryClient={queryClient}>
-          <QueryClientProvider client={queryClient}>
-            <RouterProvider>
-              <AppDialogProvider>
-                <SafeAreaView style={{ flex: 1, backgroundColor: colors.background }} edges={["top", "left", "right"]}>
-                  <RootNavigator />
-                  <StatusBar style={colorScheme === "dark" ? "light" : "dark"} backgroundColor={colors.background} />
-                </SafeAreaView>
-              </AppDialogProvider>
-            </RouterProvider>
-          </QueryClientProvider>
-        </trpc.Provider>
-      </GestureHandlerRootView>
-    </SplashLoader>
+    return (
+      <SplashLoader>
+        <GestureHandlerRootView style={{ flex: 1 }}>
+          <trpc.Provider client={trpcClient} queryClient={queryClient}>
+            <QueryClientProvider client={queryClient}>
+              <RouterProvider>
+                <AppDialogProvider>
+                  <SafeAreaView
+                    style={{ flex: 1, backgroundColor: colors.background }}
+                    edges={["top", "left", "right"]}
+                  >
+                    <RootNavigator />
+                    <StatusBar
+                      style={colorScheme === "dark" ? "light" : "dark"}
+                      backgroundColor={colors.background}
+                    />
+                  </SafeAreaView>
+                </AppDialogProvider>
+              </RouterProvider>
+            </QueryClientProvider>
+          </trpc.Provider>
+        </GestureHandlerRootView>
+      </SplashLoader>
     );
   }
 
@@ -127,7 +139,9 @@ export default function RootLayout() {
 
   return (
     <ThemeProvider>
-      <SafeAreaProvider initialMetrics={providerInitialMetrics}>{content}</SafeAreaProvider>
+      <SafeAreaProvider initialMetrics={providerInitialMetrics}>
+        {content}
+      </SafeAreaProvider>
     </ThemeProvider>
   );
 }
@@ -135,7 +149,14 @@ export default function RootLayout() {
 function RootNavigator() {
   const colors = useColors();
   return (
-    <Stack screenOptions={{ headerShown: false, contentStyle: { backgroundColor: colors.background }, animation: "default", gestureEnabled: false }}>
+    <Stack
+      screenOptions={{
+        headerShown: false,
+        contentStyle: { backgroundColor: colors.background },
+        animation: "default",
+        gestureEnabled: false,
+      }}
+    >
       <Stack.Screen name="(tabs)" />
       <Stack.Screen name="files" />
       <Stack.Screen name="firmware" />
@@ -153,6 +174,7 @@ function RootNavigator() {
       <Stack.Screen name="maintenance-tools" />
       <Stack.Screen name="quick-actions" />
       <Stack.Screen name="services-health" />
+      <Stack.Screen name="service-config" />
       <Stack.Screen name="logs" />
       <Stack.Screen name="firewall" />
       <Stack.Screen name="bulk-operations" />

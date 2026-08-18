@@ -16,6 +16,8 @@ const obsoleteBundlePath = resolve(
 const routerFormPath = resolve(projectRoot, "app/(tabs)/router-form.tsx");
 const wirelessManagerPath = resolve(projectRoot, "app/wireless-manager.tsx");
 const serviceHealthPath = resolve(projectRoot, "app/services-health.tsx");
+const servicesTabPath = resolve(projectRoot, "app/(tabs)/services.tsx");
+const serviceConfigPath = resolve(projectRoot, "app/service-config.tsx");
 
 describe("Android Release JavaScript bundle", () => {
   it("仅将 debug 视为可调试变体，确保 release 从当前源码重新打包", () => {
@@ -41,13 +43,28 @@ describe("Android Release JavaScript bundle", () => {
     const routerForm = readFileSync(routerFormPath, "utf8");
     const wirelessManager = readFileSync(wirelessManagerPath, "utf8");
     const serviceHealth = readFileSync(serviceHealthPath, "utf8");
+    const servicesTab = readFileSync(servicesTabPath, "utf8");
+    const serviceConfig = readFileSync(serviceConfigPath, "utf8");
 
     expect(routerForm).toContain("isPasswordVisible");
     expect(routerForm).toContain("isSshPasswordVisible");
+    expect(routerForm).toContain('setName("")');
+    expect(routerForm).toContain('setAddress("")');
     expect(wirelessManager).toContain("isGuestPasswordVisible");
     expect(serviceHealth).toContain("PassWall2");
-    expect(routerForm + wirelessManager + serviceHealth).not.toContain(
-      "预测性返回手势",
+    expect(servicesTab).toContain(
+      'export { default } from "../services-health"',
     );
+    expect(serviceHealth).toContain('title="服务与健康"');
+    expect(serviceConfig).toContain("buildPluginConfigSnapshotCommand");
+    expect(serviceConfig).toContain("buildPluginConfigApplyCommand");
+    expect(serviceConfig).not.toContain("buildProxyServiceConfigUrl");
+    expect(
+      routerForm +
+        wirelessManager +
+        serviceHealth +
+        servicesTab +
+        serviceConfig,
+    ).not.toContain("预测性返回手势");
   });
 });

@@ -34,14 +34,69 @@ export default function TabLayout() {
         name="index"
         options={{
           title: "状态",
-          tabBarIcon: ({ color }) => <IconSymbol size={25} name="gauge.with.dots.needle.50percent" color={color} />,
+          tabBarIcon: ({ color }) => (
+            <IconSymbol
+              size={25}
+              name="gauge.with.dots.needle.50percent"
+              color={color}
+            />
+          ),
         }}
       />
-      <Tabs.Screen name="routers" options={{ title: "路由器", tabBarIcon: ({ color }) => <IconSymbol size={25} name="wifi" color={color} /> }} />
-      <Tabs.Screen name="details" options={{ title: "详情", tabBarIcon: ({ color }) => <IconSymbol size={25} name="list.bullet.rectangle" color={color} /> }} />
-      <Tabs.Screen name="control" options={{ title: "控制", tabBarIcon: ({ color }) => <IconSymbol size={25} name="terminal.fill" color={color} /> }} />
-      <Tabs.Screen name="tools" options={{ title: "工具", tabBarIcon: ({ color }) => <IconSymbol size={25} name="wrench.and.screwdriver" color={color} /> }} />
-      <Tabs.Screen name="settings" options={{ title: "设置", tabBarIcon: ({ color }) => <IconSymbol size={25} name="gearshape.fill" color={color} /> }} />
+      <Tabs.Screen
+        name="routers"
+        options={{
+          title: "路由器",
+          tabBarIcon: ({ color }) => (
+            <IconSymbol size={25} name="wifi" color={color} />
+          ),
+        }}
+      />
+      <Tabs.Screen
+        name="details"
+        options={{
+          title: "详情",
+          tabBarIcon: ({ color }) => (
+            <IconSymbol size={25} name="list.bullet.rectangle" color={color} />
+          ),
+        }}
+      />
+      <Tabs.Screen
+        name="control"
+        options={{
+          title: "控制",
+          tabBarIcon: ({ color }) => (
+            <IconSymbol size={25} name="terminal.fill" color={color} />
+          ),
+        }}
+      />
+      <Tabs.Screen
+        name="services"
+        options={{
+          title: "服务",
+          tabBarIcon: ({ color }) => (
+            <IconSymbol size={25} name="server.rack" color={color} />
+          ),
+        }}
+      />
+      <Tabs.Screen
+        name="tools"
+        options={{
+          title: "工具",
+          tabBarIcon: ({ color }) => (
+            <IconSymbol size={25} name="wrench.and.screwdriver" color={color} />
+          ),
+        }}
+      />
+      <Tabs.Screen
+        name="settings"
+        options={{
+          title: "设置",
+          tabBarIcon: ({ color }) => (
+            <IconSymbol size={25} name="gearshape.fill" color={color} />
+          ),
+        }}
+      />
       <Tabs.Screen name="router-form" options={{ href: null }} />
     </Tabs>
   );
