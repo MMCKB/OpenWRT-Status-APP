@@ -1,12 +1,20 @@
 # OpenWrt 路由器状态
 
-[![Android 构建](https://github.com/MMCKB/OpenWRT-Status-APP/actions/workflows/build-android.yml/badge.svg)](https://github.com/MMCKB/OpenWRT-Status-APP/actions/workflows/build-android.yml)
-[![许可证：MIT](https://img.shields.io/badge/License-MIT-0b6bcb.svg)](LICENSE)
+> **面向 OpenWrt 的 Android 本地网络管理工具**
+
+[![GitHub Release](https://img.shields.io/github/v/release/MMCKB/OpenWRT-Status-APP?display_name=tag&style=for-the-badge&logo=android&logoColor=white&label=Release)](https://github.com/MMCKB/OpenWRT-Status-APP/releases)
+[![Android 构建](https://img.shields.io/github/actions/workflow/status/MMCKB/OpenWRT-Status-APP/build-android.yml/Build%20and%20release%20Android%20APKs?branch=main&style=for-the-badge&logo=githubactions&logoColor=white&label=Android%20Build)](https://github.com/MMCKB/OpenWRT-Status-APP/actions/workflows/build-android.yml)
+[![GitHub Star](https://img.shields.io/github/stars/MMCKB/OpenWRT-Status-APP?style=for-the-badge&logo=github&label=Stars)](https://github.com/MMCKB/OpenWRT-Status-APP/stargazers)
+[![GitHub 下载量](https://img.shields.io/github/downloads/MMCKB/OpenWRT-Status-APP/total?style=for-the-badge&logo=github&label=Downloads)](https://github.com/MMCKB/OpenWRT-Status-APP/releases)
+[![许可证：MIT](https://img.shields.io/badge/License-MIT-0B6BCB?style=for-the-badge)](LICENSE)
+[![OpenWrt 25.12](https://img.shields.io/badge/OpenWrt-25.12-00A0E9?style=for-the-badge&logo=openwrt&logoColor=white)](https://openwrt.org/)
+
+[下载最新 APK](https://github.com/MMCKB/OpenWRT-Status-APP/releases/latest) · [查看自动构建](https://github.com/MMCKB/OpenWRT-Status-APP/actions) · [为项目点 Star](https://github.com/MMCKB/OpenWRT-Status-APP/stargazers)
 
 **OpenWrt 路由器状态**是一款面向 Android 的本地网络管理工具，用于连接 OpenWrt 路由器并查看状态、执行受控维护操作。应用基于 Expo SDK 54、React Native 0.81 和 Android 原生 SSH 模块构建，保留 React Native 新架构，并面向 OpenWrt 25.12 的 `apk` 包管理方式适配。
 
 > 本项目供具备路由器管理权限的用户在可信网络中使用。SSH、固件升级、防火墙、Docker 和批量操作可能影响网络可用性；执行前请确认已备份配置并了解所执行命令的影响。
-
+> 本项目绝大部分都由AI制作
 ## 功能概览
 
 | 分类         | 已实现能力                                                                                                    |
@@ -19,17 +27,9 @@
 | 诊断与更新   | 弱信号设备分析、性能基准与自定义域名 Ping、GitHub Release 固件检查、下载和二次确认更新。                      |
 | 使用体验     | 简体中文界面、浅色/深色/跟随系统主题、应用内主题弹窗、安全区适配和 Android 返回导航。                         |
 
-## 截图
-
-截图将在后续 Release 中补充。当前可从应用界面访问状态总览、实时流量、SSH 终端、文件管理和工具页。
-
-| 状态与流量 | SSH 与文件管理 | 工具与维护 |
-| ---------- | -------------- | ---------- |
-| 待补充     | 待补充         | 待补充     |
-
 ## 安装 APK
 
-请前往 [Releases](https://github.com/MMCKB/OpenWRT-Status-APP/releases) 下载与设备 ABI 对应的 APK。每个成功的 `main` 分支构建都会以应用版本号创建或更新同名标签，例如版本 `1.0.14` 对应标签 `v1.0.14`。Release 同时包含 APK 的 SHA-256 校验文件。
+请前往 [Releases](https://github.com/MMCKB/OpenWRT-Status-APP/releases) 下载与设备 ABI 对应的 APK。每个成功的 `main` 分支构建都会以应用版本号创建或更新同名标签，例如版本 `1.0.16` 对应标签 `v1.0.16`。Release 同时包含 APK 的 SHA-256 校验文件。
 
 | APK 后缀      | 适用设备                                           |
 | ------------- | -------------------------------------------------- |
