@@ -1,6 +1,6 @@
-# OpenWrt 状态 v1.0.12：电脑本地构建 APK 完整教程
+# OpenWrt 状态 v1.0.14：电脑本地构建 APK 完整教程
 
-**适用项目版本：v1.0.12（Android `versionCode 8`）**  
+**适用项目版本：v1.0.14（Android `versionCode 10`）**  
 **应用包名：`com.app.openwrtstatusapp`**  
 **适用系统：Windows 10/11、macOS、Ubuntu/Debian 等 Linux 发行版**
 
@@ -13,7 +13,7 @@
 | 项目 | 当前配置 |
 |---|---|
 | 应用名称 | OpenWrt 状态 |
-| 版本 | `1.0.12` / `versionCode 8` |
+| 版本 | `1.0.14` / `versionCode 10` |
 | Android 最低版本 | Android 7.0（API 24） |
 | 手机推荐 ABI | `arm64-v8a` |
 | 完整 ABI | `arm64-v8a`、`armeabi-v7a`、`x86`、`x86_64` |
@@ -27,7 +27,7 @@
 
 ## 2. 准备源码
 
-将随附的 `openwrt-status-v1.0.12-source.zip` 解压到不含中文、空格过多或同步盘锁定的路径。例如：
+将随附的 `openwrt-status-v1.0.14-source-fixed.zip` 解压到不含中文、空格过多或同步盘锁定的路径。例如：
 
 | 系统 | 建议目录 |
 |---|---|
@@ -160,12 +160,12 @@ android/app/build/outputs/apk/release/app-release.apk
 
 ```bash
 # macOS / Linux
-cp app/build/outputs/apk/release/app-release.apk ../openwrt-status-v1.0.12-arm64.apk
+cp app/build/outputs/apk/release/app-release.apk ../openwrt-status-v1.0.14-arm64.apk
 ```
 
 ```powershell
 # Windows PowerShell
-Copy-Item .\app\build\outputs\apk\release\app-release.apk ..\openwrt-status-v1.0.12-arm64.apk
+Copy-Item .\app\build\outputs\apk\release\app-release.apk ..\openwrt-status-v1.0.14-arm64.apk
 ```
 
 Gradle Wrapper 可在 Windows 使用 `gradlew.bat`，在 macOS/Linux 使用 `./gradlew`；Debug APK 与 Release APK 均由各自的 `assemble<Variant>` 任务输出。[1]
@@ -181,7 +181,7 @@ adb devices
 当状态显示为 `device` 时，安装 APK：
 
 ```bash
-adb install -r ../openwrt-status-v1.0.12-arm64.apk
+adb install -r ../openwrt-status-v1.0.14-arm64.apk
 ```
 
 Android 官方文档说明，调试包可直接安装；命令行 APK 输出在模块的 `build/outputs/apk/` 下，也可通过 `adb install` 装入已连接的实体机。[1]
@@ -192,7 +192,7 @@ Android 官方文档说明，调试包可直接安装；命令行 APK 输出在�
 
    ```bash
    adb uninstall com.app.openwrtstatusapp
-   adb install ../openwrt-status-v1.0.12-arm64.apk
+   adb install ../openwrt-status-v1.0.14-arm64.apk
    ```
 
    卸载会清除应用本地数据，包括已保存的路由器资料，因此务必先记录路由器地址、账号和 SSH 端口。
@@ -280,10 +280,10 @@ zipalign -P 16 -f -v 4 app-release.apk app-release-aligned.apk
 apksigner sign \
   --ks /安全路径/openwrt-status-release.jks \
   --ks-key-alias openwrt-status \
-  --out openwrt-status-v1.0.12-arm64-signed.apk \
+  --out openwrt-status-v1.0.14-arm64-signed.apk \
   app-release-aligned.apk
 
-apksigner verify --verbose --print-certs openwrt-status-v1.0.12-arm64-signed.apk
+apksigner verify --verbose --print-certs openwrt-status-v1.0.14-arm64-signed.apk
 ```
 
 `apksigner verify` 会确认 APK 签名能否在该应用支持的 Android 版本上通过验证；官方文档同时说明，若需要 `zipalign`，必须在签名前运行。[3]
@@ -308,7 +308,7 @@ apksigner verify --verbose --print-certs openwrt-status-v1.0.12-arm64-signed.apk
 
 先使用 ARM64 Debug APK 确认 Java、SDK、设备连接和 SSH 原生模块均正常；再生成 ARM64 Release APK；只有在需要模拟器或多 ABI 分发时才执行完整四 ABI 构建。这样可以大幅缩短排错时间，也避免在第一次构建时因资源不足误判项目有问题。
 
-在真机上安装 v1.0.12 后，请优先确认以下路径：**路由器列表与添加路由器页的深色模式、性能基准测试中输入域名 Ping、以及 `https://github.com/MMCKB/OpenWRT/releases/tag/JDCloud` 指定标签的固件检查**。
+在真机上安装 v1.0.14 后，请优先确认以下路径：**路由器列表与添加路由器页的深色模式、性能基准测试中输入域名 Ping、`https://github.com/MMCKB/OpenWRT/releases/tag/JDCloud` 指定标签的固件检查，以及应用内主题确认弹窗**。
 
 ## References
 

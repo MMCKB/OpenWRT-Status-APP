@@ -1,6 +1,6 @@
 # Windows 10/11：构建 ARM、x86 的 32 位和 64 位 APK
 
-**适用源码：OpenWrt 状态 v1.0.12；应用包名：`com.app.openwrtstatusapp`；版本号：`1.0.12`（`versionCode 8`）。** 本教程只面向 Windows PowerShell，讲解如何构建 ARM64、ARM 32 位、x86 32 位、x86 64 位的独立 Release APK，以及四 ABI 通用 APK。
+**适用源码：OpenWrt 状态 v1.0.14；应用包名：`com.app.openwrtstatusapp`；版本号：`1.0.14`（`versionCode 10`）。** 本教程只面向 Windows PowerShell，讲解如何构建 ARM64、ARM 32 位、x86 32 位、x86 64 位的独立 Release APK，以及四 ABI 通用 APK。
 
 本项目使用 Expo SDK 54、React Native 新架构和自定义 Android SSH 模块。请保留 `newArchEnabled=true`，不要删除 `plugins/with-openwrt-ssh.js`，首次构建前也不要运行 `expo prebuild --clean`。项目已经固定 Gradle Wrapper，始终使用 `android\gradlew.bat`，不必安装全局 Gradle。[1]
 
@@ -82,13 +82,22 @@ Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass
 ./scripts/build-windows-four-abis.ps1
 ```
 
+脚本会先清理 Android 旧构建和 `apk-output` 中旧的签名 APK，再从 `android\app\build.gradle` 读取真实的 `versionName` 与 `versionCode`；签名后会用 `aapt` 校验 APK 清单版本。控制台必须显示：
+
+```text
+Building source version: 1.0.14 (versionCode 10)
+Verified manifest: versionName 1.0.14, versionCode 10
+```
+
+若没有看到以上两行，**不要安装 `apk-output` 里的任何旧文件**；先确认你解压的是本次更新后的源码包。
+
 完成后会在 `apk-output\` 看到：
 
 ```text
-openwrt-status-v1.0.12-arm64-v8a-16kb-signed.apk
-openwrt-status-v1.0.12-armeabi-v7a-16kb-signed.apk
-openwrt-status-v1.0.12-x86-16kb-signed.apk
-openwrt-status-v1.0.12-x86_64-16kb-signed.apk
+openwrt-status-v1.0.14-arm64-v8a-16kb-signed.apk
+openwrt-status-v1.0.14-armeabi-v7a-16kb-signed.apk
+openwrt-status-v1.0.14-x86-16kb-signed.apk
+openwrt-status-v1.0.14-x86_64-16kb-signed.apk
 ```
 
 如果只需一种架构，使用 `-Only` 参数：
@@ -113,10 +122,10 @@ New-Item -ItemType Directory -Force ..\apk-output
 
 | 目标 | 构建命令 | 成功后立即执行的复制命令 |
 |---|---|---|
-| ARM64 | `.\gradlew.bat :app:assembleRelease -PreactNativeArchitectures=arm64-v8a --no-daemon --max-workers=1` | `Copy-Item .\app\build\outputs\apk\release\app-release.apk ..\apk-output\openwrt-status-v1.0.12-arm64-v8a-raw.apk` |
-| ARM 32 位 | `.\gradlew.bat :app:assembleRelease -PreactNativeArchitectures=armeabi-v7a --no-daemon --max-workers=1` | `Copy-Item .\app\build\outputs\apk\release\app-release.apk ..\apk-output\openwrt-status-v1.0.12-armeabi-v7a-raw.apk` |
-| x86 32 位 | `.\gradlew.bat :app:assembleRelease -PreactNativeArchitectures=x86 --no-daemon --max-workers=1` | `Copy-Item .\app\build\outputs\apk\release\app-release.apk ..\apk-output\openwrt-status-v1.0.12-x86-raw.apk` |
-| x86 64 位 | `.\gradlew.bat :app:assembleRelease -PreactNativeArchitectures=x86_64 --no-daemon --max-workers=1` | `Copy-Item .\app\build\outputs\apk\release\app-release.apk ..\apk-output\openwrt-status-v1.0.12-x86_64-raw.apk` |
+| ARM64 | `.\gradlew.bat :app:assembleRelease -PreactNativeArchitectures=arm64-v8a --no-daemon --max-workers=1` | `Copy-Item .\app\build\outputs\apk\release\app-release.apk ..\apk-output\openwrt-status-v1.0.14-arm64-v8a-raw.apk` |
+| ARM 32 位 | `.\gradlew.bat :app:assembleRelease -PreactNativeArchitectures=armeabi-v7a --no-daemon --max-workers=1` | `Copy-Item .\app\build\outputs\apk\release\app-release.apk ..\apk-output\openwrt-status-v1.0.14-armeabi-v7a-raw.apk` |
+| x86 32 位 | `.\gradlew.bat :app:assembleRelease -PreactNativeArchitectures=x86 --no-daemon --max-workers=1` | `Copy-Item .\app\build\outputs\apk\release\app-release.apk ..\apk-output\openwrt-status-v1.0.14-x86-raw.apk` |
+| x86 64 位 | `.\gradlew.bat :app:assembleRelease -PreactNativeArchitectures=x86_64 --no-daemon --max-workers=1` | `Copy-Item .\app\build\outputs\apk\release\app-release.apk ..\apk-output\openwrt-status-v1.0.14-x86_64-raw.apk` |
 
 `raw.apk` 是中间文件。要让 APK 在 16KB 页面设备上兼容，必须执行第 8 节的对齐与签名步骤；更简单的方式是使用第 5 节脚本。
 
@@ -135,7 +144,7 @@ Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass
 这会生成四个单 ABI APK，另加：
 
 ```text
-apk-output\openwrt-status-v1.0.12-universal-16kb-signed.apk
+apk-output\openwrt-status-v1.0.14-universal-16kb-signed.apk
 ```
 
 只构建通用包而不生成四个单 ABI 包时，在 `android\` 目录执行：
@@ -157,9 +166,9 @@ $Sdk = $env:ANDROID_SDK_ROOT
 $Tools = Join-Path $Sdk 'build-tools\<BuildToolsVersion>'
 $ZipAlign = Join-Path $Tools 'zipalign.exe'
 $ApkSigner = Join-Path $Tools 'apksigner.bat'
-$Input = 'C:\dev\openwrt-status-app\apk-output\openwrt-status-v1.0.12-arm64-v8a-raw.apk'
+$Input = 'C:\dev\openwrt-status-app\apk-output\openwrt-status-v1.0.14-arm64-v8a-raw.apk'
 $Aligned = 'C:\dev\openwrt-status-app\apk-output\aligned-unsigned.apk'
-$Output = 'C:\dev\openwrt-status-app\apk-output\openwrt-status-v1.0.12-arm64-v8a-16kb-signed.apk'
+$Output = 'C:\dev\openwrt-status-app\apk-output\openwrt-status-v1.0.14-arm64-v8a-16kb-signed.apk'
 
 & $ZipAlign -P 16 -f -v 4 $Input $Aligned
 & $ApkSigner sign --ks 'C:\dev\openwrt-status-app\android\app\debug.keystore' --ks-key-alias androiddebugkey --ks-pass pass:android --key-pass pass:android --out $Output $Aligned
@@ -174,7 +183,7 @@ Get-FileHash $Output -Algorithm SHA256
 使用 JDK 自带 `jar.exe` 检查通用包：
 
 ```powershell
-& "$env:JAVA_HOME\bin\jar.exe" tf .\apk-output\openwrt-status-v1.0.12-universal-16kb-signed.apk |
+& "$env:JAVA_HOME\bin\jar.exe" tf .\apk-output\openwrt-status-v1.0.14-universal-16kb-signed.apk |
   Select-String '^lib/(arm64-v8a|armeabi-v7a|x86|x86_64)/'
 ```
 
@@ -190,19 +199,43 @@ adb shell getprop ro.product.cpu.abilist
 
 ```powershell
 adb devices
-adb install -r .\apk-output\openwrt-status-v1.0.12-arm64-v8a-16kb-signed.apk
+adb install -r .\apk-output\openwrt-status-v1.0.14-arm64-v8a-16kb-signed.apk
 ```
 
 若返回 `INSTALL_FAILED_UPDATE_INCOMPATIBLE`，说明手机已有相同包名但不同密钥签名的版本。先备份应用中保存的路由器资料，再执行：
 
 ```powershell
 adb uninstall com.app.openwrtstatusapp
-adb install .\apk-output\openwrt-status-v1.0.12-arm64-v8a-16kb-signed.apk
+adb install .\apk-output\openwrt-status-v1.0.14-arm64-v8a-16kb-signed.apk
 ```
 
 卸载会清除应用本地保存的路由器资料。以后保持同一份 `debug.keystore`，即可使用 `adb install -r` 覆盖更新。
 
-## 11. 常见错误处理
+## 11. 构建后仍显示旧版本
+
+当前源码的 `android\app\build.gradle` 必须显示 `versionName "1.0.14"` 和 `versionCode 10`。先在项目根目录核对它，而不是只看旧 APK 文件名：
+
+```powershell
+Select-String -Path .\android\app\build.gradle -Pattern 'versionName|versionCode'
+Remove-Item -Recurse -Force .\apk-output -ErrorAction SilentlyContinue
+Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass
+.\scripts\build-windows-four-abis.ps1 -Only arm64-v8a
+```
+
+修正后的脚本会自行执行 `:app:clean`、删除旧输出，并从构建脚本读取版本。安装前必须在控制台看到 `Verified manifest: versionName 1.0.14, versionCode 10`；否则停止安装并确认解压的不是旧源码包。
+
+也可以手动检查最终 APK，下面命令输出中的 `versionName` 和 `versionCode` 必须分别为 `1.0.14` 与 `10`：
+
+```powershell
+$Sdk = $env:ANDROID_SDK_ROOT
+if (-not $Sdk) { $Sdk = "$env:LOCALAPPDATA\Android\Sdk" }
+$BuildTools = Get-ChildItem "$Sdk\build-tools" -Directory | Sort-Object { [version]$_.Name } -Descending | Select-Object -First 1
+& "$($BuildTools.FullName)\aapt.exe" dump badging .\apk-output\openwrt-status-v1.0.14-arm64-v8a-16kb-signed.apk
+```
+
+安装时只选择刚刚生成的 `apk-output\openwrt-status-v1.0.14-arm64-v8a-16kb-signed.apk`；不要从下载目录、旧的 `apk_output` 文件夹或聊天软件缓存中选择同名旧包。
+
+## 12. 常见错误处理
 
 | 现象 | 处理方法 |
 |---|---|
@@ -215,7 +248,7 @@ adb install .\apk-output\openwrt-status-v1.0.12-arm64-v8a-16kb-signed.apk
 | x86 APK 装不上真机 | 真机一般是 ARM64；x86/x86_64 面向模拟器。 |
 | Expo Go 内无法使用 SSH | 自定义 SSH 模块是 Android 原生模块，必须安装本教程构建出的 APK。 |
 
-## 12. 推荐执行顺序
+## 13. 推荐执行顺序
 
 先运行 `pnpm check` 与 `pnpm test`，然后执行 `./scripts/build-windows-four-abis.ps1 -Only arm64-v8a` 并在真机上安装。确认无误后，再按需生成 ARM 32 位、x86 与 x86_64 包；最后如果需要统一对外分发，再运行 `./scripts/build-windows-four-abis.ps1 -Universal`。
 
