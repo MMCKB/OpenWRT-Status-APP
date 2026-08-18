@@ -12,6 +12,7 @@ import {
   buildRestoreCommand,
   buildServiceCommand,
   buildWanDiagnosticCommand,
+  buildWakeOnLanCommand,
   buildWirelessChannelApplyCommand,
   buildWifiDeleteCommand,
   buildUnblockClientCommand,
@@ -83,6 +84,14 @@ describe("OpenWrt 管理命令与解析", () => {
     expect(buildUnblockClientCommand("AA:bb:CC:dd:EE:ff")).toContain("uci -q delete firewall.openwrt_app_block_aa_bb_cc_dd_ee_ff");
     expect(parseBlockedClientMacs("before\n__BLOCKED__\nAA:bb:CC:dd:EE:ff\n")).toEqual(new Set(["AA:BB:CC:DD:EE:FF"]));
     expect(() => buildBlockClientCommand("not-a-mac")).toThrow("MAC 地址格式无效");
+  });
+
+  it("仅为有效 MAC 生成网络唤醒命令，并在缺少工具时给出明确提示", () => {
+    const command = buildWakeOnLanCommand("AA:bb:CC:dd:EE:ff");
+    expect(command).toContain("etherwake -b AA:BB:CC:DD:EE:FF");
+    expect(command).toContain("wakeonlan AA:BB:CC:DD:EE:FF");
+    expect(command).toContain("__WOL_UNAVAILABLE__ 未检测到网络唤醒工具");
+    expect(() => buildWakeOnLanCommand("AA:BB; reboot")).toThrow("MAC 地址格式无效");
   });
 
   it("删除指定无线段并在访客网络时清理关联配置", () => {

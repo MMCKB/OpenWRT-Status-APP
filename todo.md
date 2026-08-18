@@ -223,3 +223,8 @@
 - [x] 整理可供电脑本地构建的源码压缩包与签名操作说明
 - [x] 编写 Windows 专用四 ABI 单独构建、16KB 对齐合并、签名与安装验证完整教程
 - [x] 重新打包包含 Windows 专用教程的无密钥 v1.0.12 源码压缩包
+- [x] 评估 AndroidLiquidGlass 与当前 Expo SDK 54、新架构及 Android 最低版本的兼容性，确定可落地界面位置
+- [x] 修复 SSH 同时使用 publickey、password 方法时的认证失败并补充诊断提示
+- [x] 新增通过已连接 OpenWrt 路由器执行的局域网网络唤醒（Wake-on-LAN）功能
+- [x] 将 SSH 认证与网络唤醒功能升级至 v1.0.13（versionCode 9）
+- [ ] 为液态玻璃、SSH 认证和网络唤醒补充测试、版本升级与本地 APK 构建验证

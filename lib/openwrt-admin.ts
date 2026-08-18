@@ -321,6 +321,11 @@ export function buildUnblockClientCommand(mac: string) {
   return `uci -q delete firewall.${section}; uci commit firewall; /etc/init.d/firewall reload`;
 }
 
+export function buildWakeOnLanCommand(mac: string) {
+  const normalized = requireMac(mac);
+  return `if command -v etherwake >/dev/null 2>&1; then etherwake -b ${normalized}; elif command -v wakeonlan >/dev/null 2>&1; then wakeonlan ${normalized}; elif command -v wol >/dev/null 2>&1; then wol ${normalized}; else echo '__WOL_UNAVAILABLE__ 未检测到网络唤醒工具。请在路由器安装 etherwake、wakeonlan 或 wol 后重试。'; exit 127; fi`;
+}
+
 export function parseWifiConfigs(output: string): WifiConfigEntry[] {
   const entries = new Map<string, Partial<WifiConfigEntry>>();
   for (const line of output.split(/\r?\n/)) {
