@@ -1,7 +1,8 @@
 import MaterialIcons from "@expo/vector-icons/MaterialIcons";
 import { useRouter } from "expo-router";
 import { useMemo } from "react";
-import { Alert, Pressable, StyleSheet, Text, View } from "react-native";
+import { Pressable, StyleSheet, Text, View } from "react-native";
+import { AppDialog as Alert } from "@/components/app-dialog";
 
 import { ManagementShell } from "@/components/management-shell";
 import { SectionCard } from "@/components/status-ui";

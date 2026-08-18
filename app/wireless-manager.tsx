@@ -1,7 +1,8 @@
 import MaterialIcons from "@expo/vector-icons/MaterialIcons";
 import QRCode from "react-native-qrcode-svg";
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { ActivityIndicator, Alert, Pressable, StyleSheet, Switch, Text, TextInput, View } from "react-native";
+import { ActivityIndicator, Pressable, StyleSheet, Switch, Text, TextInput, View } from "react-native";
+import { AppDialog as Alert } from "@/components/app-dialog";
 
 import { ManagementShell, ToolNotice } from "@/components/management-shell";
 import { EmptyState, SectionCard, StatusPill } from "@/components/status-ui";

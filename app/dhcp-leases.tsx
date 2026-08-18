@@ -1,6 +1,7 @@
 import MaterialIcons from "@expo/vector-icons/MaterialIcons";
 import { useCallback, useEffect, useState } from "react";
-import { ActivityIndicator, Alert, Pressable, StyleSheet, Text, TextInput, View } from "react-native";
+import { ActivityIndicator, Pressable, StyleSheet, Text, TextInput, View } from "react-native";
+import { AppDialog as Alert } from "@/components/app-dialog";
 
 import { EmptyState, SectionCard, StatusPill } from "@/components/status-ui";
 import { ManagementShell, ToolNotice } from "@/components/management-shell";

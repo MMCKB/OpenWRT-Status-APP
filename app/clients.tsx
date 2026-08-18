@@ -1,12 +1,13 @@
 import { useCallback, useEffect, useState } from "react";
 import MaterialIcons from "@expo/vector-icons/MaterialIcons";
-import { ActivityIndicator, Alert, Pressable, StyleSheet, Text, View } from "react-native";
+import { ActivityIndicator, Pressable, StyleSheet, Text, View } from "react-native";
 
 import { ManagementShell, ToolNotice } from "@/components/management-shell";
 import { EmptyState, SectionCard, StatusPill } from "@/components/status-ui";
 import { useColors } from "@/hooks/use-colors";
 import { buildBlockClientCommand, buildClientSnapshotCommand, buildUnblockClientCommand, buildWakeOnLanCommand, parseBlockedClientMacs, parseConnectedClients, type ConnectedClient } from "@/lib/openwrt-admin";
 import { useManagedSsh } from "@/hooks/use-managed-ssh";
+import { AppDialog as Alert } from "@/components/app-dialog";
 
 export default function ClientsScreen() {
   const colors = useColors();
