@@ -12,6 +12,7 @@ expo-env.d.ts
 # Native
 .kotlin/
 *.orig.*
+*.keystore
 *.jks
 *.p8
 *.p12
@@ -31,6 +32,8 @@ yarn-error.*
 *.pem
 
 # local env files
+.env
+.env.*
 .env*.local
 
 # typescript
@@ -38,9 +41,18 @@ yarn-error.*
 
 app-example
 
-# generated native folders
+# generated iOS folder
 /ios
-/android
+
+# Android local configuration, build caches, native intermediates, and signing material
+/android/.gradle/
+/android/build/
+/android/app/build/
+/android/.cxx/
+/android/app/.cxx/
+/android/local.properties
+/android/app/debug.keystore
+/android/app/release.keystore
 
 # IDE
 .vscode/
@@ -60,6 +72,10 @@ Thumbs.db
 *.tgz
 *.tar.gz
 .cache/
+/apk-output/
+release-artifacts/
+*.apk
+*.aab
 
 # Webdev artifacts (checkpoint zips, migrations, etc.)
 .webdev/

@@ -235,3 +235,9 @@
 - [x] 诊断 Windows 本地构建仍输出旧版本 APK 的版本声明、构建缓存与产物路径问题
 - [x] 修正 Windows 构建脚本，强制清理旧产物并在输出中核验 APK 的 versionName 与 versionCode
 - [x] 重新打包修复后的 v1.0.14 源码并交付可复现构建步骤
+- [x] 阅读自动化与连接器规范并核对目标 GitHub 仓库的访问权限与默认分支
+- [x] 新增四 ABI Android Release 的 GitHub Actions 构建、签名与产物上传工作流
+- [x] 让每次成功的 GitHub Actions 构建按 app.config.ts 版本创建或更新对应 v<version> 标签与 GitHub Release
+- [x] 编写项目 README、开源许可证与安全贡献说明
+- [ ] 将当前 v1.0.14 源码安全推送至 MMCKB/OpenWRT-Status-APP 并验证工作流
+- [x] 采用不依赖 GitHub Secret 的临时 debug keystore CI 签名方案，并记录跨运行覆盖升级的限制
