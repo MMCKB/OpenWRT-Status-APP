@@ -133,6 +133,7 @@ jobs:
             --v1-signing-enabled true \
             --v2-signing-enabled true \
             --v3-signing-enabled true \
+            --v4-signing-enabled false \
             --out "$FINAL_APK" \
             "$ALIGNED_APK"
           "$APKSIGNER" verify --verbose --print-certs "$FINAL_APK"
@@ -191,9 +192,8 @@ jobs:
           if git ls-remote --exit-code --tags origin "refs/tags/${TAG}" >/dev/null 2>&1; then
             TAG_COMMIT="$(git ls-remote --refs origin "refs/tags/${TAG}" | awk '{print $1}')"
             if [ "$TAG_COMMIT" != "$CURRENT_COMMIT" ]; then
-              echo "Tag ${TAG} already points to ${TAG_COMMIT}, not this commit ${CURRENT_COMMIT}." >&2
-              echo "Increase versionName before publishing a different release." >&2
-              exit 1
+              git tag -f "$TAG" "$CURRENT_COMMIT"
+              git push origin "refs/tags/${TAG}" --force
             fi
             gh release view "$TAG" >/dev/null 2>&1 || \
               gh release create "$TAG" --target "$CURRENT_COMMIT" --title "OpenWrt Status ${TAG}" --generate-notes
@@ -201,5 +201,8 @@ jobs:
             gh release create "$TAG" --target "$CURRENT_COMMIT" --title "OpenWrt Status ${TAG}" --generate-notes
           fi
 
-          gh release upload "$TAG" release-artifacts/* --clobber
+          gh release upload "$TAG" \
+            release-artifacts/*-16kb-signed.apk \
+            release-artifacts/*-16kb-signed.apk.sha256 \
+            --clobber
           gh release view "$TAG" --json url,tagName,assets
