@@ -80,7 +80,7 @@ export default function SettingsScreen() {
           <InfoRow icon="wifi" title="仅访问已保存的路由器" description="状态读取通过 OpenWrt 的 LuCI ubus 接口完成。请在可信局域网内使用。" colors={colors} softPrimary={softPrimary} divider />
         </SectionCard>
         <SectionCard title="关于">
-          <MaintenanceRow icon="info-outline" label="OpenWrt 路由器状态" description="查看应用版本、功能说明与本地数据使用说明。" target="/about" colors={colors} softPrimary={softPrimary} router={router} />
+          <MaintenanceRow icon="info-outline" label="OpenWrt 路由器状态" description="查看应用版本与项目仓库。" target="/about" colors={colors} softPrimary={softPrimary} router={router} />
         </SectionCard>
         <View style={[styles.note, { backgroundColor: noteSurface }]}><MaterialIcons name="info-outline" size={18} color={colors.muted} /><Text style={[styles.noteText, { color: colors.muted }]}>若使用 HTTP 管理地址，账户和状态数据在本地网络中并未加密。建议优先使用可信网络与 HTTPS。</Text></View>
       </ScrollView>

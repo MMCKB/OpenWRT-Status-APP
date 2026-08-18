@@ -135,7 +135,7 @@ export default function RootLayout() {
 function RootNavigator() {
   const colors = useColors();
   return (
-    <Stack screenOptions={{ headerShown: false, contentStyle: { backgroundColor: colors.background }, animation: "default", gestureEnabled: true }}>
+    <Stack screenOptions={{ headerShown: false, contentStyle: { backgroundColor: colors.background }, animation: "default", gestureEnabled: false }}>
       <Stack.Screen name="(tabs)" />
       <Stack.Screen name="files" />
       <Stack.Screen name="firmware" />

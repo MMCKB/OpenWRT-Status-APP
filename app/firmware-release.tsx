@@ -8,7 +8,7 @@ import { ManagementShell, ToolNotice } from "@/components/management-shell";
 import { EmptyState, SectionCard, StatusPill } from "@/components/status-ui";
 import { useColors } from "@/hooks/use-colors";
 import { downloadGithubReleaseAsset } from "@/lib/github-firmware-download";
-import { compareReleaseVersion, fetchLatestGithubRelease, parseGithubReleaseUrl, type GithubRelease, type GithubReleaseAsset } from "@/lib/github-release";
+import { compareReleaseVersion, fetchGithubReleases, parseGithubReleaseUrl, type GithubRelease, type GithubReleaseAsset } from "@/lib/github-release";
 import { getInAppSshTarget, uploadInAppSshFile } from "@/lib/native-ssh";
 import { buildFirmwareDeviceInfoCommand, parseFirmwareDeviceInfo, type FirmwareDeviceInfo } from "@/lib/openwrt-admin";
 import { useManagedSsh } from "@/hooks/use-managed-ssh";
@@ -35,6 +35,7 @@ export default function FirmwareReleaseScreen() {
   const { selectedProfile } = useRouterStore();
   const { execute, error, hasRouter, isRunning, isSupported } = useManagedSsh();
   const [sourceUrl, setSourceUrl] = useState("");
+  const [releases, setReleases] = useState<GithubRelease[]>([]);
   const [release, setRelease] = useState<GithubRelease | null>(null);
   const [deviceInfo, setDeviceInfo] = useState<FirmwareDeviceInfo | null>(null);
   const [loading, setLoading] = useState(false);
@@ -52,17 +53,23 @@ export default function FirmwareReleaseScreen() {
   const checkRelease = useCallback(async () => {
     if (!selectedProfile || !isSupported) return;
     setLoading(true);
-    setActivity("正在从 GitHub 查询公开 Release，并读取路由器当前固件版本…");
+    setActivity("正在从 GitHub 读取全部公开 Release 标签，并读取路由器当前固件版本…");
     try {
       const source = parseGithubReleaseUrl(sourceUrl);
       await saveFirmwareReleaseUrl(selectedProfile.id, sourceUrl);
-      const latest = await fetchLatestGithubRelease(sourceUrl);
+      const availableReleases = await fetchGithubReleases(sourceUrl);
+      const selectedRelease = source.tagName
+        ? availableReleases.find((item) => item.tagName === source.tagName)
+        : availableReleases[0];
+      if (!selectedRelease) throw new Error(`未在仓库全部公开 Release 中找到标签“${source.tagName}”。`);
       const current = parseFirmwareDeviceInfo(await execute(buildFirmwareDeviceInfoCommand()));
-      setRelease(latest);
+      setReleases(availableReleases);
+      setRelease(selectedRelease);
       setDeviceInfo(current);
-      const releaseLabel = source.tagName ? `指定标签“${latest.tagName}”` : "最新 Release";
-      setActivity(latest.assets.some((asset) => asset.firmwareCandidate) ? `已读取${releaseLabel}。请手动确认型号、目标平台和镜像类型后再选择下载。` : `已读取${releaseLabel}，但未识别到常见固件镜像资产。`);
+      const releaseLabel = source.tagName ? `指定标签“${selectedRelease.tagName}”` : `最新标签“${selectedRelease.tagName}”`;
+      setActivity(selectedRelease.assets.some((asset) => asset.firmwareCandidate) ? `已读取 ${availableReleases.length} 个公开标签，当前为${releaseLabel}。请手动确认型号、目标平台和镜像类型后再选择下载。` : `已读取 ${availableReleases.length} 个公开标签，当前${releaseLabel}未识别到常见固件镜像资产。`);
     } catch (reason) {
+      setReleases([]);
       setRelease(null);
       setActivity(reason instanceof Error ? reason.message : "GitHub 版本检查失败。");
     } finally {
@@ -113,11 +120,15 @@ export default function FirmwareReleaseScreen() {
   return <ManagementShell title="GitHub 固件检查" description="从你配置的公开 GitHub Release 检查版本并手动选择固件。不会自动升级或校验镜像适配性。">
     <SectionCard title="Release 链接"><View style={styles.cardBody}>
       <Text style={[styles.caption, { color: colors.muted }]}>支持仓库 Release 页面或指定标签页，例如 https://github.com/owner/repository/releases 及 /releases/tag/JDCloud。链接按当前路由器分别保存。</Text>
-      <TextInput value={sourceUrl} onChangeText={setSourceUrl} editable={!disabled} autoCapitalize="none" autoCorrect={false} keyboardType="url" placeholder="GitHub Release 链接" placeholderTextColor={colors.muted} style={[styles.input, { color: colors.foreground, borderColor: colors.border, backgroundColor: colors.background }]} />
+      <TextInput value={sourceUrl} onChangeText={(value) => { setSourceUrl(value); setReleases([]); setRelease(null); }} editable={!disabled} autoCapitalize="none" autoCorrect={false} keyboardType="url" placeholder="GitHub Release 链接" placeholderTextColor={colors.muted} style={[styles.input, { color: colors.foreground, borderColor: colors.border, backgroundColor: colors.background }]} />
       <Pressable accessibilityRole="button" disabled={!sourceUrl.trim() || disabled} onPress={() => void checkRelease()} style={({ pressed }) => [styles.primary, { backgroundColor: colors.primary }, (!sourceUrl.trim() || disabled) && styles.disabled, pressed && styles.pressed]}>{loading ? <ActivityIndicator color="#FFFFFF" /> : <Text style={styles.primaryText}>检查 Release</Text>}</Pressable>
       <Text style={[styles.status, { color: colors.muted }]}>{activity}</Text>
       {!isSupported ? <Text style={[styles.error, { color: colors.error }]}>此功能需要安装 Android APK；Web 预览无法进行 SSH 上传与升级。</Text> : null}
     </View></SectionCard>
+    {releases.length ? <SectionCard title={`全部 Release 标签（${releases.length}）`}><View style={styles.releaseList}>{releases.map((item, index) => {
+      const selected = item.tagName === release?.tagName;
+      return <Pressable key={item.tagName} accessibilityRole="button" accessibilityState={{ selected }} disabled={disabled} onPress={() => { setRelease(item); setActivity(`已切换到标签“${item.tagName}”。请确认固件型号、目标平台和镜像类型。`); }} style={({ pressed }) => [styles.tagRow, index > 0 && { borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: colors.border }, selected && { backgroundColor: colors.surface }, pressed && styles.pressed, disabled && styles.disabled]}><MaterialIcons name="local-offer" size={20} color={selected ? colors.primary : colors.muted} /><View style={styles.tagCopy}><Text numberOfLines={1} style={[styles.tagName, { color: colors.foreground }]}>{item.tagName}</Text><Text numberOfLines={1} style={[styles.tagMeta, { color: colors.muted }]}>{item.name ?? "未命名 Release"} · {formatDate(item.publishedAt)}</Text></View>{selected ? <StatusPill label="已选择" tone="success" /> : <MaterialIcons name="chevron-right" size={21} color={colors.muted} />}</Pressable>;
+    })}</View></SectionCard> : null}
     {release ? <SectionCard title="Release 与当前系统"><View style={styles.cardBody}>
       <View style={styles.releaseTitleRow}><View style={styles.releaseCopy}><Text style={[styles.releaseTitle, { color: colors.foreground }]}>{release.name ?? release.tagName}</Text><Text style={[styles.caption, { color: colors.muted }]}>Tag {release.tagName} · {formatDate(release.publishedAt)}</Text></View><StatusPill label={comparison === 1 ? "发现新版本" : comparison === 0 ? "版本相同" : comparison === -1 ? "当前更高" : "待核对"} tone={comparison === 1 ? "success" : "normal"} /></View>
       <Text style={[styles.current, { color: colors.foreground }]}>当前固件：{deviceInfo?.description ?? deviceInfo?.version ?? "未报告"}{deviceInfo?.target ? ` · ${deviceInfo.target}` : ""}</Text>
@@ -131,5 +142,5 @@ export default function FirmwareReleaseScreen() {
 }
 
 const styles = StyleSheet.create({
-  cardBody: { padding: 15, gap: 10 }, caption: { fontSize: 12, lineHeight: 18 }, input: { minHeight: 46, borderWidth: 1, borderRadius: 11, paddingHorizontal: 12, fontSize: 13 }, primary: { minHeight: 45, borderRadius: 11, alignItems: "center", justifyContent: "center" }, primaryText: { color: "#FFFFFF", fontSize: 14, fontWeight: "800" }, status: { fontSize: 12, lineHeight: 18 }, error: { fontSize: 13, lineHeight: 19 }, releaseTitleRow: { flexDirection: "row", alignItems: "center", gap: 10 }, releaseCopy: { flex: 1, minWidth: 0 }, releaseTitle: { fontSize: 15, fontWeight: "800" }, current: { fontSize: 13, lineHeight: 19, fontWeight: "700" }, assetList: { overflow: "hidden" }, assetRow: { minHeight: 67, flexDirection: "row", alignItems: "center", gap: 11, padding: 14 }, assetCopy: { flex: 1, minWidth: 0 }, assetName: { fontSize: 13, lineHeight: 18, fontWeight: "800" }, assetMeta: { fontSize: 11, marginTop: 3 }, back: { minHeight: 44, alignItems: "center", justifyContent: "center", borderWidth: 1, borderRadius: 11 }, backText: { fontSize: 14, fontWeight: "800" }, pressed: { opacity: 0.72 }, disabled: { opacity: 0.46 },
+  cardBody: { padding: 15, gap: 10 }, caption: { fontSize: 12, lineHeight: 18 }, input: { minHeight: 46, borderWidth: 1, borderRadius: 11, paddingHorizontal: 12, fontSize: 13 }, primary: { minHeight: 45, borderRadius: 11, alignItems: "center", justifyContent: "center" }, primaryText: { color: "#FFFFFF", fontSize: 14, fontWeight: "800" }, status: { fontSize: 12, lineHeight: 18 }, error: { fontSize: 13, lineHeight: 19 }, releaseList: { overflow: "hidden" }, tagRow: { minHeight: 64, flexDirection: "row", alignItems: "center", gap: 11, paddingHorizontal: 14, paddingVertical: 11 }, tagCopy: { flex: 1, minWidth: 0 }, tagName: { fontSize: 14, fontWeight: "800" }, tagMeta: { fontSize: 11, marginTop: 3 }, releaseTitleRow: { flexDirection: "row", alignItems: "center", gap: 10 }, releaseCopy: { flex: 1, minWidth: 0 }, releaseTitle: { fontSize: 15, fontWeight: "800" }, current: { fontSize: 13, lineHeight: 19, fontWeight: "700" }, assetList: { overflow: "hidden" }, assetRow: { minHeight: 67, flexDirection: "row", alignItems: "center", gap: 11, padding: 14 }, assetCopy: { flex: 1, minWidth: 0 }, assetName: { fontSize: 13, lineHeight: 18, fontWeight: "800" }, assetMeta: { fontSize: 11, marginTop: 3 }, back: { minHeight: 44, alignItems: "center", justifyContent: "center", borderWidth: 1, borderRadius: 11 }, backText: { fontSize: 14, fontWeight: "800" }, pressed: { opacity: 0.72 }, disabled: { opacity: 0.46 },
 });

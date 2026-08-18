@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { compareReleaseVersion, fetchLatestGithubRelease, parseGithubReleaseUrl } from "../lib/github-release";
+import { compareReleaseVersion, fetchGithubReleases, fetchLatestGithubRelease, parseGithubReleaseUrl } from "../lib/github-release";
 
 afterEach(() => vi.unstubAllGlobals());
 
@@ -51,5 +51,27 @@ describe("GitHub Release 固件源", () => {
 
     expect(fetchMock).toHaveBeenCalledWith("https://api.github.com/repos/MMCKB/OpenWRT/releases/tags/JDCloud", expect.any(Object));
     expect(release.tagName).toBe("JDCloud");
+  });
+
+  it("枚举全部分页 Release 标签，并保留每个标签中可信的固件资产", async () => {
+    const firstPage = Array.from({ length: 100 }, (_, index) => ({
+      tag_name: `v25.12.${100 - index}`,
+      html_url: `https://github.com/openwrt/openwrt/releases/tag/v25.12.${100 - index}`,
+      assets: [],
+    }));
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce({ ok: true, status: 200, json: async () => firstPage })
+      .mockResolvedValueOnce({ ok: true, status: 200, json: async () => [
+        { tag_name: "JDCloud", html_url: "https://github.com/openwrt/openwrt/releases/tag/JDCloud", assets: [{ id: 9, name: "openwrt-sysupgrade.bin", size: 4096, browser_download_url: "https://github.com/openwrt/openwrt/releases/download/JDCloud/openwrt-sysupgrade.bin" }] },
+        { tag_name: "legacy", html_url: "https://github.com/openwrt/openwrt/releases/tag/legacy", assets: [] },
+      ] });
+    vi.stubGlobal("fetch", fetchMock);
+
+    const releases = await fetchGithubReleases("https://github.com/openwrt/openwrt/releases");
+
+    expect(fetchMock).toHaveBeenNthCalledWith(1, "https://api.github.com/repos/openwrt/openwrt/releases?per_page=100&page=1", expect.any(Object));
+    expect(fetchMock).toHaveBeenNthCalledWith(2, "https://api.github.com/repos/openwrt/openwrt/releases?per_page=100&page=2", expect.any(Object));
+    expect(releases).toHaveLength(102);
+    expect(releases.find((release) => release.tagName === "JDCloud")?.assets).toEqual([expect.objectContaining({ firmwareCandidate: true, name: "openwrt-sysupgrade.bin" })]);
   });
 });

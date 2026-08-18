@@ -47,7 +47,7 @@ const config: ExpoConfig = {
       projectId: "c4d4af65-fe2b-4803-8ba9-5efecb95d126",
     },
   },
-  version: "1.0.14",
+  version: "1.0.15",
   orientation: "portrait",
   icon: "./assets/images/icon.png",
   scheme: env.scheme,
@@ -70,11 +70,9 @@ const config: ExpoConfig = {
       foregroundImage: "./assets/images/android-icon-foreground.png",
     },
     edgeToEdgeEnabled: true,
-    // Expo SDK 54 currently has an upstream incompatibility with Android's
-    // predictive-back callback. Keep the native-stack edge-back path enabled
-    // while opting out of the broken system preview callback.
+    // Do not register Android predictive-back callbacks or an edge-back preview.
     predictiveBackGestureEnabled: false,
-    versionCode: 10,
+    versionCode: 11,
     package: env.androidPackage,
     permissions: ["POST_NOTIFICATIONS"],
     intentFilters: [

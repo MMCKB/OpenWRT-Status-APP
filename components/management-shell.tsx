@@ -3,9 +3,9 @@ import { ScrollView, StyleSheet, Text, View } from "react-native";
 
 import { useColors } from "@/hooks/use-colors";
 
-export function ManagementShell({ title, description, children }: { title: string; description: string; children: ReactNode }) {
+export function ManagementShell({ title, description, children }: { title: string; description?: string; children: ReactNode }) {
   const colors = useColors();
-  return <View style={[styles.screen, { backgroundColor: colors.background }]}><ScrollView contentContainerStyle={styles.content}><View><Text style={[styles.title, { color: colors.foreground }]}>{title}</Text><Text style={[styles.description, { color: colors.muted }]}>{description}</Text></View>{children}</ScrollView></View>;
+  return <View style={[styles.screen, { backgroundColor: colors.background }]}><ScrollView contentContainerStyle={styles.content}><View><Text style={[styles.title, { color: colors.foreground }]}>{title}</Text>{description ? <Text style={[styles.description, { color: colors.muted }]}>{description}</Text> : null}</View>{children}</ScrollView></View>;
 }
 
 export function ToolNotice({ children }: { children: ReactNode }) {

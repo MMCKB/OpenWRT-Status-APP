@@ -61,31 +61,76 @@ function stringValue(value: unknown) {
   return typeof value === "string" && value.trim() ? value.trim() : null;
 }
 
+function parseGithubRelease(owner: string, repository: string, payload: unknown): GithubRelease | null {
+  if (!payload || typeof payload !== "object") return null;
+  const item = payload as Record<string, unknown>;
+  const tagName = stringValue(item.tag_name);
+  const htmlUrl = safeDownloadUrl(item.html_url);
+  if (!tagName || !htmlUrl) return null;
+  const assets = Array.isArray(item.assets) ? item.assets.flatMap((asset) => {
+    if (!asset || typeof asset !== "object") return [];
+    const entry = asset as Record<string, unknown>;
+    const id = Number(entry.id);
+    const name = stringValue(entry.name);
+    const downloadUrl = safeDownloadUrl(entry.browser_download_url);
+    const size = Number(entry.size);
+    if (!Number.isInteger(id) || !name || !downloadUrl || !Number.isFinite(size) || size < 0) return [];
+    return [{ id, name, size, downloadUrl, contentType: stringValue(entry.content_type), firmwareCandidate: isFirmwareCandidate(name) }];
+  }) : [];
+  return { owner, repository, tagName, name: stringValue(item.name), publishedAt: stringValue(item.published_at), body: stringValue(item.body), htmlUrl, assets };
+}
+
+function githubApiUrl(owner: string, repository: string, path: string) {
+  return `https://api.github.com/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repository)}${path}`;
+}
+
+const githubHeaders = { Accept: "application/vnd.github+json", "X-GitHub-Api-Version": "2022-11-28" };
+
+/**
+ * Enumerates every public Release page exposed by the GitHub API.  GitHub
+ * returns a maximum of 100 entries per page, so keep requesting pages until
+ * a short page is reached instead of silently hiding older firmware tags.
+ */
+export async function fetchGithubReleases(sourceUrl: string): Promise<GithubRelease[]> {
+  const { owner, repository } = parseGithubReleaseUrl(sourceUrl);
+  const releases: GithubRelease[] = [];
+  const seenTags = new Set<string>();
+  let page = 1;
+
+  while (true) {
+    const response = await fetch(githubApiUrl(owner, repository, `/releases?per_page=100&page=${page}`), { headers: githubHeaders });
+    if (response.status === 404) throw new Error("未找到公开的 Release。请确认链接正确且仓库公开。");
+    if (!response.ok) throw new Error(`GitHub 标签查询失败（HTTP ${response.status}）。`);
+    const payload = await response.json();
+    if (!Array.isArray(payload)) throw new Error("GitHub Release 返回的数据格式不正确。");
+
+    for (const entry of payload) {
+      const release = parseGithubRelease(owner, repository, entry);
+      if (release && !seenTags.has(release.tagName)) {
+        seenTags.add(release.tagName);
+        releases.push(release);
+      }
+    }
+
+    if (payload.length < 100) break;
+    page += 1;
+  }
+
+  if (!releases.length) throw new Error("未找到公开的 Release 标签。请确认仓库已发布 Release。");
+  return releases;
+}
+
 export async function fetchLatestGithubRelease(sourceUrl: string): Promise<GithubRelease> {
   const { owner, repository, tagName: requestedTag } = parseGithubReleaseUrl(sourceUrl);
   const releasePath = requestedTag
     ? `/releases/tags/${encodeURIComponent(requestedTag)}`
     : "/releases/latest";
-  const response = await fetch(`https://api.github.com/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repository)}${releasePath}`, {
-    headers: { Accept: "application/vnd.github+json", "X-GitHub-Api-Version": "2022-11-28" },
-  });
+  const response = await fetch(githubApiUrl(owner, repository, releasePath), { headers: githubHeaders });
   if (response.status === 404) throw new Error(requestedTag ? `未找到公开的 Release 标签“${requestedTag}”。请确认链接、标签名称和仓库可见性。` : "未找到公开的最新 Release。请确认链接正确、仓库公开且已发布非预发行版本。");
   if (!response.ok) throw new Error(`GitHub 版本查询失败（HTTP ${response.status}）。`);
-  const payload = await response.json() as Record<string, unknown>;
-  const tagName = stringValue(payload.tag_name);
-  const htmlUrl = safeDownloadUrl(payload.html_url);
-  if (!tagName || !htmlUrl) throw new Error("GitHub Release 返回的数据不完整。");
-  const assets = Array.isArray(payload.assets) ? payload.assets.flatMap((asset) => {
-    if (!asset || typeof asset !== "object") return [];
-    const item = asset as Record<string, unknown>;
-    const id = Number(item.id);
-    const name = stringValue(item.name);
-    const downloadUrl = safeDownloadUrl(item.browser_download_url);
-    const size = Number(item.size);
-    if (!Number.isInteger(id) || !name || !downloadUrl || !Number.isFinite(size) || size < 0) return [];
-    return [{ id, name, size, downloadUrl, contentType: stringValue(item.content_type), firmwareCandidate: isFirmwareCandidate(name) }];
-  }) : [];
-  return { owner, repository, tagName, name: stringValue(payload.name), publishedAt: stringValue(payload.published_at), body: stringValue(payload.body), htmlUrl, assets };
+  const release = parseGithubRelease(owner, repository, await response.json());
+  if (!release) throw new Error("GitHub Release 返回的数据不完整。");
+  return release;
 }
 
 function versionNumbers(value: string) {
