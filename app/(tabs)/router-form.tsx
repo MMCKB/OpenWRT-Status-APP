@@ -23,6 +23,8 @@ export default function RouterFormScreen() {
   const [sshPort, setSshPort] = useState("22");
   const [password, setPassword] = useState("");
   const [sshPassword, setSshPassword] = useState("");
+  const [isPasswordVisible, setIsPasswordVisible] = useState(false);
+  const [isSshPasswordVisible, setIsSshPasswordVisible] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [isTesting, setIsTesting] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
@@ -87,8 +89,20 @@ export default function RouterFormScreen() {
           <Text style={[styles.fieldLabel, { color: colors.foreground }]}>SSH 用户名</Text><TextInput style={[styles.input, { color: colors.foreground, borderColor: colors.border, backgroundColor: colors.background }]} value={sshUsername} onChangeText={setSshUsername} placeholder="root" placeholderTextColor={colors.muted} selectionColor={colors.primary} autoCapitalize="none" autoCorrect={false} returnKeyType="next" />
           <Text style={[styles.fieldLabel, { color: colors.foreground }]}>SSH 端口</Text><TextInput style={[styles.input, { color: colors.foreground, borderColor: colors.border, backgroundColor: colors.background }]} value={sshPort} onChangeText={setSshPort} placeholder="22" placeholderTextColor={colors.muted} selectionColor={colors.primary} keyboardType="number-pad" returnKeyType="next" />
           <Text style={[styles.helpText, { color: colors.muted }]}>应用内终端使用 LuCI 地址中的主机名，以及这里设置的 SSH 账户与端口。</Text>
-          <Text style={[styles.fieldLabel, { color: colors.foreground }]}>密码{existing ? "（留空以保留原密码）" : ""}</Text><TextInput style={[styles.input, { color: colors.foreground, borderColor: colors.border, backgroundColor: colors.background }]} value={password} onChangeText={setPassword} placeholder={existing ? "输入新密码以替换" : "LuCI 密码"} placeholderTextColor={colors.muted} selectionColor={colors.primary} secureTextEntry autoCapitalize="none" autoCorrect={false} returnKeyType="done" onSubmitEditing={() => void handleSave()} />
-          <Text style={[styles.fieldLabel, { color: colors.foreground }]}>SSH 密码{existing ? "（留空以保留原密码）" : "（留空则使用 LuCI 密码）"}</Text><TextInput style={[styles.input, { color: colors.foreground, borderColor: colors.border, backgroundColor: colors.background }]} value={sshPassword} onChangeText={setSshPassword} placeholder="SSH 密码" placeholderTextColor={colors.muted} selectionColor={colors.primary} secureTextEntry autoCapitalize="none" autoCorrect={false} returnKeyType="done" onSubmitEditing={() => void handleSave()} />
+          <Text style={[styles.fieldLabel, { color: colors.foreground }]}>密码{existing ? "（留空以保留原密码）" : ""}</Text>
+          <View style={styles.passwordField}>
+            <TextInput style={[styles.input, styles.passwordInput, { color: colors.foreground, borderColor: colors.border, backgroundColor: colors.background }]} value={password} onChangeText={setPassword} placeholder={existing ? "输入新密码以替换" : "LuCI 密码"} placeholderTextColor={colors.muted} selectionColor={colors.primary} secureTextEntry={!isPasswordVisible} autoCapitalize="none" autoCorrect={false} returnKeyType="done" onSubmitEditing={() => void handleSave()} />
+            <Pressable accessibilityRole="button" accessibilityLabel={isPasswordVisible ? "隐藏 LuCI 密码" : "显示 LuCI 密码"} accessibilityState={{ selected: isPasswordVisible }} hitSlop={8} onPress={() => setIsPasswordVisible((visible) => !visible)} style={({ pressed }) => [styles.passwordToggle, pressed && styles.buttonPressed]}>
+              <MaterialIcons name={isPasswordVisible ? "visibility-off" : "visibility"} size={21} color={colors.muted} />
+            </Pressable>
+          </View>
+          <Text style={[styles.fieldLabel, { color: colors.foreground }]}>SSH 密码{existing ? "（留空以保留原密码）" : "（留空则使用 LuCI 密码）"}</Text>
+          <View style={styles.passwordField}>
+            <TextInput style={[styles.input, styles.passwordInput, { color: colors.foreground, borderColor: colors.border, backgroundColor: colors.background }]} value={sshPassword} onChangeText={setSshPassword} placeholder="SSH 密码" placeholderTextColor={colors.muted} selectionColor={colors.primary} secureTextEntry={!isSshPasswordVisible} autoCapitalize="none" autoCorrect={false} returnKeyType="done" onSubmitEditing={() => void handleSave()} />
+            <Pressable accessibilityRole="button" accessibilityLabel={isSshPasswordVisible ? "隐藏 SSH 密码" : "显示 SSH 密码"} accessibilityState={{ selected: isSshPasswordVisible }} hitSlop={8} onPress={() => setIsSshPasswordVisible((visible) => !visible)} style={({ pressed }) => [styles.passwordToggle, pressed && styles.buttonPressed]}>
+              <MaterialIcons name={isSshPasswordVisible ? "visibility-off" : "visibility"} size={21} color={colors.muted} />
+            </Pressable>
+          </View>
         </View>
         {message ? <View style={[styles.message, { backgroundColor: messageSurface }]}><StatusPill label={tested === "error" ? "连接失败" : "连接成功"} tone={tested === "error" ? "danger" : "success"} /><Text style={[styles.messageText, { color: colors.foreground }]}>{message}</Text></View> : null}
         <Pressable accessibilityRole="button" accessibilityLabel="测试连接" disabled={isTesting || isSaving} onPress={() => void handleTest()} style={({ pressed }) => [styles.secondaryButton, { backgroundColor: colors.surface, borderColor: colors.primary }, (isTesting || isSaving) && styles.disabled, pressed && styles.buttonPressed]}>{isTesting ? <ActivityIndicator color={colors.primary} /> : <Text style={[styles.secondaryButtonText, { color: colors.primary }]}>测试连接</Text>}</Pressable>
@@ -111,6 +125,9 @@ const styles = StyleSheet.create({
   formCard: { borderRadius: 18, borderWidth: 1, padding: 15 },
   fieldLabel: { fontSize: 13, fontWeight: "800", marginTop: 13, marginBottom: 7 },
   input: { fontSize: 15, minHeight: 46, borderWidth: 1, borderRadius: 11, paddingHorizontal: 12 },
+  passwordField: { position: "relative" },
+  passwordInput: { paddingRight: 50 },
+  passwordToggle: { position: "absolute", right: 1, top: 1, width: 46, minHeight: 44, alignItems: "center", justifyContent: "center", borderRadius: 10 },
   helpText: { fontSize: 12, lineHeight: 17, marginTop: 6 },
   message: { gap: 8, borderRadius: 14, padding: 13 },
   messageText: { fontSize: 13, lineHeight: 19 },
