@@ -90,6 +90,9 @@ jobs:
 
       - name: Verify source quality
         run: |
+          # A tracked bundle here would take precedence when release bundling is
+          # skipped accidentally and would reproduce an obsolete application UI.
+          test ! -e android/app/src/main/assets/index.android.bundle
           pnpm check
           pnpm test
 
@@ -141,6 +144,11 @@ jobs:
           APK_BADGING="$($AAPT dump badging "$FINAL_APK")"
           printf '%s\n' "$APK_BADGING" | grep -F "versionCode='$VERSION_CODE'"
           printf '%s\n' "$APK_BADGING" | grep -F "versionName='$VERSION_NAME'"
+          # Verify that the release embeds the current service-management and
+          # password-visibility code, rather than an old JavaScript bundle.
+          unzip -p "$FINAL_APK" assets/index.android.bundle | grep -aF "PassWall2"
+          unzip -p "$FINAL_APK" assets/index.android.bundle | grep -aF "visibility-off"
+          ! unzip -p "$FINAL_APK" assets/index.android.bundle | grep -aF "预测性返回手势"
           sha256sum "$FINAL_APK" | tee "${FINAL_APK}.sha256"
           rm -f "$ALIGNED_APK"
 

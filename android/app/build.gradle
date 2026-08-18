@@ -33,7 +33,9 @@ react {
     //   skip the bundling of the JS bundle and the assets. By default is just 'debug'.
     //   If you add flavors like lite, prod, etc. you'll have to list your debuggableVariants.
     // debuggableVariants = ["liteDebug", "prodDebug"]
-    debuggableVariants = ["debug", "release"]
+    // Release must not be listed here. The React Native Gradle plugin then embeds
+    // a bundle generated from the checked-out source for every production APK.
+    debuggableVariants = ["debug"]
 
     /* Bundling */
     //   A list containing the node command and its flags. Default is just 'node'.
@@ -93,8 +95,8 @@ android {
         applicationId 'com.app.openwrtstatusapp'
         minSdkVersion rootProject.ext.minSdkVersion
         targetSdkVersion rootProject.ext.targetSdkVersion
-        versionCode 13
-        versionName "1.0.17"
+        versionCode 14
+        versionName "1.0.18"
 
         buildConfigField "String", "REACT_NATIVE_RELEASE_LEVEL", "\"${findProperty('reactNativeReleaseLevel') ?: 'stable'}\""
     }
