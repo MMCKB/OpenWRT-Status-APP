@@ -60,9 +60,9 @@ GitHub Actions 会分别构建四种 ABI，使用 `zipalign -P 16` 做 16KB 页�
 
 同一个版本标签只能指向一个提交；若修改了发布内容，请先递增 `app.config.ts` 与 `android/app/build.gradle` 中保持一致的版本号，再推送到 `main`。
 
-## 安全与贡献
+## 安全提示
 
-请勿提交路由器密码、SSH 私钥、Android keystore、`.env` 文件或 APK 构建产物。漏洞报告流程见 [SECURITY.md](SECURITY.md)，一般贡献规则见 [CONTRIBUTING.md](CONTRIBUTING.md)。
+请勿提交路由器密码、SSH 私钥、Android keystore、`.env` 文件或 APK 构建产物。
 
 ## 许可证
 
