@@ -47,7 +47,7 @@ const config: ExpoConfig = {
       projectId: "c4d4af65-fe2b-4803-8ba9-5efecb95d126",
     },
   },
-  version: "1.0.16",
+  version: "1.0.17",
   orientation: "portrait",
   icon: "./assets/images/icon.png",
   scheme: env.scheme,
@@ -56,13 +56,13 @@ const config: ExpoConfig = {
   ios: {
     supportsTablet: true,
     bundleIdentifier: env.iosBundleId,
-    "infoPlist": {
-      "ITSAppUsesNonExemptEncryption": false,
-      "NSAppTransportSecurity": {
-        "NSAllowsArbitraryLoads": true
+    infoPlist: {
+      ITSAppUsesNonExemptEncryption: false,
+      NSAppTransportSecurity: {
+        NSAllowsArbitraryLoads: true,
       },
-      "LSApplicationQueriesSchemes": ["ssh"]
-    }
+      LSApplicationQueriesSchemes: ["ssh"],
+    },
   },
   android: {
     adaptiveIcon: {
@@ -72,7 +72,7 @@ const config: ExpoConfig = {
     edgeToEdgeEnabled: true,
     // Do not register Android predictive-back callbacks or an edge-back preview.
     predictiveBackGestureEnabled: false,
-    versionCode: 12,
+    versionCode: 13,
     package: env.androidPackage,
     permissions: ["POST_NOTIFICATIONS"],
     intentFilters: [
@@ -102,13 +102,14 @@ const config: ExpoConfig = {
     [
       "expo-secure-store",
       {
-        "configureAndroidBackup": true
-      }
+        configureAndroidBackup: true,
+      },
     ],
     [
       "expo-audio",
       {
-        microphonePermission: "Allow $(PRODUCT_NAME) to access your microphone.",
+        microphonePermission:
+          "Allow $(PRODUCT_NAME) to access your microphone.",
       },
     ],
     [
