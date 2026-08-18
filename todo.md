@@ -253,4 +253,4 @@
 - [x] 为路由器与 SSH 密码输入框增加右侧眼睛按钮，支持明文显示与隐藏；访客 Wi-Fi 密码框同步支持该交互
 - [x] 回归验证密码显示切换、凭据保存与连接表单（TypeScript 检查通过；56 项测试通过、1 项环境跳过）
 - [x] 将已完成的 v1.0.15 改动与密码显示切换合并，并递增版本至 v1.0.16（versionCode 12）
-- [ ] 推送 v1.0.16 并核验 GitHub Actions 四 ABI APK、标签与 Release 资产
+- [x] 推送 v1.0.16 并核验 GitHub Actions 四 ABI APK、标签与 Release 资产
