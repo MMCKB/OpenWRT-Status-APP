@@ -15,6 +15,7 @@ const defaultSettings: RouterSettings = {
   refreshIntervalSeconds: 60,
   trafficInterfaceIds: [],
   statusTrafficView: "full",
+  predictiveBackEnabled: true,
 };
 
 function passwordKey(routerId: string) {
@@ -79,9 +80,16 @@ export async function loadSettings(): Promise<RouterSettings> {
           ? decoded.refreshIntervalSeconds
           : defaultSettings.refreshIntervalSeconds,
       trafficInterfaceIds: Array.isArray(decoded.trafficInterfaceIds)
-        ? decoded.trafficInterfaceIds.filter((item): item is string => typeof item === "string")
+        ? decoded.trafficInterfaceIds.filter(
+            (item): item is string => typeof item === "string",
+          )
         : defaultSettings.trafficInterfaceIds,
-      statusTrafficView: decoded.statusTrafficView === "compact" ? "compact" : "full",
+      statusTrafficView:
+        decoded.statusTrafficView === "compact" ? "compact" : "full",
+      predictiveBackEnabled:
+        typeof decoded.predictiveBackEnabled === "boolean"
+          ? decoded.predictiveBackEnabled
+          : defaultSettings.predictiveBackEnabled,
     };
   } catch {
     return defaultSettings;
@@ -122,6 +130,7 @@ export async function loadFirmwareReleaseUrl(routerId: string) {
 
 export async function saveFirmwareReleaseUrl(routerId: string, url: string) {
   const normalized = url.trim();
-  if (normalized) await AsyncStorage.setItem(firmwareReleaseKey(routerId), normalized);
+  if (normalized)
+    await AsyncStorage.setItem(firmwareReleaseKey(routerId), normalized);
   else await AsyncStorage.removeItem(firmwareReleaseKey(routerId));
 }

@@ -22,12 +22,20 @@ describe("router-package-commands (apk)", () => {
     expect(buildApkUpdateCommand()).toBe("apk update");
     expect(buildApkListInstalledCommand()).toBe("apk info -v");
     expect(buildApkListUpgradableCommand()).toBe("apk list -u");
-    expect(buildApkListAvailableCommand()).toBe('apk search -v "*" || apk search "*"');
+    expect(buildApkListAvailableCommand()).toBe(
+      'apk search -v "*" || apk search "*"',
+    );
     expect(buildApkUpgradeCommand()).toBe("apk upgrade");
-    expect(buildApkUpgradePackageCommand("luci-base")).toBe('apk upgrade "luci-base"');
-    expect(buildApkSearchCommand("luci")).toBe('apk search -v "*luci*" || apk search "*luci*"');
+    expect(buildApkUpgradePackageCommand("luci-base")).toBe(
+      'apk upgrade "luci-base"',
+    );
+    expect(buildApkSearchCommand("luci")).toBe(
+      'apk search -v "*luci*" || apk search "*luci*"',
+    );
     expect(buildApkInstallCommand("curl")).toBe('apk add "curl"');
-    expect(buildApkRemoveCommand("luci-app-firewall")).toBe('apk del "luci-app-firewall"');
+    expect(buildApkRemoveCommand("luci-app-firewall")).toBe(
+      'apk del "luci-app-firewall"',
+    );
   });
 
   it("should parse installed packages output from apk info -v", () => {
@@ -51,7 +59,12 @@ describe("router-package-commands (apk)", () => {
     `;
     const pkgs = parseUpgradablePackages(raw);
     expect(pkgs.length).toBe(2);
-    expect(pkgs[0]).toMatchObject({ name: "busybox", version: "1.36.1-r4", installed: true, status: "upgradable" });
+    expect(pkgs[0]).toMatchObject({
+      name: "busybox",
+      version: "1.36.1-r4",
+      installed: true,
+      status: "upgradable",
+    });
     expect(pkgs[1].description).toContain("24.123-r1");
   });
 
@@ -68,26 +81,42 @@ describe("router-package-commands (apk)", () => {
   });
 
   it("should build a safe APK repositories snapshot and save command", () => {
-    expect(buildApkRepositoriesSnapshotCommand()).toContain('file=/etc/apk/repositories');
-    expect(buildApkRepositoriesSnapshotCommand()).toContain('REPO|%d|%d|%s');
+    expect(buildApkRepositoriesSnapshotCommand()).toContain(
+      "for file in /etc/apk/repositories /etc/apk/repositories.d/*",
+    );
+    expect(buildApkRepositoriesSnapshotCommand()).toContain("REPO|%s|%d|%d|%s");
 
     const command = buildApkSaveRepositoriesCommand([
-      { url: "https://downloads.openwrt.org/releases/25.12/packages/aarch64_cortex-a53/base", enabled: true },
-      { url: "https://downloads.openwrt.org/releases/25.12/packages/aarch64_cortex-a53/luci", enabled: false },
+      {
+        url: "https://downloads.openwrt.org/releases/25.12/packages/aarch64_cortex-a53/base",
+        enabled: true,
+      },
+      {
+        url: "https://downloads.openwrt.org/releases/25.12/packages/aarch64_cortex-a53/luci",
+        enabled: false,
+      },
     ]);
     expect(command).toContain("umask 077");
-    expect(command).toContain("cp \"$target\" \"$target.openwrt-status.bak\"");
-    expect(command).toContain("mv \"$temp\" \"$target\" && apk update");
-    expect(command).toContain("'# https://downloads.openwrt.org/releases/25.12/packages/aarch64_cortex-a53/luci'");
+    expect(command).toContain('cp "$target" "$target.openwrt-status.bak"');
+    expect(command).toContain('mv "$temp" "$target" && apk update');
+    expect(command).toContain(
+      "'# https://downloads.openwrt.org/releases/25.12/packages/aarch64_cortex-a53/luci'",
+    );
   });
 
   it("should reject unsafe, duplicate, or disabled-only repository configurations", () => {
-    expect(() => buildApkSaveRepositoriesCommand([])).toThrow("至少保留一个软件包仓库");
+    expect(() => buildApkSaveRepositoriesCommand([])).toThrow(
+      "至少保留一个软件包仓库",
+    );
     expect(() =>
-      buildApkSaveRepositoriesCommand([{ url: "ftp://mirror.example/repo", enabled: true }]),
+      buildApkSaveRepositoriesCommand([
+        { url: "ftp://mirror.example/repo", enabled: true },
+      ]),
     ).toThrow("仓库地址必须");
     expect(() =>
-      buildApkSaveRepositoriesCommand([{ url: "https://mirror.example/$(touch-pwned)", enabled: true }]),
+      buildApkSaveRepositoriesCommand([
+        { url: "https://mirror.example/$(touch-pwned)", enabled: true },
+      ]),
     ).toThrow("仓库地址必须");
     expect(() =>
       buildApkSaveRepositoriesCommand([
@@ -96,7 +125,9 @@ describe("router-package-commands (apk)", () => {
       ]),
     ).toThrow("不能重复");
     expect(() =>
-      buildApkSaveRepositoriesCommand([{ url: "https://mirror.example/repo", enabled: false }]),
+      buildApkSaveRepositoriesCommand([
+        { url: "https://mirror.example/repo", enabled: false },
+      ]),
     ).toThrow("至少启用一个");
   });
 
@@ -112,7 +143,11 @@ describe("router-package-commands (apk)", () => {
         enabled: true,
         url: "https://downloads.openwrt.org/releases/25.12/targets/x86/64/packages",
       },
-      { line: 4, enabled: false, url: "https://mirror.example/openwrt/packages" },
+      {
+        line: 4,
+        enabled: false,
+        url: "https://mirror.example/openwrt/packages",
+      },
     ]);
   });
 });

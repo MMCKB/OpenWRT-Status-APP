@@ -20,6 +20,15 @@ const servicesTabPath = resolve(projectRoot, "app/(tabs)/services.tsx");
 const serviceConfigPath = resolve(projectRoot, "app/service-config.tsx");
 const systemAdminPath = resolve(projectRoot, "app/system-admin.tsx");
 const firewallPath = resolve(projectRoot, "app/firewall.tsx");
+const settingsPath = resolve(projectRoot, "app/(tabs)/settings.tsx");
+const backGestureModulePath = resolve(
+  projectRoot,
+  "android/app/src/main/java/com/openwrtstatus/ssh/OpenWrtBackGestureModule.java",
+);
+const mainActivityPath = resolve(
+  projectRoot,
+  "android/app/src/main/java/com/app/openwrtstatusapp/MainActivity.kt",
+);
 
 describe("Android Release JavaScript bundle", () => {
   it("仅将 debug 视为可调试变体，确保 release 从当前源码重新打包", () => {
@@ -41,7 +50,7 @@ describe("Android Release JavaScript bundle", () => {
     expect(workflow).toContain('grep -aF "预测性返回手势"');
   });
 
-  it("当前源码包含服务与密码显示功能，且不含预测性返回手势设置入口", () => {
+  it("当前源码包含服务、密码显示与可控制的预测性返回手势", () => {
     const routerForm = readFileSync(routerFormPath, "utf8");
     const wirelessManager = readFileSync(wirelessManagerPath, "utf8");
     const serviceHealth = readFileSync(serviceHealthPath, "utf8");
@@ -49,6 +58,9 @@ describe("Android Release JavaScript bundle", () => {
     const serviceConfig = readFileSync(serviceConfigPath, "utf8");
     const systemAdmin = readFileSync(systemAdminPath, "utf8");
     const firewall = readFileSync(firewallPath, "utf8");
+    const settings = readFileSync(settingsPath, "utf8");
+    const backGestureModule = readFileSync(backGestureModulePath, "utf8");
+    const mainActivity = readFileSync(mainActivityPath, "utf8");
 
     expect(routerForm).toContain("isPasswordVisible");
     expect(routerForm).toContain("isSshPasswordVisible");
@@ -63,18 +75,15 @@ describe("Android Release JavaScript bundle", () => {
     expect(serviceConfig).toContain("buildPluginSettingsSnapshotCommand");
     expect(serviceConfig).toContain("buildPluginSettingsApplyCommand");
     expect(serviceConfig).not.toContain("buildProxyServiceConfigUrl");
+    expect(serviceConfig).toContain("完整服务设置");
     expect(wirelessManager).toContain("加密方式");
     expect(systemAdmin).toContain("定时重启");
     expect(systemAdmin).toContain("计划任务");
     expect(firewall).toContain("通信规则");
-    expect(
-      routerForm +
-        wirelessManager +
-        serviceHealth +
-        servicesTab +
-        serviceConfig +
-        systemAdmin +
-        firewall,
-    ).not.toContain("预测性返回手势");
+    expect(settings).toContain("预测性返回手势");
+    expect(backGestureModule).toContain("OpenWrtBackGesture");
+    expect(backGestureModule).toContain("predictive-back-enabled");
+    expect(mainActivity).toContain("setPredictiveBackEnabled");
+    expect(mainActivity).toContain("OnBackInvokedCallback");
   });
 });

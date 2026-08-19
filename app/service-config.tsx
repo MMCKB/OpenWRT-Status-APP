@@ -19,7 +19,6 @@ import { useManagedSsh } from "@/hooks/use-managed-ssh";
 import {
   buildPluginSettingsApplyCommand,
   buildPluginSettingsSnapshotCommand,
-  getPluginSettingDefinitions,
   getProxyServiceDefinition,
   parsePluginSettingsSnapshot,
   type PluginSettingsSection,
@@ -44,6 +43,17 @@ function isEnabled(value: string | undefined) {
   );
 }
 
+function isBooleanOption(key: string, value: string) {
+  return (
+    /^(enabled|enable|disabled|disable)$/i.test(key) &&
+    /^(0|1|true|false|on|off|yes|no|enabled|disabled)$/i.test(value.trim())
+  );
+}
+
+function optionLabel(key: string) {
+  return key.replace(/_/g, " ");
+}
+
 export default function ServiceConfigScreen() {
   const router = useRouter();
   const colors = useColors();
@@ -52,10 +62,6 @@ export default function ServiceConfigScreen() {
   const serviceId = isServiceId(rawId) ? rawId : undefined;
   const service = useMemo(
     () => (serviceId ? getProxyServiceDefinition(serviceId) : null),
-    [serviceId],
-  );
-  const fields = useMemo(
-    () => (serviceId ? getPluginSettingDefinitions(serviceId) : []),
     [serviceId],
   );
   const { execute, hasRouter, isRunning, isSupported } = useManagedSsh();
@@ -81,15 +87,7 @@ export default function ServiceConfigScreen() {
       setSections(snapshot.sections);
       setDrafts(
         Object.fromEntries(
-          snapshot.sections.map((section) => [
-            section.section,
-            Object.fromEntries(
-              fields.map((field) => [
-                field.key,
-                section.values[field.key] ?? "",
-              ]),
-            ),
-          ]),
+          snapshot.sections.map((section) => [section.section, section.values]),
         ),
       );
     } catch (reason) {
@@ -99,7 +97,7 @@ export default function ServiceConfigScreen() {
     } finally {
       setLoading(false);
     }
-  }, [execute, fields, hasRouter, isSupported, serviceId]);
+  }, [execute, hasRouter, isSupported, serviceId]);
 
   useEffect(() => {
     void refresh();
@@ -117,7 +115,7 @@ export default function ServiceConfigScreen() {
     if (!serviceId || !service) return;
     Alert.alert(
       `保存 ${service.label} 设置`,
-      `应用会仅更新本页显示的常用 UCI 选项，先备份 ${service.configPath}，再提交并重启服务。其他高级配置不会被覆盖。是否继续？`,
+      `应用会更新本页读取到的全部实际 UCI 选项，先备份 ${service.configPath}，再提交并重启服务。是否继续？`,
       [
         { text: "取消", style: "cancel" },
         {
@@ -168,7 +166,7 @@ export default function ServiceConfigScreen() {
   return (
     <ManagementShell
       title={`${service.label} 设置`}
-      description="在应用内以图形化表单修改常用 LuCI/UCI 选项；不再编辑原始配置文件。"
+      description="读取此服务当前实际存在的全部 UCI 设置段与选项。保存前会创建配置备份。"
     >
       <Pressable
         accessibilityRole="button"
@@ -185,22 +183,8 @@ export default function ServiceConfigScreen() {
           返回服务
         </Text>
       </Pressable>
-      <ToolNotice>
-        <View style={styles.noticeRow}>
-          <MaterialIcons name="tune" size={19} color={colors.primary} />
-          <View style={styles.noticeCopy}>
-            <Text style={[styles.noticeTitle, { color: colors.foreground }]}>
-              应用内受控设置
-            </Text>
-            <Text style={[styles.noticeText, { color: colors.muted }]}>
-              仅展示可安全通用的常用选项。保存前自动备份，未展示的高级 LuCI
-              设置不会被删除。
-            </Text>
-          </View>
-        </View>
-      </ToolNotice>
       <SectionCard
-        title="服务设置"
+        title="完整服务设置"
         action={
           <Pressable
             disabled={disabled || saving !== null}
@@ -251,66 +235,71 @@ export default function ServiceConfigScreen() {
                   ? `DDNS 服务：${section.section}`
                   : `设置段：${section.section}`}
               </Text>
-              {fields.map((field) => {
-                const value = drafts[section.section]?.[field.key] ?? "";
-                if (field.kind === "switch")
+              <Text style={[styles.sectionType, { color: colors.muted }]}>
+                类型：{section.type}
+              </Text>
+              {Object.entries(drafts[section.section] ?? {}).map(
+                ([key, value]) => {
+                  if (isBooleanOption(key, value))
+                    return (
+                      <View key={key} style={styles.switchRow}>
+                        <Text
+                          style={[
+                            styles.fieldLabel,
+                            { color: colors.foreground, flex: 1 },
+                          ]}
+                        >
+                          {optionLabel(key)}
+                        </Text>
+                        <Switch
+                          value={isEnabled(value)}
+                          disabled={disabled || sectionSaving}
+                          onValueChange={(next) =>
+                            setValue(section.section, key, next ? "1" : "0")
+                          }
+                          trackColor={{
+                            false: colors.border,
+                            true: colors.primary,
+                          }}
+                        />
+                      </View>
+                    );
                   return (
-                    <View key={field.key} style={styles.switchRow}>
+                    <View key={key} style={styles.field}>
                       <Text
                         style={[
                           styles.fieldLabel,
-                          { color: colors.foreground, flex: 1 },
+                          { color: colors.foreground },
                         ]}
                       >
-                        {field.label}
+                        {optionLabel(key)}
                       </Text>
-                      <Switch
-                        value={isEnabled(value)}
-                        disabled={disabled || sectionSaving}
-                        onValueChange={(next) =>
-                          setValue(section.section, field.key, next ? "1" : "0")
+                      <TextInput
+                        value={value}
+                        onChangeText={(next) =>
+                          setValue(section.section, key, next)
                         }
-                        trackColor={{
-                          false: colors.border,
-                          true: colors.primary,
-                        }}
+                        editable={!disabled && !sectionSaving}
+                        autoCapitalize="none"
+                        autoCorrect={false}
+                        secureTextEntry={/^(password|token|secret|key)$/i.test(
+                          key,
+                        )}
+                        placeholderTextColor={colors.muted}
+                        selectionColor={colors.primary}
+                        style={[
+                          styles.input,
+                          {
+                            color: colors.foreground,
+                            borderColor: colors.border,
+                            backgroundColor: colors.background,
+                          },
+                        ]}
                       />
                     </View>
                   );
-                return (
-                  <View key={field.key} style={styles.field}>
-                    <Text
-                      style={[styles.fieldLabel, { color: colors.foreground }]}
-                    >
-                      {field.label}
-                    </Text>
-                    <TextInput
-                      value={value}
-                      onChangeText={(next) =>
-                        setValue(section.section, field.key, next)
-                      }
-                      editable={!disabled && !sectionSaving}
-                      autoCapitalize="none"
-                      autoCorrect={false}
-                      secureTextEntry={field.kind === "password"}
-                      keyboardType={
-                        field.kind === "number" ? "number-pad" : "default"
-                      }
-                      placeholder={field.placeholder}
-                      placeholderTextColor={colors.muted}
-                      selectionColor={colors.primary}
-                      style={[
-                        styles.input,
-                        {
-                          color: colors.foreground,
-                          borderColor: colors.border,
-                          backgroundColor: colors.background,
-                        },
-                      ]}
-                    />
-                  </View>
-                );
-              })}
+                },
+              )}
               <Pressable
                 accessibilityRole="button"
                 accessibilityLabel={`保存 ${section.section} 设置`}
@@ -373,6 +362,7 @@ const styles = StyleSheet.create({
   missingText: { fontSize: 12, lineHeight: 18 },
   section: { paddingTop: 14, gap: 12 },
   sectionTitle: { fontSize: 14, fontWeight: "800" },
+  sectionType: { marginTop: -8, fontSize: 12 },
   field: { gap: 6 },
   fieldLabel: { fontSize: 13, fontWeight: "700" },
   input: {

@@ -1,7 +1,9 @@
 import { useCallback, useEffect, useState } from "react";
 import {
   ActivityIndicator,
+  Modal,
   Pressable,
+  ScrollView,
   StyleSheet,
   Switch,
   Text,
@@ -61,6 +63,8 @@ export default function FirewallScreen() {
     useState<FirewallTrafficRuleDraft>(emptyTrafficDraft);
   const [isLoading, setIsLoading] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
+  const [trafficModalVisible, setTrafficModalVisible] = useState(false);
+  const [portForwardModalVisible, setPortForwardModalVisible] = useState(false);
 
   const refresh = useCallback(async () => {
     if (!hasRouter || !isSupported) return;
@@ -142,6 +146,7 @@ export default function FirewallScreen() {
   function confirmCreate() {
     try {
       const command = buildPortForwardCreateCommand(draft);
+      setPortForwardModalVisible(false);
       runConfirmed(
         "新增端口转发",
         `将把外网 ${draft.sourcePort || "—"} 转发到 ${draft.destinationIp || "—"}:${draft.destinationPort || "—"}，并立即重载防火墙。是否继续？`,
@@ -158,6 +163,7 @@ export default function FirewallScreen() {
   function confirmTrafficCreate() {
     try {
       const command = buildFirewallRuleCreateCommand(trafficDraft);
+      setTrafficModalVisible(false);
       runConfirmed(
         "新增通信规则",
         `将创建“${trafficDraft.name || "未命名规则"}”并立即重载防火墙。错误规则可能影响联网，请确认参数。`,
@@ -368,201 +374,258 @@ export default function FirewallScreen() {
       </SectionCard>
 
       <SectionCard title="新增通信规则">
-        <View style={styles.form}>
-          <TextInput
-            value={trafficDraft.name}
-            onChangeText={(value) =>
-              setTrafficDraft((current) => ({ ...current, name: value }))
-            }
-            placeholder="规则名称，例如允许 DNS"
-            placeholderTextColor={colors.muted}
-            style={[
-              styles.input,
-              {
-                color: colors.foreground,
-                borderColor: colors.border,
-                backgroundColor: colors.background,
-              },
-            ]}
-            maxLength={48}
-          />
-          <View style={styles.row}>
-            <TextInput
-              value={trafficDraft.sourceZone}
-              onChangeText={(value) =>
-                setTrafficDraft((current) => ({
-                  ...current,
-                  sourceZone: value,
-                }))
-              }
-              placeholder="来源区域（留空为任意）"
-              placeholderTextColor={colors.muted}
-              style={[
-                styles.input,
-                styles.half,
-                {
-                  color: colors.foreground,
-                  borderColor: colors.border,
-                  backgroundColor: colors.background,
-                },
-              ]}
-              maxLength={32}
-            />
-            <TextInput
-              value={trafficDraft.destinationZone}
-              onChangeText={(value) =>
-                setTrafficDraft((current) => ({
-                  ...current,
-                  destinationZone: value,
-                }))
-              }
-              placeholder="目标区域（留空为本机）"
-              placeholderTextColor={colors.muted}
-              style={[
-                styles.input,
-                styles.half,
-                {
-                  color: colors.foreground,
-                  borderColor: colors.border,
-                  backgroundColor: colors.background,
-                },
-              ]}
-              maxLength={32}
-            />
-          </View>
-          <View style={styles.row}>
-            <TextInput
-              value={trafficDraft.destinationIp}
-              onChangeText={(value) =>
-                setTrafficDraft((current) => ({
-                  ...current,
-                  destinationIp: value,
-                }))
-              }
-              placeholder="目标 IPv4 / CIDR（可选）"
-              placeholderTextColor={colors.muted}
-              style={[
-                styles.input,
-                styles.half,
-                {
-                  color: colors.foreground,
-                  borderColor: colors.border,
-                  backgroundColor: colors.background,
-                },
-              ]}
-              maxLength={18}
-            />
-            <TextInput
-              value={trafficDraft.destinationPort}
-              onChangeText={(value) =>
-                setTrafficDraft((current) => ({
-                  ...current,
-                  destinationPort: value,
-                }))
-              }
-              keyboardType="numbers-and-punctuation"
-              placeholder="目标端口（可选）"
-              placeholderTextColor={colors.muted}
-              style={[
-                styles.input,
-                styles.half,
-                {
-                  color: colors.foreground,
-                  borderColor: colors.border,
-                  backgroundColor: colors.background,
-                },
-              ]}
-              maxLength={11}
-            />
-          </View>
-          <View style={styles.protocols}>
-            {(["tcp", "udp", "tcp udp"] as const).map((protocol) => (
-              <Pressable
-                key={protocol}
-                onPress={() =>
-                  setTrafficDraft((current) => ({ ...current, protocol }))
-                }
-                style={({ pressed }) => [
-                  styles.protocol,
-                  {
-                    borderColor:
-                      trafficDraft.protocol === protocol
-                        ? colors.primary
-                        : colors.border,
-                    backgroundColor:
-                      trafficDraft.protocol === protocol
-                        ? colors.primary
-                        : colors.background,
-                  },
-                  pressed && styles.pressed,
-                ]}
-              >
-                <Text
-                  style={[
-                    styles.protocolText,
-                    {
-                      color:
-                        trafficDraft.protocol === protocol
-                          ? "#fff"
-                          : colors.muted,
-                    },
-                  ]}
-                >
-                  {protocol.toUpperCase()}
-                </Text>
-              </Pressable>
-            ))}
-          </View>
-          <View style={styles.protocols}>
-            {(["ACCEPT", "REJECT", "DROP"] as const).map((target) => (
-              <Pressable
-                key={target}
-                onPress={() =>
-                  setTrafficDraft((current) => ({ ...current, target }))
-                }
-                style={({ pressed }) => [
-                  styles.protocol,
-                  {
-                    borderColor:
-                      trafficDraft.target === target
-                        ? colors.primary
-                        : colors.border,
-                    backgroundColor:
-                      trafficDraft.target === target
-                        ? colors.primary
-                        : colors.background,
-                  },
-                  pressed && styles.pressed,
-                ]}
-              >
-                <Text
-                  style={[
-                    styles.protocolText,
-                    {
-                      color:
-                        trafficDraft.target === target ? "#fff" : colors.muted,
-                    },
-                  ]}
-                >
-                  {target}
-                </Text>
-              </Pressable>
-            ))}
-          </View>
-          <Pressable
-            disabled={disabled}
-            onPress={confirmTrafficCreate}
-            style={({ pressed }) => [
-              styles.primary,
-              { backgroundColor: colors.primary },
-              pressed && styles.pressed,
-              disabled && styles.disabled,
-            ]}
-          >
-            <Text style={styles.primaryText}>检查后新增通信规则</Text>
-          </Pressable>
-        </View>
+        <Text style={[styles.caption, { color: colors.muted }]}>
+          通过图形化表单新增允许、拒绝或丢弃通信的规则。
+        </Text>
+        <Pressable
+          disabled={disabled}
+          onPress={() => setTrafficModalVisible(true)}
+          style={({ pressed }) => [
+            styles.primary,
+            { backgroundColor: colors.primary },
+            pressed && styles.pressed,
+            disabled && styles.disabled,
+          ]}
+        >
+          <Text style={styles.primaryText}>新增通信规则</Text>
+        </Pressable>
       </SectionCard>
+      <Modal
+        visible={trafficModalVisible}
+        transparent
+        animationType="slide"
+        onRequestClose={() => setTrafficModalVisible(false)}
+      >
+        <View style={styles.modalBackdrop}>
+          <View
+            style={[styles.modalSheet, { backgroundColor: colors.surface }]}
+          >
+            <View
+              style={[styles.modalHeader, { borderBottomColor: colors.border }]}
+            >
+              <Text style={[styles.modalTitle, { color: colors.foreground }]}>
+                新增通信规则
+              </Text>
+              <Pressable
+                accessibilityRole="button"
+                onPress={() => setTrafficModalVisible(false)}
+                style={({ pressed }) => [
+                  styles.modalClose,
+                  { backgroundColor: colors.background },
+                  pressed && styles.pressed,
+                ]}
+              >
+                <Text
+                  style={[styles.modalCloseText, { color: colors.foreground }]}
+                >
+                  关闭
+                </Text>
+              </Pressable>
+            </View>
+            <ScrollView
+              keyboardShouldPersistTaps="handled"
+              contentContainerStyle={styles.modalBody}
+            >
+              <View style={styles.form}>
+                <TextInput
+                  value={trafficDraft.name}
+                  onChangeText={(value) =>
+                    setTrafficDraft((current) => ({ ...current, name: value }))
+                  }
+                  placeholder="规则名称，例如允许 DNS"
+                  placeholderTextColor={colors.muted}
+                  style={[
+                    styles.input,
+                    {
+                      color: colors.foreground,
+                      borderColor: colors.border,
+                      backgroundColor: colors.background,
+                    },
+                  ]}
+                  maxLength={48}
+                />
+                <View style={styles.row}>
+                  <TextInput
+                    value={trafficDraft.sourceZone}
+                    onChangeText={(value) =>
+                      setTrafficDraft((current) => ({
+                        ...current,
+                        sourceZone: value,
+                      }))
+                    }
+                    placeholder="来源区域（留空为任意）"
+                    placeholderTextColor={colors.muted}
+                    style={[
+                      styles.input,
+                      styles.half,
+                      {
+                        color: colors.foreground,
+                        borderColor: colors.border,
+                        backgroundColor: colors.background,
+                      },
+                    ]}
+                    maxLength={32}
+                  />
+                  <TextInput
+                    value={trafficDraft.destinationZone}
+                    onChangeText={(value) =>
+                      setTrafficDraft((current) => ({
+                        ...current,
+                        destinationZone: value,
+                      }))
+                    }
+                    placeholder="目标区域（留空为本机）"
+                    placeholderTextColor={colors.muted}
+                    style={[
+                      styles.input,
+                      styles.half,
+                      {
+                        color: colors.foreground,
+                        borderColor: colors.border,
+                        backgroundColor: colors.background,
+                      },
+                    ]}
+                    maxLength={32}
+                  />
+                </View>
+                <View style={styles.row}>
+                  <TextInput
+                    value={trafficDraft.destinationIp}
+                    onChangeText={(value) =>
+                      setTrafficDraft((current) => ({
+                        ...current,
+                        destinationIp: value,
+                      }))
+                    }
+                    placeholder="目标 IPv4 / CIDR（可选）"
+                    placeholderTextColor={colors.muted}
+                    style={[
+                      styles.input,
+                      styles.half,
+                      {
+                        color: colors.foreground,
+                        borderColor: colors.border,
+                        backgroundColor: colors.background,
+                      },
+                    ]}
+                    maxLength={18}
+                  />
+                  <TextInput
+                    value={trafficDraft.destinationPort}
+                    onChangeText={(value) =>
+                      setTrafficDraft((current) => ({
+                        ...current,
+                        destinationPort: value,
+                      }))
+                    }
+                    keyboardType="numbers-and-punctuation"
+                    placeholder="目标端口（可选）"
+                    placeholderTextColor={colors.muted}
+                    style={[
+                      styles.input,
+                      styles.half,
+                      {
+                        color: colors.foreground,
+                        borderColor: colors.border,
+                        backgroundColor: colors.background,
+                      },
+                    ]}
+                    maxLength={11}
+                  />
+                </View>
+                <View style={styles.protocols}>
+                  {(["tcp", "udp", "tcp udp"] as const).map((protocol) => (
+                    <Pressable
+                      key={protocol}
+                      onPress={() =>
+                        setTrafficDraft((current) => ({ ...current, protocol }))
+                      }
+                      style={({ pressed }) => [
+                        styles.protocol,
+                        {
+                          borderColor:
+                            trafficDraft.protocol === protocol
+                              ? colors.primary
+                              : colors.border,
+                          backgroundColor:
+                            trafficDraft.protocol === protocol
+                              ? colors.primary
+                              : colors.background,
+                        },
+                        pressed && styles.pressed,
+                      ]}
+                    >
+                      <Text
+                        style={[
+                          styles.protocolText,
+                          {
+                            color:
+                              trafficDraft.protocol === protocol
+                                ? "#fff"
+                                : colors.muted,
+                          },
+                        ]}
+                      >
+                        {protocol.toUpperCase()}
+                      </Text>
+                    </Pressable>
+                  ))}
+                </View>
+                <View style={styles.protocols}>
+                  {(["ACCEPT", "REJECT", "DROP"] as const).map((target) => (
+                    <Pressable
+                      key={target}
+                      onPress={() =>
+                        setTrafficDraft((current) => ({ ...current, target }))
+                      }
+                      style={({ pressed }) => [
+                        styles.protocol,
+                        {
+                          borderColor:
+                            trafficDraft.target === target
+                              ? colors.primary
+                              : colors.border,
+                          backgroundColor:
+                            trafficDraft.target === target
+                              ? colors.primary
+                              : colors.background,
+                        },
+                        pressed && styles.pressed,
+                      ]}
+                    >
+                      <Text
+                        style={[
+                          styles.protocolText,
+                          {
+                            color:
+                              trafficDraft.target === target
+                                ? "#fff"
+                                : colors.muted,
+                          },
+                        ]}
+                      >
+                        {target}
+                      </Text>
+                    </Pressable>
+                  ))}
+                </View>
+                <Pressable
+                  disabled={disabled}
+                  onPress={confirmTrafficCreate}
+                  style={({ pressed }) => [
+                    styles.primary,
+                    { backgroundColor: colors.primary },
+                    pressed && styles.pressed,
+                    disabled && styles.disabled,
+                  ]}
+                >
+                  <Text style={styles.primaryText}>检查后新增通信规则</Text>
+                </Pressable>
+              </View>
+            </ScrollView>
+          </View>
+        </View>
+      </Modal>
 
       <SectionCard
         title={`端口转发${snapshot?.portForwards.length ? ` · ${snapshot.portForwards.length}` : ""}`}
@@ -622,170 +685,236 @@ export default function FirewallScreen() {
       </SectionCard>
 
       <SectionCard title="新增端口转发">
-        <View style={styles.form}>
-          <TextInput
-            value={draft.name}
-            onChangeText={(value) =>
-              setDraft((current) => ({ ...current, name: value }))
-            }
-            placeholder="规则名称，例如 NAS HTTPS"
-            placeholderTextColor={colors.muted}
-            style={[
-              styles.input,
-              {
-                color: colors.foreground,
-                borderColor: colors.border,
-                backgroundColor: colors.background,
-              },
-            ]}
-            maxLength={48}
-          />
-          <View style={styles.row}>
-            <TextInput
-              value={draft.sourceZone}
-              onChangeText={(value) =>
-                setDraft((current) => ({ ...current, sourceZone: value }))
-              }
-              placeholder="来源区域"
-              placeholderTextColor={colors.muted}
-              style={[
-                styles.input,
-                styles.half,
-                {
-                  color: colors.foreground,
-                  borderColor: colors.border,
-                  backgroundColor: colors.background,
-                },
-              ]}
-              maxLength={32}
-            />
-            <TextInput
-              value={draft.destinationZone}
-              onChangeText={(value) =>
-                setDraft((current) => ({ ...current, destinationZone: value }))
-              }
-              placeholder="目标区域"
-              placeholderTextColor={colors.muted}
-              style={[
-                styles.input,
-                styles.half,
-                {
-                  color: colors.foreground,
-                  borderColor: colors.border,
-                  backgroundColor: colors.background,
-                },
-              ]}
-              maxLength={32}
-            />
-          </View>
-          <View style={styles.row}>
-            <TextInput
-              value={draft.sourcePort}
-              onChangeText={(value) =>
-                setDraft((current) => ({ ...current, sourcePort: value }))
-              }
-              keyboardType="numbers-and-punctuation"
-              placeholder="外部端口，例如 443"
-              placeholderTextColor={colors.muted}
-              style={[
-                styles.input,
-                styles.half,
-                {
-                  color: colors.foreground,
-                  borderColor: colors.border,
-                  backgroundColor: colors.background,
-                },
-              ]}
-              maxLength={11}
-            />
-            <TextInput
-              value={draft.destinationPort}
-              onChangeText={(value) =>
-                setDraft((current) => ({ ...current, destinationPort: value }))
-              }
-              keyboardType="numbers-and-punctuation"
-              placeholder="内部端口，例如 443"
-              placeholderTextColor={colors.muted}
-              style={[
-                styles.input,
-                styles.half,
-                {
-                  color: colors.foreground,
-                  borderColor: colors.border,
-                  backgroundColor: colors.background,
-                },
-              ]}
-              maxLength={11}
-            />
-          </View>
-          <TextInput
-            value={draft.destinationIp}
-            onChangeText={(value) =>
-              setDraft((current) => ({ ...current, destinationIp: value }))
-            }
-            keyboardType="numbers-and-punctuation"
-            placeholder="内网 IPv4，例如 192.168.1.20"
-            placeholderTextColor={colors.muted}
-            style={[
-              styles.input,
-              {
-                color: colors.foreground,
-                borderColor: colors.border,
-                backgroundColor: colors.background,
-              },
-            ]}
-            maxLength={15}
-          />
-          <View style={styles.protocols}>
-            {(["tcp", "udp", "tcp udp"] as const).map((protocol) => (
+        <Text style={[styles.caption, { color: colors.muted }]}>
+          通过图形化表单设置外部端口、内网地址、协议与目标端口。
+        </Text>
+        <Pressable
+          disabled={disabled}
+          onPress={() => setPortForwardModalVisible(true)}
+          style={({ pressed }) => [
+            styles.primary,
+            { backgroundColor: colors.primary },
+            pressed && styles.pressed,
+            disabled && styles.disabled,
+          ]}
+        >
+          <Text style={styles.primaryText}>新增端口转发</Text>
+        </Pressable>
+      </SectionCard>
+      <Modal
+        visible={portForwardModalVisible}
+        transparent
+        animationType="slide"
+        onRequestClose={() => setPortForwardModalVisible(false)}
+      >
+        <View style={styles.modalBackdrop}>
+          <View
+            style={[styles.modalSheet, { backgroundColor: colors.surface }]}
+          >
+            <View
+              style={[styles.modalHeader, { borderBottomColor: colors.border }]}
+            >
+              <Text style={[styles.modalTitle, { color: colors.foreground }]}>
+                新增端口转发
+              </Text>
               <Pressable
-                key={protocol}
-                onPress={() =>
-                  setDraft((current) => ({ ...current, protocol }))
-                }
+                accessibilityRole="button"
+                onPress={() => setPortForwardModalVisible(false)}
                 style={({ pressed }) => [
-                  styles.protocol,
-                  {
-                    borderColor:
-                      draft.protocol === protocol
-                        ? colors.primary
-                        : colors.border,
-                    backgroundColor:
-                      draft.protocol === protocol
-                        ? colors.primary
-                        : colors.background,
-                  },
+                  styles.modalClose,
+                  { backgroundColor: colors.background },
                   pressed && styles.pressed,
                 ]}
               >
                 <Text
-                  style={[
-                    styles.protocolText,
-                    {
-                      color:
-                        draft.protocol === protocol ? "#fff" : colors.muted,
-                    },
-                  ]}
+                  style={[styles.modalCloseText, { color: colors.foreground }]}
                 >
-                  {protocol.toUpperCase()}
+                  关闭
                 </Text>
               </Pressable>
-            ))}
+            </View>
+            <ScrollView
+              keyboardShouldPersistTaps="handled"
+              contentContainerStyle={styles.modalBody}
+            >
+              <View style={styles.form}>
+                <TextInput
+                  value={draft.name}
+                  onChangeText={(value) =>
+                    setDraft((current) => ({ ...current, name: value }))
+                  }
+                  placeholder="规则名称，例如 NAS HTTPS"
+                  placeholderTextColor={colors.muted}
+                  style={[
+                    styles.input,
+                    {
+                      color: colors.foreground,
+                      borderColor: colors.border,
+                      backgroundColor: colors.background,
+                    },
+                  ]}
+                  maxLength={48}
+                />
+                <View style={styles.row}>
+                  <TextInput
+                    value={draft.sourceZone}
+                    onChangeText={(value) =>
+                      setDraft((current) => ({ ...current, sourceZone: value }))
+                    }
+                    placeholder="来源区域"
+                    placeholderTextColor={colors.muted}
+                    style={[
+                      styles.input,
+                      styles.half,
+                      {
+                        color: colors.foreground,
+                        borderColor: colors.border,
+                        backgroundColor: colors.background,
+                      },
+                    ]}
+                    maxLength={32}
+                  />
+                  <TextInput
+                    value={draft.destinationZone}
+                    onChangeText={(value) =>
+                      setDraft((current) => ({
+                        ...current,
+                        destinationZone: value,
+                      }))
+                    }
+                    placeholder="目标区域"
+                    placeholderTextColor={colors.muted}
+                    style={[
+                      styles.input,
+                      styles.half,
+                      {
+                        color: colors.foreground,
+                        borderColor: colors.border,
+                        backgroundColor: colors.background,
+                      },
+                    ]}
+                    maxLength={32}
+                  />
+                </View>
+                <View style={styles.row}>
+                  <TextInput
+                    value={draft.sourcePort}
+                    onChangeText={(value) =>
+                      setDraft((current) => ({ ...current, sourcePort: value }))
+                    }
+                    keyboardType="numbers-and-punctuation"
+                    placeholder="外部端口，例如 443"
+                    placeholderTextColor={colors.muted}
+                    style={[
+                      styles.input,
+                      styles.half,
+                      {
+                        color: colors.foreground,
+                        borderColor: colors.border,
+                        backgroundColor: colors.background,
+                      },
+                    ]}
+                    maxLength={11}
+                  />
+                  <TextInput
+                    value={draft.destinationPort}
+                    onChangeText={(value) =>
+                      setDraft((current) => ({
+                        ...current,
+                        destinationPort: value,
+                      }))
+                    }
+                    keyboardType="numbers-and-punctuation"
+                    placeholder="内部端口，例如 443"
+                    placeholderTextColor={colors.muted}
+                    style={[
+                      styles.input,
+                      styles.half,
+                      {
+                        color: colors.foreground,
+                        borderColor: colors.border,
+                        backgroundColor: colors.background,
+                      },
+                    ]}
+                    maxLength={11}
+                  />
+                </View>
+                <TextInput
+                  value={draft.destinationIp}
+                  onChangeText={(value) =>
+                    setDraft((current) => ({
+                      ...current,
+                      destinationIp: value,
+                    }))
+                  }
+                  keyboardType="numbers-and-punctuation"
+                  placeholder="内网 IPv4，例如 192.168.1.20"
+                  placeholderTextColor={colors.muted}
+                  style={[
+                    styles.input,
+                    {
+                      color: colors.foreground,
+                      borderColor: colors.border,
+                      backgroundColor: colors.background,
+                    },
+                  ]}
+                  maxLength={15}
+                />
+                <View style={styles.protocols}>
+                  {(["tcp", "udp", "tcp udp"] as const).map((protocol) => (
+                    <Pressable
+                      key={protocol}
+                      onPress={() =>
+                        setDraft((current) => ({ ...current, protocol }))
+                      }
+                      style={({ pressed }) => [
+                        styles.protocol,
+                        {
+                          borderColor:
+                            draft.protocol === protocol
+                              ? colors.primary
+                              : colors.border,
+                          backgroundColor:
+                            draft.protocol === protocol
+                              ? colors.primary
+                              : colors.background,
+                        },
+                        pressed && styles.pressed,
+                      ]}
+                    >
+                      <Text
+                        style={[
+                          styles.protocolText,
+                          {
+                            color:
+                              draft.protocol === protocol
+                                ? "#fff"
+                                : colors.muted,
+                          },
+                        ]}
+                      >
+                        {protocol.toUpperCase()}
+                      </Text>
+                    </Pressable>
+                  ))}
+                </View>
+                <Pressable
+                  disabled={disabled}
+                  onPress={confirmCreate}
+                  style={({ pressed }) => [
+                    styles.primary,
+                    { backgroundColor: colors.primary },
+                    pressed && styles.pressed,
+                    disabled && styles.disabled,
+                  ]}
+                >
+                  <Text style={styles.primaryText}>检查后新增规则</Text>
+                </Pressable>
+              </View>
+            </ScrollView>
           </View>
-          <Pressable
-            disabled={disabled}
-            onPress={confirmCreate}
-            style={({ pressed }) => [
-              styles.primary,
-              { backgroundColor: colors.primary },
-              pressed && styles.pressed,
-              disabled && styles.disabled,
-            ]}
-          >
-            <Text style={styles.primaryText}>检查后新增规则</Text>
-          </Pressable>
         </View>
-      </SectionCard>
+      </Modal>
 
       <SectionCard title="UPnP / NAT-PMP">
         <View style={styles.upnp}>
@@ -939,6 +1068,34 @@ const styles = StyleSheet.create({
     justifyContent: "center",
   },
   primaryText: { color: "#fff", fontSize: 13, fontWeight: "800" },
+  modalBackdrop: {
+    flex: 1,
+    justifyContent: "flex-end",
+    backgroundColor: "rgba(0,0,0,0.46)",
+  },
+  modalSheet: {
+    maxHeight: "90%",
+    borderTopLeftRadius: 24,
+    borderTopRightRadius: 24,
+    overflow: "hidden",
+  },
+  modalHeader: {
+    minHeight: 60,
+    paddingHorizontal: 18,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    borderBottomWidth: StyleSheet.hairlineWidth,
+  },
+  modalTitle: { fontSize: 17, fontWeight: "800" },
+  modalClose: {
+    minHeight: 34,
+    paddingHorizontal: 12,
+    borderRadius: 17,
+    justifyContent: "center",
+  },
+  modalCloseText: { fontSize: 13, fontWeight: "800" },
+  modalBody: { padding: 16, paddingBottom: 32 },
   upnp: { padding: 15, gap: 13 },
   actions: { flexDirection: "row", gap: 8 },
   action: {

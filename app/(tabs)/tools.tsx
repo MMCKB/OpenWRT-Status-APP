@@ -40,10 +40,10 @@ const tools = [
     target: "/dhcp-leases",
   },
   {
-    title: "流量统计",
-    description: "按每条 WAN 查看本机采样的日、周、月流量。",
-    icon: "query-stats",
-    target: "/traffic",
+    title: "网络唤醒",
+    description: "向指定 MAC 地址发送 Wake-on-LAN 局域网唤醒包。",
+    icon: "power-settings-new",
+    target: "/wake-on-lan",
   },
   {
     title: "网络诊断",

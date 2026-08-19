@@ -1,5 +1,5 @@
-import { useRouter } from "expo-router";
-import { useEffect, useState } from "react";
+import { useCallback, useState } from "react";
+import { useFocusEffect, useRouter } from "expo-router";
 import {
   ActivityIndicator,
   FlatList,
@@ -22,6 +22,7 @@ import {
   connectInAppSsh,
   disconnectInAppSsh,
   getInAppSshTarget,
+  isInAppSshConnectedFor,
   isInAppSshSupported,
   runInAppSshCommand,
 } from "@/lib/native-ssh";
@@ -58,7 +59,9 @@ export default function PackagesScreen() {
   const profile = selectedProfile ?? profiles[0];
   const target = profile ? getInAppSshTarget(profile) : "root@localhost:22";
 
-  const [connection, setConnection] = useState<ConnectionState>("idle");
+  const [connection, setConnection] = useState<ConnectionState>(() =>
+    profile && isInAppSshConnectedFor(profile) ? "connected" : "idle",
+  );
   const [notice, setNotice] =
     useState<string>("连接后即可管理路由器系统软件包。");
   const [isLoading, setIsLoading] = useState<boolean>(false);
@@ -82,11 +85,12 @@ export default function PackagesScreen() {
 
   const isConnected = connection === "connected";
 
-  useEffect(
-    () => () => {
-      void disconnectInAppSsh();
-    },
-    [],
+  useFocusEffect(
+    useCallback(() => {
+      setConnection(
+        profile && isInAppSshConnectedFor(profile) ? "connected" : "idle",
+      );
+    }, [profile]),
   );
 
   if (!profile) {
@@ -261,7 +265,11 @@ export default function PackagesScreen() {
       );
       const parsed = parseApkRepositories(output);
       setRepositories(parsed);
-      setNotice(`已读取 ${parsed.length} 个 APK 仓库配置。`);
+      setNotice(
+        parsed.length
+          ? `已读取 ${parsed.length} 个 APK 仓库配置。`
+          : "未在 /etc/apk/repositories 或 repositories.d 中找到仓库条目。",
+      );
     } catch (error) {
       Alert.alert(
         "读取仓库配置失败",
@@ -836,64 +844,81 @@ export default function PackagesScreen() {
               style={styles.repositoriesList}
               contentContainerStyle={styles.repositoriesListContent}
             >
-              {repositories.map((repository) => (
-                <View
-                  key={`${repository.line}-${repository.url}`}
-                  style={styles.repositoryEntry}
-                >
-                  <Pressable
-                    accessibilityRole="switch"
-                    accessibilityLabel={`${repository.enabled ? "禁用" : "启用"}仓库 ${repository.url}`}
-                    onPress={() =>
-                      setRepositories((current) =>
-                        current.map((item) =>
-                          item.line === repository.line
-                            ? { ...item, enabled: !item.enabled }
-                            : item,
-                        ),
-                      )
-                    }
-                    style={[
-                      styles.repositoryToggle,
-                      repository.enabled && styles.repositoryToggleOn,
-                    ]}
+              {repositories
+                .filter((repository) => !repository.deleted)
+                .map((repository) => (
+                  <View
+                    key={`${repository.source ?? "root"}-${repository.line}-${repository.url}`}
+                    style={styles.repositoryEntry}
                   >
-                    <View
+                    <Pressable
+                      accessibilityRole="switch"
+                      accessibilityLabel={`${repository.enabled ? "禁用" : "启用"}仓库 ${repository.url}`}
+                      onPress={() =>
+                        setRepositories((current) =>
+                          current.map((item) =>
+                            item.line === repository.line &&
+                            item.source === repository.source
+                              ? { ...item, enabled: !item.enabled }
+                              : item,
+                          ),
+                        )
+                      }
                       style={[
-                        styles.repositoryToggleThumb,
-                        repository.enabled && styles.repositoryToggleThumbOn,
+                        styles.repositoryToggle,
+                        repository.enabled && styles.repositoryToggleOn,
                       ]}
-                    />
-                  </Pressable>
-                  <Text
-                    style={[
-                      styles.repositoryUrl,
-                      !repository.enabled && styles.repositoryUrlDisabled,
-                    ]}
-                    selectable
-                  >
-                    {repository.url}
-                  </Text>
-                  <Pressable
-                    accessibilityRole="button"
-                    accessibilityLabel={`删除仓库 ${repository.url}`}
-                    onPress={() =>
-                      setRepositories((current) =>
-                        current.filter((item) => item.line !== repository.line),
-                      )
-                    }
-                    style={styles.repositoryDelete}
-                  >
-                    <MaterialIcons
-                      name="delete-outline"
-                      size={20}
-                      color="#B13939"
-                    />
-                  </Pressable>
-                </View>
-              ))}
-              {!repositories.length ? (
-                <Text style={styles.repositoriesEmpty}>未读取到仓库条目。</Text>
+                    >
+                      <View
+                        style={[
+                          styles.repositoryToggleThumb,
+                          repository.enabled && styles.repositoryToggleThumbOn,
+                        ]}
+                      />
+                    </Pressable>
+                    <Text
+                      style={[
+                        styles.repositoryUrl,
+                        !repository.enabled && styles.repositoryUrlDisabled,
+                      ]}
+                      selectable
+                    >
+                      {repository.url}
+                    </Text>
+                    {repository.source ? (
+                      <Text style={styles.repositorySource} numberOfLines={1}>
+                        {repository.source}
+                      </Text>
+                    ) : null}
+                    <Pressable
+                      accessibilityRole="button"
+                      accessibilityLabel={`删除仓库 ${repository.url}`}
+                      onPress={() =>
+                        setRepositories((current) =>
+                          current.map((item) =>
+                            item.line === repository.line &&
+                            item.source === repository.source
+                              ? { ...item, deleted: true }
+                              : item,
+                          ),
+                        )
+                      }
+                      style={styles.repositoryDelete}
+                    >
+                      <MaterialIcons
+                        name="delete-outline"
+                        size={18}
+                        color="#B13939"
+                      />
+                      <Text style={styles.repositoryDeleteText}>删除</Text>
+                    </Pressable>
+                  </View>
+                ))}
+              {!repositories.some((repository) => !repository.deleted) ? (
+                <Text style={styles.repositoriesEmpty}>
+                  未读取到仓库条目。请确认路由器使用 apk，并检查
+                  /etc/apk/repositories 与 /etc/apk/repositories.d 目录。
+                </Text>
               ) : null}
             </ScrollView>
 
@@ -1269,7 +1294,7 @@ const baseStyles = StyleSheet.create({
   repositoriesList: { maxHeight: 260, marginTop: 14 },
   repositoriesListContent: { gap: 8, paddingBottom: 2 },
   repositoryEntry: {
-    minHeight: 52,
+    minHeight: 58,
     paddingHorizontal: 10,
     paddingVertical: 9,
     flexDirection: "row",
@@ -1311,12 +1336,32 @@ const baseStyles = StyleSheet.create({
     color: "#8B9AA8",
     textDecorationLine: "line-through",
   },
+  repositorySource: {
+    position: "absolute",
+    left: 53,
+    right: 76,
+    bottom: 5,
+    color: "#8B9AA8",
+    fontSize: 9,
+    fontFamily: Platform.select({
+      ios: "Menlo",
+      android: "monospace",
+      default: "monospace",
+    }),
+  },
   repositoryDelete: {
-    width: 28,
-    height: 28,
+    minWidth: 52,
+    height: 30,
+    borderRadius: 7,
+    flexDirection: "row",
+    gap: 2,
     alignItems: "center",
     justifyContent: "center",
+    backgroundColor: "#FFF0F0",
+    borderWidth: 1,
+    borderColor: "#F5C6C6",
   },
+  repositoryDeleteText: { color: "#B13939", fontSize: 11, fontWeight: "800" },
   repositoriesEmpty: {
     color: "#718398",
     fontSize: 12,

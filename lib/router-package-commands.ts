@@ -11,6 +11,8 @@ export interface ApkRepository {
   line: number;
   url: string;
   enabled: boolean;
+  source?: string;
+  deleted?: boolean;
 }
 
 function quotePackageName(name: string): string {
@@ -78,25 +80,61 @@ export function buildApkRemoveCommand(packageName: string): string {
 
 /** 读取 /etc/apk/repositories 的每个有效条目。 */
 export function buildApkRepositoriesSnapshotCommand(): string {
-  return `if ! command -v apk >/dev/null 2>&1; then echo 'ERROR|apk_missing'; exit 2; fi; file=/etc/apk/repositories; [ -f "$file" ] || { echo 'ERROR|repositories_missing'; exit 2; }; awk '{ raw=$0; sub(/\\r$/, "", raw); if (raw ~ /^[[:space:]]*$/) next; enabled=1; if (raw ~ /^[[:space:]]*#/) { enabled=0; sub(/^[[:space:]]*#[[:space:]]*/, "", raw); } if (raw != "") printf "REPO|%d|%d|%s\\n", NR, enabled, raw; }' "$file"`;
+  return `if ! command -v apk >/dev/null 2>&1; then echo 'ERROR|apk_missing'; exit 2; fi; found=0; for file in /etc/apk/repositories /etc/apk/repositories.d/*; do [ -f "$file" ] || continue; found=1; awk -v source="$file" '{ raw=$0; sub(/\r$/, "", raw); if (raw ~ /^[[:space:]]*$/) next; enabled=1; if (raw ~ /^[[:space:]]*#/) { enabled=0; sub(/^[[:space:]]*#[[:space:]]*/, "", raw); } if (raw != "") printf "REPO|%s|%d|%d|%s\n", source, NR, enabled, raw; }' "$file"; done; [ "$found" -eq 1 ] || { echo 'ERROR|repositories_missing'; exit 2; }`;
 }
 
 /**
  * 受控保存 APK 仓库列表。仅接受 HTTP(S) 地址，保存前备份，并原子替换后更新索引。
  */
-export function buildApkSaveRepositoriesCommand(repositories: Array<Pick<ApkRepository, "url" | "enabled">>): string {
+function normalizeRepositorySource(source: string | undefined) {
+  const resolved = source || "/etc/apk/repositories";
+  if (
+    resolved !== "/etc/apk/repositories" &&
+    !/^\/etc\/apk\/repositories\.d\/[A-Za-z0-9._-]+$/.test(resolved)
+  ) {
+    throw new Error("APK 仓库配置文件路径无效。");
+  }
+  return resolved;
+}
+
+export function buildApkSaveRepositoriesCommand(
+  repositories: Array<
+    Pick<ApkRepository, "url" | "enabled" | "source" | "deleted">
+  >,
+): string {
   const normalized = repositories.map((repository) => ({
     url: normalizeRepositoryUrl(repository.url),
     enabled: repository.enabled !== false,
+    source: normalizeRepositorySource(repository.source),
+    deleted: repository.deleted === true,
   }));
-  if (!normalized.length) throw new Error("至少保留一个软件包仓库。");
-  if (!normalized.some((repository) => repository.enabled)) throw new Error("至少启用一个软件包仓库。");
-  if (new Set(normalized.map((repository) => repository.url)).size !== normalized.length) {
+  const active = normalized.filter((repository) => !repository.deleted);
+  if (!active.length) throw new Error("至少保留一个软件包仓库。");
+  if (!active.some((repository) => repository.enabled))
+    throw new Error("至少启用一个软件包仓库。");
+  if (
+    new Set(active.map((repository) => repository.url)).size !== active.length
+  ) {
     throw new Error("软件包仓库地址不能重复。");
   }
-  const lines = normalized.map((repository) => `${repository.enabled ? "" : "# "}${repository.url}`);
-  const writeLines = lines.map(quoteShell).join(" ");
-  return `if ! command -v apk >/dev/null 2>&1; then echo 'apk 未安装。'; exit 2; fi; umask 077; target=/etc/apk/repositories; temp=$(mktemp /tmp/openwrt-status-apk-repositories.XXXXXX) || { echo '无法创建临时仓库文件。'; exit 1; }; printf '%s\\n' ${writeLines} > "$temp" || { rm -f "$temp"; echo '仓库配置写入失败。'; exit 1; }; cp "$target" "$target.openwrt-status.bak" 2>/dev/null || true; mv "$temp" "$target" && apk update`;
+  const sources = [
+    ...new Set(normalized.map((repository) => repository.source)),
+  ];
+  const writes = sources.map((source) => {
+    const entries = normalized.filter(
+      (repository) => repository.source === source && !repository.deleted,
+    );
+    const quotedSource = quoteShell(source);
+    if (!entries.length) {
+      return `rm -f ${quotedSource}`;
+    }
+    const writeLines = entries
+      .map((repository) => `${repository.enabled ? "" : "# "}${repository.url}`)
+      .map(quoteShell)
+      .join(" ");
+    return `target=${quotedSource}; mkdir -p "$(dirname "$target")"; temp=$(mktemp /tmp/openwrt-status-apk-repositories.XXXXXX) || exit 1; printf '%s\\n' ${writeLines} > "$temp" || { rm -f "$temp"; exit 1; }; cp "$target" "$target.openwrt-status.bak" 2>/dev/null || true; mv "$temp" "$target"`;
+  });
+  return `if ! command -v apk >/dev/null 2>&1; then echo 'apk 未安装。'; exit 2; fi; umask 077; ${writes.join("; ")} && apk update`;
 }
 
 /** 解析 apk info -v 输出。 */
@@ -104,12 +142,30 @@ export function parseInstalledPackages(output: string): ApkPackage[] {
   const packages: ApkPackage[] = [];
   for (const line of output.split(/\r?\n/)) {
     const trimmed = line.trim();
-    if (!trimmed || trimmed.startsWith("fetch ") || trimmed.startsWith("OK:") || trimmed.startsWith("packages:")) continue;
+    if (
+      !trimmed ||
+      trimmed.startsWith("fetch ") ||
+      trimmed.startsWith("OK:") ||
+      trimmed.startsWith("packages:")
+    )
+      continue;
     const match = trimmed.match(/^(.+)-([0-9].*)$/);
     packages.push(
       match
-        ? { name: match[1], version: match[2], description: "已安装的系统软件包 (apk)", installed: true, status: "installed" }
-        : { name: trimmed, version: "unknown", description: "已安装的系统软件包 (apk)", installed: true, status: "installed" },
+        ? {
+            name: match[1],
+            version: match[2],
+            description: "已安装的系统软件包 (apk)",
+            installed: true,
+            status: "installed",
+          }
+        : {
+            name: trimmed,
+            version: "unknown",
+            description: "已安装的系统软件包 (apk)",
+            installed: true,
+            status: "installed",
+          },
     );
   }
   return packages;
@@ -120,30 +176,64 @@ export function parseUpgradablePackages(output: string): ApkPackage[] {
   const packages: ApkPackage[] = [];
   for (const line of output.split(/\r?\n/)) {
     const trimmed = line.trim();
-    if (!trimmed || trimmed.startsWith("fetch ") || trimmed.startsWith("OK:") || trimmed.startsWith("packages:")) continue;
-    const match = trimmed.match(/^(.+)-([0-9].*?)(?:\s+\[upgradable from:\s+([^\]]+)\])?$/);
+    if (
+      !trimmed ||
+      trimmed.startsWith("fetch ") ||
+      trimmed.startsWith("OK:") ||
+      trimmed.startsWith("packages:")
+    )
+      continue;
+    const match = trimmed.match(
+      /^(.+)-([0-9].*?)(?:\s+\[upgradable from:\s+([^\]]+)\])?$/,
+    );
     if (!match) continue;
     const [, name, version, previousVersion] = match;
-    packages.push({ name, version, description: previousVersion ? `可从 ${previousVersion} 更新` : "有可用更新", installed: true, status: "upgradable" });
+    packages.push({
+      name,
+      version,
+      description: previousVersion
+        ? `可从 ${previousVersion} 更新`
+        : "有可用更新",
+      installed: true,
+      status: "upgradable",
+    });
   }
   return packages;
 }
 
 /** 解析 apk search -v 输出，包括完整仓库清单。 */
-export function parseAvailablePackages(output: string, installedNames: Set<string>): ApkPackage[] {
+export function parseAvailablePackages(
+  output: string,
+  installedNames: Set<string>,
+): ApkPackage[] {
   const packages: ApkPackage[] = [];
   for (const line of output.split(/\r?\n/)) {
     const trimmed = line.trim();
-    if (!trimmed || trimmed.startsWith("fetch ") || trimmed.startsWith("OK:") || trimmed.startsWith("packages:")) continue;
+    if (
+      !trimmed ||
+      trimmed.startsWith("fetch ") ||
+      trimmed.startsWith("OK:") ||
+      trimmed.startsWith("packages:")
+    )
+      continue;
     const sepIdx = trimmed.indexOf(" - ");
     const nameVersion = sepIdx > 0 ? trimmed.slice(0, sepIdx).trim() : trimmed;
-    const description = sepIdx > 0 ? trimmed.slice(sepIdx + 3).trim() : "软件仓库中的可用包 (apk)";
+    const description =
+      sepIdx > 0
+        ? trimmed.slice(sepIdx + 3).trim()
+        : "软件仓库中的可用包 (apk)";
     const match = nameVersion.match(/^(.+)-([0-9][a-zA-Z0-9._.-]*)$/);
     const name = match?.[1] ?? nameVersion;
     const version = match?.[2] ?? "unknown";
     if (!name || packages.some((item) => item.name === name)) continue;
     const installed = installedNames.has(name);
-    packages.push({ name, version, description, installed, status: installed ? "installed" : "available" });
+    packages.push({
+      name,
+      version,
+      description,
+      installed,
+      status: installed ? "installed" : "available",
+    });
   }
   return packages;
 }
@@ -153,10 +243,22 @@ export function parseApkRepositories(output: string): ApkRepository[] {
   for (const rawLine of output.split(/\r?\n/)) {
     const line = rawLine.trim();
     if (!line.startsWith("REPO|")) continue;
-    const [, lineValue, enabledValue, url] = line.split("|", 4);
+    const values = line.split("|");
+    const modernFormat = values.length >= 5;
+    const source = modernFormat ? values[1] : undefined;
+    const lineValue = modernFormat ? values[2] : values[1];
+    const enabledValue = modernFormat ? values[3] : values[2];
+    const url = modernFormat
+      ? values.slice(4).join("|")
+      : values.slice(3).join("|");
     const number = Number.parseInt(lineValue, 10);
     if (!Number.isInteger(number) || !url?.trim()) continue;
-    repositories.push({ line: number, enabled: enabledValue === "1", url: url.trim() });
+    repositories.push({
+      line: number,
+      enabled: enabledValue === "1",
+      url: url.trim(),
+      ...(source ? { source } : {}),
+    });
   }
   return repositories;
 }

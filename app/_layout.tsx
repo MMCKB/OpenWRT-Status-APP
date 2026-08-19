@@ -163,7 +163,7 @@ function RootNavigator() {
       <Stack.Screen name="packages" />
       <Stack.Screen name="clients" />
       <Stack.Screen name="dhcp-leases" />
-      <Stack.Screen name="traffic" />
+      <Stack.Screen name="wake-on-lan" />
       <Stack.Screen name="diagnostics" />
       <Stack.Screen name="wireless-manager" />
       <Stack.Screen name="wireless-optimizer" />

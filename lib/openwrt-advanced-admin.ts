@@ -398,8 +398,19 @@ export function getPluginSettingDefinitions(id: ProxyServiceId) {
 
 function requireUciSection(value: string) {
   const normalized = value.trim();
-  if (!/^[A-Za-z0-9_-]+$/.test(normalized)) {
+  if (
+    !/^[A-Za-z0-9_-]+$/.test(normalized) &&
+    !/^@[A-Za-z0-9_-]+\[\d+\]$/.test(normalized)
+  ) {
     throw new Error("配置段名称格式无效。");
+  }
+  return normalized;
+}
+
+function requireUciOption(value: string) {
+  const normalized = value.trim();
+  if (!/^[A-Za-z0-9_]+$/.test(normalized)) {
+    throw new Error("配置选项名称格式无效。");
   }
   return normalized;
 }
@@ -408,11 +419,10 @@ function pluginUciPackage(id: ProxyServiceId) {
   return serviceDefinition(id).configPath.split("/").pop()!;
 }
 
-/** 读取固定服务的 UCI 节和白名单字段，供移动端图形化表单使用。 */
+/** 读取服务实际存在的全部 UCI 段与选项，供应用内完整配置编辑使用。 */
 export function buildPluginSettingsSnapshotCommand(id: ProxyServiceId) {
   const service = serviceDefinition(id);
   const pkg = pluginUciPackage(id);
-  const keys = PLUGIN_SETTING_DEFINITIONS[id].map((item) => item.key).join(" ");
   const prefix = `__PLUGIN_SETTINGS__|${id}`;
   return [
     `[ -x /etc/init.d/${service.initName} ] || { printf '${prefix}|missing\\n'; exit 0; }`,
@@ -420,7 +430,7 @@ export function buildPluginSettingsSnapshotCommand(id: ProxyServiceId) {
     `printf '${prefix}|present\\n'`,
     `uci -q show ${shellQuote(pkg)} 2>/dev/null | while IFS= read -r line; do`,
     `case "$line" in`,
-    `${pkg}.*.*=*) section=$(printf '%s' "$line" | cut -d. -f2); option=$(printf '%s' "$line" | cut -d. -f3 | cut -d= -f1); case " ${keys} " in *" $option "*) value=$(printf '%s' "$line" | cut -d= -f2-); printf 'VALUE|%s|%s|%s\\n' "$section" "$option" "$value" ;; esac ;;`,
+    `${pkg}.*.*=*) section=$(printf '%s' "$line" | cut -d. -f2); option=$(printf '%s' "$line" | cut -d. -f3 | cut -d= -f1); value=$(printf '%s' "$line" | cut -d= -f2-); printf 'VALUE|%s|%s|%s\\n' "$section" "$option" "$value" ;;`,
     `${pkg}.*=*) section=$(printf '%s' "$line" | cut -d. -f2 | cut -d= -f1); type=$(printf '%s' "$line" | cut -d= -f2-); printf 'SECTION|%s|%s\\n' "$section" "$type" ;;`,
     `esac; done`,
   ].join("; ");
@@ -442,7 +452,7 @@ export function parsePluginSettingsSnapshot(
   const sections = new Map<string, PluginSettingsSection>();
   for (const line of lines.slice(1)) {
     const sectionMatch = line.match(
-      /^SECTION\|([A-Za-z0-9_-]+)\|([A-Za-z0-9_-]+)$/,
+      /^SECTION\|(@?[A-Za-z0-9_-]+(?:\[\d+\])?)\|([A-Za-z0-9_-]+)$/,
     );
     if (sectionMatch) {
       const [, section, type] = sectionMatch;
@@ -450,17 +460,17 @@ export function parsePluginSettingsSnapshot(
       continue;
     }
     const valueMatch = line.match(
-      /^VALUE\|([A-Za-z0-9_-]+)\|([A-Za-z0-9_]+)\|(.*)$/,
+      /^VALUE\|(@?[A-Za-z0-9_-]+(?:\[\d+\])?)\|([A-Za-z0-9_]+)\|(.*)$/,
     );
     if (!valueMatch) continue;
     const [, section, key, value] = valueMatch;
     const current = sections.get(section);
-    if (current) current.values[key] = value;
+    if (current) current.values[key] = cleanQuoted(value);
   }
   return { id, label: service.label, exists, sections: [...sections.values()] };
 }
 
-/** 仅允许保存为该服务预定义的常用字段，用户输入不会作为 Shell 代码拼接。 */
+/** 保存完整 UCI 段的已读取选项；段名、选项名与值均经过严格校验。 */
 export function buildPluginSettingsApplyCommand(
   id: ProxyServiceId,
   section: string,
@@ -469,19 +479,15 @@ export function buildPluginSettingsApplyCommand(
   const service = serviceDefinition(id);
   const pkg = pluginUciPackage(id);
   const safeSection = requireUciSection(section);
-  const allowed = new Set(
-    PLUGIN_SETTING_DEFINITIONS[id].map((item) => item.key),
-  );
-  const assignments = Object.entries(values)
-    .filter(([key]) => allowed.has(key))
-    .map(([key, rawValue]) => {
-      const value = rawValue.trim();
-      if (value.length > 512 || value.includes("\0") || /[\r\n]/.test(value))
-        throw new Error(`${key} 的值格式无效。`);
-      return value
-        ? `uci set ${shellQuote(`${pkg}.${safeSection}.${key}=${value}`)}`
-        : `uci -q delete ${shellQuote(`${pkg}.${safeSection}.${key}`)}`;
-    });
+  const assignments = Object.entries(values).map(([key, rawValue]) => {
+    const safeKey = requireUciOption(key);
+    const value = rawValue.trim();
+    if (value.length > 4096 || value.includes("\0") || /[\r\n]/.test(value))
+      throw new Error(`${key} 的值格式无效。`);
+    return value
+      ? `uci set ${shellQuote(`${pkg}.${safeSection}.${safeKey}=${value}`)}`
+      : `uci -q delete ${shellQuote(`${pkg}.${safeSection}.${safeKey}`)}`;
+  });
   if (!assignments.length) throw new Error("没有可保存的设置项。");
   const backupPath = `${service.configPath}.openwrt-status.bak`;
   return `[ -x /etc/init.d/${service.initName} ] || { echo '${service.label} 未安装。'; exit 2; }; if [ -f ${shellQuote(service.configPath)} ]; then cp ${shellQuote(service.configPath)} ${shellQuote(backupPath)} || { echo '配置备份失败。'; exit 1; }; fi; ${assignments.join("; ")}; uci commit ${shellQuote(pkg)} && /etc/init.d/${service.initName} restart`;

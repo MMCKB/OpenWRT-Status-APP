@@ -178,14 +178,14 @@ describe("高级 OpenWrt 服务与网络管理", () => {
     ).toThrow("不支持的服务");
   });
 
-  it("解析并受控保存服务图形化 UCI 设置", () => {
+  it("解析并受控保存服务完整 UCI 设置", () => {
     expect(buildPluginSettingsSnapshotCommand("ddns")).toContain(
       "uci -q show 'ddns'",
     );
     expect(
       parsePluginSettingsSnapshot(
         "ddns",
-        "__PLUGIN_SETTINGS__|ddns|present\nSECTION|cloudflare|service\nVALUE|cloudflare|enabled|'1'\nVALUE|cloudflare|domain|'example.com'\nVALUE|cloudflare|password|'token-value'\n",
+        "__PLUGIN_SETTINGS__|ddns|present\nSECTION|cloudflare|service\nVALUE|cloudflare|enabled|'1'\nVALUE|cloudflare|domain|'example.com'\nVALUE|cloudflare|password|'token-value'\nVALUE|cloudflare|use_https|'1'\nSECTION|@global[0]|global\nVALUE|@global[0]|check_interval|'10'\n",
       ),
     ).toMatchObject({
       exists: true,
@@ -193,21 +193,33 @@ describe("高级 OpenWrt 服务与网络管理", () => {
         {
           section: "cloudflare",
           type: "service",
-          values: { enabled: "'1'", domain: "'example.com'" },
+          values: {
+            enabled: "1",
+            domain: "example.com",
+            password: "token-value",
+            use_https: "1",
+          },
+        },
+        {
+          section: "@global[0]",
+          type: "global",
+          values: { check_interval: "10" },
         },
       ],
     });
     const command = buildPluginSettingsApplyCommand("ddns", "cloudflare", {
       enabled: "1",
       domain: "example.com",
-      ignored_field: "should-not-be-written",
+      arbitrary_actual_option: "should-be-written",
     });
     expect(command).toContain(
       "cp '/etc/config/ddns' '/etc/config/ddns.openwrt-status.bak'",
     );
     expect(command).toContain("uci set 'ddns.cloudflare.enabled=1'");
     expect(command).toContain("uci set 'ddns.cloudflare.domain=example.com'");
-    expect(command).not.toContain("ignored_field");
+    expect(command).toContain(
+      "ddns.cloudflare.arbitrary_actual_option=should-be-written",
+    );
     expect(command).toContain("/etc/init.d/ddns restart");
     expect(() =>
       buildPluginSettingsApplyCommand("ddns", "cloudflare; reboot", {
@@ -219,6 +231,11 @@ describe("高级 OpenWrt 服务与网络管理", () => {
         domain: "bad\nreboot",
       }),
     ).toThrow("domain 的值格式无效");
+    expect(() =>
+      buildPluginSettingsApplyCommand("ddns", "cloudflare", {
+        "invalid-key": "value",
+      }),
+    ).toThrow("配置选项名称格式无效");
   });
 
   it("解析匿名 UCI 区段，并仅允许安全格式的端口转发操作", () => {
