@@ -200,7 +200,8 @@ describe("OpenWrt 管理命令与解析", () => {
 
   it("仅为有效 MAC 生成网络唤醒命令，并在缺少工具时给出明确提示", () => {
     const command = buildWakeOnLanCommand("AA:bb:CC:dd:EE:ff");
-    expect(command).toContain("etherwake -b AA:BB:CC:DD:EE:FF");
+    expect(command).toContain("ubus call network.interface.lan status");
+    expect(command).toContain('etherwake -i "$WOL_IFACE" -b AA:BB:CC:DD:EE:FF');
     expect(command).toContain("wakeonlan AA:BB:CC:DD:EE:FF");
     expect(command).toContain("__WOL_UNAVAILABLE__ 未检测到网络唤醒工具");
     expect(() => buildWakeOnLanCommand("AA:BB; reboot")).toThrow(

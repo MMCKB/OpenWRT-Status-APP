@@ -22,6 +22,7 @@ interface OpenWrtSshBridge {
     content: string,
     remotePath: string,
   ): Promise<void>;
+  isConnected(key: string): Promise<boolean>;
   disconnect(key: string): void;
 }
 
@@ -31,6 +32,19 @@ interface ActiveSshSession {
 }
 
 let activeSession: ActiveSshSession | null = null;
+const sessionListeners = new Set<() => void>();
+
+function notifySessionListeners() {
+  for (const listener of sessionListeners) listener();
+}
+
+/** 订阅全局 SSH 会话变更，供终端和独立工具页同步连接状态。 */
+export function subscribeInAppSshSession(listener: () => void) {
+  sessionListeners.add(listener);
+  return () => {
+    sessionListeners.delete(listener);
+  };
+}
 
 function bridge() {
   const module = NativeModules.OpenWrtSsh as OpenWrtSshBridge | undefined;
@@ -78,6 +92,23 @@ export function isInAppSshConnectedFor(profile: RouterProfile) {
   }
 }
 
+/**
+ * 向 Android 原生层确认当前会话仍然有效。网络切换、路由器重启或其他页面
+ * 主动断开后会清理过期 JS 状态，以便调用方自动重新建立正确的连接。
+ */
+export async function isInAppSshSessionAliveFor(profile: RouterProfile) {
+  if (!isInAppSshConnectedFor(profile) || !activeSession) return false;
+  try {
+    const connected = await bridge().isConnected(activeSession.key);
+    if (connected) return true;
+  } catch {
+    // 原生模块不可用或会话已消失时均按未连接处理，由调用方按需重连。
+  }
+  activeSession = null;
+  notifySessionListeners();
+  return false;
+}
+
 export async function connectInAppSsh(
   profile: RouterProfile,
   password: string,
@@ -88,12 +119,17 @@ export async function connectInAppSsh(
   const port = profile.sshPort ?? 22;
   const target = `${username}@${host}:${port}`;
   if (activeSession?.target === target) {
-    return { target, banner: "正在复用已有会话。" };
+    if (await nativeBridge.isConnected(activeSession.key)) {
+      return { target, banner: "正在复用已有会话。" };
+    }
+    activeSession = null;
+    notifySessionListeners();
   }
   if (activeSession) disconnectInAppSsh();
   const key = `openwrt-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
   await nativeBridge.connect(host, port, username, password, key);
   activeSession = { key, target };
+  notifySessionListeners();
   return { target: activeSession.target, banner: "会话已建立。" };
 }
 
@@ -140,4 +176,5 @@ export function disconnectInAppSsh() {
   const module = NativeModules.OpenWrtSsh as OpenWrtSshBridge | undefined;
   module?.disconnect(activeSession.key);
   activeSession = null;
+  notifySessionListeners();
 }

@@ -403,7 +403,7 @@ export function buildUnblockClientCommand(mac: string) {
 
 export function buildWakeOnLanCommand(mac: string) {
   const normalized = requireMac(mac);
-  return `if command -v etherwake >/dev/null 2>&1; then etherwake -b ${normalized}; elif command -v wakeonlan >/dev/null 2>&1; then wakeonlan ${normalized}; elif command -v wol >/dev/null 2>&1; then wol ${normalized}; else echo '__WOL_UNAVAILABLE__ 未检测到网络唤醒工具。请在路由器安装 etherwake、wakeonlan 或 wol 后重试。'; exit 127; fi`;
+  return `WOL_IFACE="$(ubus call network.interface.lan status 2>/dev/null | jsonfilter -e '@.l3_device' 2>/dev/null || true)"; if [ -z "$WOL_IFACE" ]; then WOL_IFACE="$(ip -o link show up 2>/dev/null | awk -F': ' '$2 !~ /^(lo|ifb|imq)/ {sub(/@.*/, "", $2); print $2; exit}')"; fi; case "$WOL_IFACE" in ''|*[!A-Za-z0-9_.:-]*) echo '__WOL_INTERFACE_UNAVAILABLE__ 未找到可用的 LAN 网卡。'; exit 1;; esac; if command -v etherwake >/dev/null 2>&1; then etherwake -i "$WOL_IFACE" -b ${normalized}; elif command -v wol >/dev/null 2>&1; then wol -i "$WOL_IFACE" ${normalized}; elif command -v wakeonlan >/dev/null 2>&1; then wakeonlan ${normalized}; else echo '__WOL_UNAVAILABLE__ 未检测到网络唤醒工具。请在路由器安装 etherwake、wol 或 wakeonlan 后重试。'; exit 127; fi`;
 }
 
 export function parseWifiConfigs(output: string): WifiConfigEntry[] {

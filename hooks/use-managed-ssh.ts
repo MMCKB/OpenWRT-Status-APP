@@ -3,6 +3,7 @@ import { useCallback, useState } from "react";
 import {
   connectInAppSsh,
   isInAppSshConnectedFor,
+  isInAppSshSessionAliveFor,
   isInAppSshSupported,
   runInAppSshCommand,
 } from "@/lib/native-ssh";
@@ -23,7 +24,10 @@ export function useManagedSsh() {
       setIsRunning(true);
       setError(null);
       try {
-        if (!isInAppSshConnectedFor(selectedProfile)) {
+        if (
+          !isInAppSshConnectedFor(selectedProfile) ||
+          !(await isInAppSshSessionAliveFor(selectedProfile))
+        ) {
           const credentials = await getSelectedCredentials();
           if (!credentials)
             throw new Error(

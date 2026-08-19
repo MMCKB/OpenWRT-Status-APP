@@ -1,4 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
+import * as DocumentPicker from "expo-document-picker";
+import * as FileSystem from "expo-file-system/legacy";
 import {
   ActivityIndicator,
   Modal,
@@ -18,11 +20,15 @@ import { useColors } from "@/hooks/use-colors";
 import { useManagedSsh } from "@/hooks/use-managed-ssh";
 import {
   buildAddApkRepositoryKeyCommand,
+  buildAddLedCommand,
+  buildAddSshInstanceCommand,
   buildAddSshAuthorizedKeyCommand,
   buildAutorebootSnapshotCommand,
   buildApkRepositoryKeysSnapshotCommand,
   buildChangeRouterPasswordCommand,
   buildCronSnapshotCommand,
+  buildFetchApkRepositoryKeyCommand,
+  buildLedCapabilitiesSnapshotCommand,
   buildLedSnapshotCommand,
   buildMountActionCommand,
   buildMountSnapshotCommand,
@@ -37,16 +43,18 @@ import {
   buildSaveNetworkInterfaceCommand,
   buildSaveNetworkDeviceCommand,
   buildSaveNetworkGlobalCommand,
-  buildSaveSshAccessCommand,
+  buildSaveSshInstanceCommand,
   buildSaveUhttpdCommand,
   buildScheduledActionCommand,
   buildSshAccessSnapshotCommand,
+  buildSshInstanceActionCommand,
   buildSshAuthorizedKeysSnapshotCommand,
   buildStartupActionCommand,
   buildStartupSnapshotCommand,
   parseAutorebootSettings,
   parseApkRepositoryKeys,
   parseCronEntries,
+  parseLedCapabilities,
   parseLedSettings,
   parseMountPoints,
   parseNetworkInterfaceSettings,
@@ -60,8 +68,11 @@ import {
   buildUhttpdSnapshotCommand,
   type ApkRepositoryKey,
   type AutorebootSettings,
+  type DropbearInstance,
   type LedSetting,
+  type LedCapabilities,
   type MountPoint,
+  type NewLedSettings,
   type NetworkInterfaceSettings,
   type NetworkInterfaceStatus,
   type NetworkDeviceSettings,
@@ -94,15 +105,29 @@ const PANELS: Array<{ id: Panel; label: string }> = [
 
 const emptyAutoreboot: AutorebootSettings = {
   installed: false,
+  section: "",
   enabled: false,
   time: "04:00",
-  week: "",
+  minute: "0",
+  hour: "4",
+  day: "*",
+  month: "*",
+  week: "*",
 };
 const emptySsh: SshAccessSettings = {
   installed: false,
   port: "22",
   passwordAuth: true,
   rootPasswordAuth: true,
+  instances: [],
+};
+const emptyDropbearInstance: Omit<DropbearInstance, "section"> = {
+  port: "22",
+  interface: "",
+  passwordAuth: true,
+  rootPasswordAuth: true,
+  gatewayPorts: false,
+  enabled: true,
 };
 const emptyUhttpd: UhttpdSettings = {
   installed: false,
@@ -126,6 +151,10 @@ export default function SystemAdminScreen() {
   const [autoreboot, setAutoreboot] = useState(emptyAutoreboot);
   const [services, setServices] = useState<StartupService[]>([]);
   const [leds, setLeds] = useState<LedSetting[]>([]);
+  const [ledCapabilities, setLedCapabilities] = useState<LedCapabilities>({
+    devices: [],
+    triggers: [],
+  });
   const [mounts, setMounts] = useState<MountPoint[]>([]);
   const [ssh, setSsh] = useState(emptySsh);
   const [sshKeys, setSshKeys] = useState<SshAuthorizedKey[]>([]);
@@ -136,6 +165,7 @@ export default function SystemAdminScreen() {
   const [apkKeys, setApkKeys] = useState<ApkRepositoryKey[]>([]);
   const [apkKeyName, setApkKeyName] = useState("");
   const [apkKeyValue, setApkKeyValue] = useState("");
+  const [apkKeyUrl, setApkKeyUrl] = useState("");
   const [uhttpd, setUhttpd] = useState(emptyUhttpd);
   const [interfaces, setInterfaces] = useState<NetworkInterfaceSettings[]>([]);
   const [interfaceStatuses, setInterfaceStatuses] = useState<
@@ -162,6 +192,7 @@ export default function SystemAdminScreen() {
         autorebootRaw,
         startupRaw,
         ledRaw,
+        ledCapabilitiesRaw,
         mountRaw,
         sshRaw,
         sshKeysRaw,
@@ -176,6 +207,7 @@ export default function SystemAdminScreen() {
         execute(buildAutorebootSnapshotCommand()),
         execute(buildStartupSnapshotCommand()),
         execute(buildLedSnapshotCommand()),
+        execute(buildLedCapabilitiesSnapshotCommand()),
         execute(buildMountSnapshotCommand()),
         execute(buildSshAccessSnapshotCommand()),
         execute(buildSshAuthorizedKeysSnapshotCommand()),
@@ -190,6 +222,7 @@ export default function SystemAdminScreen() {
       setAutoreboot(parseAutorebootSettings(autorebootRaw));
       setServices(parseStartupServices(startupRaw));
       setLeds(parseLedSettings(ledRaw));
+      setLedCapabilities(parseLedCapabilities(ledCapabilitiesRaw));
       setMounts(parseMountPoints(mountRaw));
       setSsh(parseSshAccessSettings(sshRaw));
       setSshKeys(parseSshAuthorizedKeys(sshKeysRaw));
@@ -247,6 +280,39 @@ export default function SystemAdminScreen() {
     ]);
   }
 
+  async function importSshPublicKey() {
+    try {
+      const result = await DocumentPicker.getDocumentAsync({
+        type: "*/*",
+        copyToCacheDirectory: true,
+      });
+      const asset = result.canceled ? undefined : result.assets?.[0];
+      if (!asset) return;
+      setNewSshKey((await FileSystem.readAsStringAsync(asset.uri)).trim());
+    } catch (reason) {
+      setOutput(
+        reason instanceof Error ? reason.message : "读取公钥文件失败。",
+      );
+    }
+  }
+
+  async function importApkRepositoryKey() {
+    try {
+      const result = await DocumentPicker.getDocumentAsync({
+        type: "*/*",
+        copyToCacheDirectory: true,
+      });
+      const asset = result.canceled ? undefined : result.assets?.[0];
+      if (!asset) return;
+      setApkKeyValue((await FileSystem.readAsStringAsync(asset.uri)).trim());
+      if (asset.name.trim()) setApkKeyName(asset.name.trim());
+    } catch (reason) {
+      setOutput(
+        reason instanceof Error ? reason.message : "读取仓库公钥文件失败。",
+      );
+    }
+  }
+
   const title = useMemo(
     () =>
       ({
@@ -264,7 +330,7 @@ export default function SystemAdminScreen() {
   return (
     <ManagementShell
       title="系统管理"
-      description="以 UCI 与 OpenWrt 服务接口管理系统设置。所有保存均在路由器本地执行，并自动创建时间戳备份。"
+      description="以 UCI 与 OpenWrt 服务接口管理系统设置，所有保存均在路由器本地执行。"
     >
       <ScrollView
         horizontal
@@ -316,27 +382,50 @@ export default function SystemAdminScreen() {
                   colors={colors}
                 />
                 <TextField
-                  label="每天执行时间"
-                  value={autoreboot.time}
+                  label="分钟"
+                  value={autoreboot.minute}
                   onChangeText={(value) =>
-                    setAutoreboot((current) => ({ ...current, time: value }))
+                    setAutoreboot((current) => ({ ...current, minute: value }))
                   }
-                  placeholder="04:00"
+                  placeholder="0"
                   colors={colors}
                 />
                 <TextField
-                  label="星期（留空代表每天）"
+                  label="小时"
+                  value={autoreboot.hour}
+                  onChangeText={(value) =>
+                    setAutoreboot((current) => ({ ...current, hour: value }))
+                  }
+                  placeholder="4"
+                  colors={colors}
+                />
+                <TextField
+                  label="日期"
+                  value={autoreboot.day}
+                  onChangeText={(value) =>
+                    setAutoreboot((current) => ({ ...current, day: value }))
+                  }
+                  placeholder="*"
+                  colors={colors}
+                />
+                <TextField
+                  label="月份"
+                  value={autoreboot.month}
+                  onChangeText={(value) =>
+                    setAutoreboot((current) => ({ ...current, month: value }))
+                  }
+                  placeholder="*"
+                  colors={colors}
+                />
+                <TextField
+                  label="星期"
                   value={autoreboot.week}
                   onChangeText={(value) =>
                     setAutoreboot((current) => ({ ...current, week: value }))
                   }
-                  placeholder="1,2,3,4,5"
+                  placeholder="*"
                   colors={colors}
                 />
-                <Text style={[styles.help, { color: colors.muted }]}>
-                  星期使用 1-7，例如 1,2,3,4,5 表示周一至周五。保存时重启
-                  autoreboot 服务。
-                </Text>
                 <PrimaryButton
                   label="保存定时重启"
                   disabled={disabled}
@@ -410,6 +499,7 @@ export default function SystemAdminScreen() {
                 <LedRow
                   key={led.section}
                   led={led}
+                  capabilities={ledCapabilities}
                   disabled={disabled}
                   colors={colors}
                   onSave={(next) =>
@@ -429,6 +519,19 @@ export default function SystemAdminScreen() {
                 description="该路由器可能未在 /etc/config/system 定义可管理的 LED。"
               />
             )}
+            <NewLedForm
+              disabled={disabled}
+              colors={colors}
+              capabilities={ledCapabilities}
+              onCreate={(next) =>
+                confirm(
+                  "新增 LED",
+                  `将新增“${next.name}”LED 配置。`,
+                  () => buildAddLedCommand(next),
+                  "LED 已新增。",
+                )
+              }
+            />
           </View>
         ) : null}
 
@@ -492,52 +595,63 @@ export default function SystemAdminScreen() {
               />
             ) : (
               <>
-                <TextField
-                  label="SSH 端口"
-                  value={ssh.port}
-                  onChangeText={(value) =>
-                    setSsh((current) => ({ ...current, port: value }))
-                  }
-                  placeholder="22"
-                  keyboardType="number-pad"
-                  colors={colors}
-                />
-                <SettingSwitch
-                  label="允许密码登录"
-                  value={ssh.passwordAuth}
-                  onValueChange={(value) =>
-                    setSsh((current) => ({ ...current, passwordAuth: value }))
-                  }
-                  colors={colors}
-                />
-                <SettingSwitch
-                  label="允许 root 使用密码登录"
-                  value={ssh.rootPasswordAuth}
-                  onValueChange={(value) =>
-                    setSsh((current) => ({
-                      ...current,
-                      rootPasswordAuth: value,
-                    }))
-                  }
-                  colors={colors}
-                />
-                <Text style={[styles.warning, { color: colors.warning }]}>
-                  关闭密码登录前，请确认已配置可用 SSH
-                  公钥；修改端口或权限可能中断当前连接。
+                <Text style={[styles.help, { color: colors.muted }]}>
+                  可为 Dropbear
+                  的每个实例分别设置端口、监听接口和认证权限；保存或启停会短暂重启
+                  SSH 服务。
                 </Text>
-                <PrimaryButton
-                  label="保存 SSH 管理权限"
+                {ssh.instances.length ? (
+                  ssh.instances.map((instance) => (
+                    <DropbearInstanceRow
+                      key={instance.section}
+                      instance={instance}
+                      disabled={disabled}
+                      colors={colors}
+                      onSave={(next) =>
+                        confirm(
+                          "保存 SSH 实例",
+                          `将更新 ${next.section} 的 Dropbear 设置并重启 SSH 服务。`,
+                          () => buildSaveSshInstanceCommand(next),
+                          "SSH 实例已保存。",
+                        )
+                      }
+                      onEnabledChange={(value) =>
+                        confirm(
+                          value ? "启用 SSH 实例" : "停用 SSH 实例",
+                          `${instance.section} 将${value ? "开始" : "停止"}监听新的 SSH 连接。`,
+                          () =>
+                            buildSshInstanceActionCommand(
+                              instance.section,
+                              value,
+                            ),
+                          `SSH 实例已${value ? "启用" : "停用"}。`,
+                        )
+                      }
+                    />
+                  ))
+                ) : (
+                  <EmptyState
+                    icon="vpn-key"
+                    title="未配置 Dropbear 实例"
+                    description="可新增一个 SSH 实例，或在路由器上恢复默认 Dropbear 配置后刷新。"
+                  />
+                )}
+                <NewDropbearInstance
                   disabled={disabled}
-                  color={colors.primary}
-                  onPress={() =>
+                  colors={colors}
+                  onCreate={(next) =>
                     confirm(
-                      "保存 SSH 管理权限",
-                      "Dropbear 将重启，当前 SSH 连接可能短暂断开。",
-                      () => buildSaveSshAccessCommand(ssh),
-                      "SSH 管理权限已保存。",
+                      "新增 SSH 实例",
+                      "将新增 Dropbear 实例并重启 SSH 服务。",
+                      () => buildAddSshInstanceCommand(next),
+                      "SSH 实例已新增。",
                     )
                   }
                 />
+                <Text style={[styles.warning, { color: colors.warning }]}>
+                  关闭密码登录前，请确认已配置可用 SSH
+                  公钥；修改端口、监听接口或权限可能中断当前连接。
+                </Text>
                 <View
                   style={[styles.subsection, { borderTopColor: colors.border }]}
                 >
@@ -632,6 +746,12 @@ export default function SystemAdminScreen() {
                       )
                     }
                   />
+                  <PrimaryButton
+                    label="从文件导入 SSH 公钥"
+                    disabled={disabled}
+                    color={colors.primary}
+                    onPress={() => void importSshPublicKey()}
+                  />
                 </View>
                 <View
                   style={[styles.subsection, { borderTopColor: colors.border }]}
@@ -671,6 +791,38 @@ export default function SystemAdminScreen() {
                     multiline
                     colors={colors}
                   />
+                  <TextField
+                    label="公钥文件 URL"
+                    value={apkKeyUrl}
+                    onChangeText={setApkKeyUrl}
+                    placeholder="https://example.com/keys/example.pub"
+                    colors={colors}
+                  />
+                  <PrimaryButton
+                    label="从文件导入 APK 仓库公钥"
+                    disabled={disabled}
+                    color={colors.primary}
+                    onPress={() => void importApkRepositoryKey()}
+                  />
+                  <PrimaryButton
+                    label="从 URL 下载并保存 APK 公钥"
+                    disabled={
+                      disabled || !apkKeyName.trim() || !apkKeyUrl.trim()
+                    }
+                    color={colors.primary}
+                    onPress={() =>
+                      confirm(
+                        "从 URL 下载 APK 仓库公钥",
+                        "将由路由器通过 HTTPS 下载并保存到 /etc/apk/keys。请仅使用可信仓库提供的链接。",
+                        () =>
+                          buildFetchApkRepositoryKeyCommand(
+                            apkKeyName,
+                            apkKeyUrl,
+                          ),
+                        "APK 仓库公钥已从 URL 下载并保存。",
+                      )
+                    }
+                  />
                   <PrimaryButton
                     label="保存 APK 仓库公钥"
                     disabled={
@@ -708,30 +860,6 @@ export default function SystemAdminScreen() {
                     </Text>
                   ) : (
                     <>
-                      <TextField
-                        label="HTTP 监听地址"
-                        value={uhttpd.httpPorts}
-                        onChangeText={(value) =>
-                          setUhttpd((current) => ({
-                            ...current,
-                            httpPorts: value,
-                          }))
-                        }
-                        placeholder="0.0.0.0:80"
-                        colors={colors}
-                      />
-                      <TextField
-                        label="HTTPS 监听地址"
-                        value={uhttpd.httpsPorts}
-                        onChangeText={(value) =>
-                          setUhttpd((current) => ({
-                            ...current,
-                            httpsPorts: value,
-                          }))
-                        }
-                        placeholder="0.0.0.0:443"
-                        colors={colors}
-                      />
                       <SettingSwitch
                         label="将 HTTP 重定向至 HTTPS"
                         value={uhttpd.redirectHttps}
@@ -1037,12 +1165,6 @@ export default function SystemAdminScreen() {
           </View>
         </SectionCard>
       ) : null}
-      <ToolNotice>
-        <Text style={[styles.help, { color: colors.muted }]}>
-          每次写入前均会在相应 /etc/config 文件旁保存 app-backup
-          时间戳副本。高风险变更会要求确认。
-        </Text>
-      </ToolNotice>
     </ManagementShell>
   );
 }
@@ -1146,23 +1268,403 @@ function PrimaryButton({
   );
 }
 
+function NewLedForm({
+  disabled,
+  colors,
+  capabilities,
+  onCreate,
+}: {
+  disabled: boolean;
+  colors: ReturnType<typeof useColors>;
+  capabilities: LedCapabilities;
+  onCreate: (value: NewLedSettings) => void;
+}) {
+  const [name, setName] = useState("");
+  const [sysfs, setSysfs] = useState("");
+  const [trigger, setTrigger] = useState("none");
+  const [color, setColor] = useState("");
+  const canCreate = !disabled && Boolean(name.trim() && sysfs.trim());
+  return (
+    <View style={[styles.subsection, { borderTopColor: colors.border }]}>
+      <Text style={[styles.subsectionTitle, { color: colors.foreground }]}>
+        添加 LED
+      </Text>
+      <TextField
+        label="名称"
+        value={name}
+        onChangeText={setName}
+        placeholder="例如：状态灯"
+        colors={colors}
+      />
+      <TextField
+        label="LED 设备（sysfs）"
+        value={sysfs}
+        onChangeText={setSysfs}
+        placeholder="例如：green:status"
+        colors={colors}
+      />
+      {capabilities.devices.length ? (
+        <ChoiceChips
+          values={capabilities.devices}
+          selected={sysfs}
+          onSelect={setSysfs}
+          colors={colors}
+        />
+      ) : null}
+      <TextField
+        label="触发器"
+        value={trigger}
+        onChangeText={setTrigger}
+        placeholder="none / timer / netdev / heartbeat"
+        colors={colors}
+      />
+      <ChoiceChips
+        values={capabilities.triggers}
+        selected={trigger}
+        onSelect={setTrigger}
+        colors={colors}
+      />
+      <TextField
+        label="颜色"
+        value={color}
+        onChangeText={setColor}
+        placeholder="white / red / green / blue / amber"
+        colors={colors}
+      />
+      <ChoiceChips
+        values={["", "white", "red", "green", "blue", "amber"]}
+        selected={color}
+        onSelect={setColor}
+        colors={colors}
+        emptyLabel="不指定"
+      />
+      <PrimaryButton
+        label="添加 LED"
+        disabled={!canCreate}
+        color={colors.primary}
+        onPress={() =>
+          onCreate({
+            name: name.trim(),
+            sysfs: sysfs.trim(),
+            trigger: trigger.trim(),
+            color: color.trim(),
+          })
+        }
+      />
+    </View>
+  );
+}
+
+function ChoiceChips({
+  values,
+  selected,
+  onSelect,
+  colors,
+  emptyLabel = "无",
+}: {
+  values: string[];
+  selected: string;
+  onSelect: (value: string) => void;
+  colors: ReturnType<typeof useColors>;
+  emptyLabel?: string;
+}) {
+  return (
+    <View style={styles.choiceRow}>
+      {values.map((value) => {
+        const active = selected === value;
+        return (
+          <Pressable
+            key={value || "empty"}
+            onPress={() => onSelect(value)}
+            style={({ pressed }) => [
+              styles.choice,
+              {
+                borderColor: active ? colors.primary : colors.border,
+                backgroundColor: active ? colors.primary : colors.surface,
+              },
+              pressed && styles.pressed,
+            ]}
+          >
+            <Text
+              style={{
+                color: active ? "#fff" : colors.foreground,
+                fontSize: 12,
+                fontWeight: "800",
+              }}
+            >
+              {value || emptyLabel}
+            </Text>
+          </Pressable>
+        );
+      })}
+    </View>
+  );
+}
+
+function DropbearInstanceFields({
+  draft,
+  onChange,
+  colors,
+}: {
+  draft: Omit<DropbearInstance, "section">;
+  onChange: (value: Omit<DropbearInstance, "section">) => void;
+  colors: ReturnType<typeof useColors>;
+}) {
+  return (
+    <>
+      <TextField
+        label="SSH 端口"
+        value={draft.port}
+        onChangeText={(port) => onChange({ ...draft, port })}
+        placeholder="22"
+        keyboardType="number-pad"
+        colors={colors}
+      />
+      <TextField
+        label="监听接口（以空格分隔，留空即全部接口）"
+        value={draft.interface}
+        onChangeText={(interfaceName) =>
+          onChange({ ...draft, interface: interfaceName })
+        }
+        placeholder="lan wan"
+        colors={colors}
+      />
+      <SettingSwitch
+        label="启用此 SSH 实例"
+        value={draft.enabled}
+        onValueChange={(enabled) => onChange({ ...draft, enabled })}
+        colors={colors}
+      />
+      <SettingSwitch
+        label="允许密码登录"
+        value={draft.passwordAuth}
+        onValueChange={(passwordAuth) => onChange({ ...draft, passwordAuth })}
+        colors={colors}
+      />
+      <SettingSwitch
+        label="允许 root 使用密码登录"
+        value={draft.rootPasswordAuth}
+        onValueChange={(rootPasswordAuth) =>
+          onChange({ ...draft, rootPasswordAuth })
+        }
+        colors={colors}
+      />
+      <SettingSwitch
+        label="允许远程主机连接转发端口（GatewayPorts）"
+        value={draft.gatewayPorts}
+        onValueChange={(gatewayPorts) => onChange({ ...draft, gatewayPorts })}
+        colors={colors}
+      />
+    </>
+  );
+}
+
+function DropbearInstanceRow({
+  instance,
+  disabled,
+  colors,
+  onSave,
+  onEnabledChange,
+}: {
+  instance: DropbearInstance;
+  disabled: boolean;
+  colors: ReturnType<typeof useColors>;
+  onSave: (value: DropbearInstance) => void;
+  onEnabledChange: (value: boolean) => void;
+}) {
+  const [draft, setDraft] = useState(instance);
+  const [editing, setEditing] = useState(false);
+  const editableDraft: Omit<DropbearInstance, "section"> = {
+    port: draft.port,
+    interface: draft.interface,
+    passwordAuth: draft.passwordAuth,
+    rootPasswordAuth: draft.rootPasswordAuth,
+    gatewayPorts: draft.gatewayPorts,
+    enabled: draft.enabled,
+  };
+  return (
+    <View
+      style={[
+        styles.deviceRow,
+        { backgroundColor: colors.background, borderColor: colors.border },
+      ]}
+    >
+      <View style={styles.rowCopy}>
+        <Text style={[styles.rowTitle, { color: colors.foreground }]}>
+          {instance.section}
+        </Text>
+        <Text style={[styles.help, { color: colors.muted }]}>
+          {`端口 ${instance.port} · ${instance.interface || "全部接口"} · ${instance.gatewayPorts ? "允许网关端口" : "仅本地转发"}`}
+        </Text>
+      </View>
+      <Switch
+        value={instance.enabled}
+        disabled={disabled}
+        onValueChange={onEnabledChange}
+        trackColor={{ false: colors.border, true: colors.primary }}
+      />
+      <SmallButton
+        label="编辑"
+        disabled={disabled}
+        color={colors.primary}
+        onPress={() => {
+          setDraft(instance);
+          setEditing(true);
+        }}
+      />
+      <Modal
+        visible={editing}
+        animationType="slide"
+        transparent
+        onRequestClose={() => setEditing(false)}
+      >
+        <View style={styles.modalBackdrop}>
+          <View
+            style={[
+              styles.modalSheet,
+              { backgroundColor: colors.surface, borderColor: colors.border },
+            ]}
+          >
+            <View style={styles.modalHeader}>
+              <View style={styles.rowCopy}>
+                <Text style={[styles.modalTitle, { color: colors.foreground }]}>
+                  编辑 SSH 实例
+                </Text>
+                <Text style={[styles.help, { color: colors.muted }]}>
+                  {instance.section}
+                </Text>
+              </View>
+              <SmallButton
+                label="关闭"
+                disabled={false}
+                color={colors.border}
+                onPress={() => setEditing(false)}
+              />
+            </View>
+            <ScrollView
+              contentContainerStyle={styles.modalContent}
+              keyboardShouldPersistTaps="handled"
+            >
+              <DropbearInstanceFields
+                draft={editableDraft}
+                onChange={(next) =>
+                  setDraft((current) => ({ ...current, ...next }))
+                }
+                colors={colors}
+              />
+              <PrimaryButton
+                label="保存 SSH 实例"
+                disabled={disabled}
+                color={colors.primary}
+                onPress={() => {
+                  onSave(draft);
+                  setEditing(false);
+                }}
+              />
+            </ScrollView>
+          </View>
+        </View>
+      </Modal>
+    </View>
+  );
+}
+
+function NewDropbearInstance({
+  disabled,
+  colors,
+  onCreate,
+}: {
+  disabled: boolean;
+  colors: ReturnType<typeof useColors>;
+  onCreate: (value: Omit<DropbearInstance, "section">) => void;
+}) {
+  const [draft, setDraft] = useState(emptyDropbearInstance);
+  const [editing, setEditing] = useState(false);
+  return (
+    <>
+      <PrimaryButton
+        label="新增 SSH 实例"
+        disabled={disabled}
+        color={colors.primary}
+        onPress={() => {
+          setDraft(emptyDropbearInstance);
+          setEditing(true);
+        }}
+      />
+      <Modal
+        visible={editing}
+        animationType="slide"
+        transparent
+        onRequestClose={() => setEditing(false)}
+      >
+        <View style={styles.modalBackdrop}>
+          <View
+            style={[
+              styles.modalSheet,
+              { backgroundColor: colors.surface, borderColor: colors.border },
+            ]}
+          >
+            <View style={styles.modalHeader}>
+              <View style={styles.rowCopy}>
+                <Text style={[styles.modalTitle, { color: colors.foreground }]}>
+                  新增 SSH 实例
+                </Text>
+                <Text style={[styles.help, { color: colors.muted }]}>
+                  保存后 Dropbear 会短暂重启。
+                </Text>
+              </View>
+              <SmallButton
+                label="关闭"
+                disabled={false}
+                color={colors.border}
+                onPress={() => setEditing(false)}
+              />
+            </View>
+            <ScrollView
+              contentContainerStyle={styles.modalContent}
+              keyboardShouldPersistTaps="handled"
+            >
+              <DropbearInstanceFields
+                draft={draft}
+                onChange={setDraft}
+                colors={colors}
+              />
+              <PrimaryButton
+                label="创建 SSH 实例"
+                disabled={disabled || !draft.port.trim()}
+                color={colors.primary}
+                onPress={() => {
+                  onCreate(draft);
+                  setEditing(false);
+                }}
+              />
+            </ScrollView>
+          </View>
+        </View>
+      </Modal>
+    </>
+  );
+}
+
 function LedRow({
   led,
   disabled,
   colors,
+  capabilities,
   onSave,
   divider,
 }: {
   led: LedSetting;
   disabled: boolean;
   colors: ReturnType<typeof useColors>;
+  capabilities: LedCapabilities;
   onSave: (
-    value: Pick<LedSetting, "section" | "trigger" | "defaultValue">,
+    value: Pick<LedSetting, "section" | "trigger" | "color" | "defaultValue">,
   ) => void;
   divider: boolean;
 }) {
   const [trigger, setTrigger] = useState(led.trigger);
-  const [defaultValue, setDefaultValue] = useState(led.defaultValue);
+  const [color, setColor] = useState(led.color);
   return (
     <View
       style={[
@@ -1183,20 +1685,41 @@ function LedRow({
         label="触发器"
         value={trigger}
         onChangeText={setTrigger}
-        placeholder="none / netdev / timer"
+        placeholder="none / timer / netdev / heartbeat"
         colors={colors}
       />
-      <SettingSwitch
-        label="默认点亮"
-        value={defaultValue === "1"}
-        onValueChange={(value) => setDefaultValue(value ? "1" : "0")}
+      <ChoiceChips
+        values={capabilities.triggers}
+        selected={trigger}
+        onSelect={setTrigger}
         colors={colors}
+      />
+      <TextField
+        label="LED 颜色"
+        value={color}
+        onChangeText={setColor}
+        placeholder="white / red / green / blue / amber"
+        colors={colors}
+      />
+      <ChoiceChips
+        values={["", "white", "red", "green", "blue", "amber"]}
+        selected={color}
+        onSelect={setColor}
+        colors={colors}
+        emptyLabel="不指定"
       />
       <PrimaryButton
         label="保存 LED"
         disabled={disabled}
         color={colors.primary}
-        onPress={() => onSave({ section: led.section, trigger, defaultValue })}
+        onPress={() =>
+          onSave({
+            section: led.section,
+            trigger,
+            color,
+            defaultValue: led.defaultValue,
+          })
+        }
       />
     </View>
   );

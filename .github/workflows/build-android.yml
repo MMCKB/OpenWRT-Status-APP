@@ -68,25 +68,22 @@ jobs:
           corepack enable
           pnpm install --frozen-lockfile
 
-      - name: Generate temporary CI debug keystore
+      - name: Restore stable Android release keystore
+        env:
+          ANDROID_RELEASE_KEYSTORE_B64: ${{ secrets.ANDROID_RELEASE_KEYSTORE_B64 }}
+          ANDROID_RELEASE_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_RELEASE_KEYSTORE_PASSWORD }}
+          ANDROID_RELEASE_KEY_ALIAS: ${{ secrets.ANDROID_RELEASE_KEY_ALIAS }}
         run: |
           set -euo pipefail
-          rm -f android/app/debug.keystore
-          keytool -genkeypair \
-            -keystore android/app/debug.keystore \
-            -storepass android \
-            -alias androiddebugkey \
-            -keypass android \
-            -keyalg RSA \
-            -keysize 2048 \
-            -validity 10000 \
-            -dname "CN=OpenWrt Status CI, OU=Android, O=MMCKB, C=CN" \
-            -noprompt
-          chmod 600 android/app/debug.keystore
+          test -n "$ANDROID_RELEASE_KEYSTORE_B64"
+          test -n "$ANDROID_RELEASE_KEYSTORE_PASSWORD"
+          test -n "$ANDROID_RELEASE_KEY_ALIAS"
+          printf '%s' "$ANDROID_RELEASE_KEYSTORE_B64" | base64 --decode > android/app/openwrt-status-release.keystore
+          chmod 600 android/app/openwrt-status-release.keystore
           keytool -list \
-            -keystore android/app/debug.keystore \
-            -storepass android \
-            -alias androiddebugkey >/dev/null
+            -keystore android/app/openwrt-status-release.keystore \
+            -storepass "$ANDROID_RELEASE_KEYSTORE_PASSWORD" \
+            -alias "$ANDROID_RELEASE_KEY_ALIAS" >/dev/null
 
       - name: Verify source quality
         run: |
@@ -99,6 +96,9 @@ jobs:
       - name: Build, align, sign, and verify ${{ matrix.abi }} APK
         env:
           ABI: ${{ matrix.abi }}
+          ANDROID_RELEASE_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_RELEASE_KEYSTORE_PASSWORD }}
+          ANDROID_RELEASE_KEY_PASSWORD: ${{ secrets.ANDROID_RELEASE_KEY_PASSWORD }}
+          ANDROID_RELEASE_KEY_ALIAS: ${{ secrets.ANDROID_RELEASE_KEY_ALIAS }}
         run: |
           set -euo pipefail
 
@@ -129,10 +129,10 @@ jobs:
           mkdir -p release-artifacts
           "$ZIPALIGN" -P 16 -f -v 4 "$RAW_APK" "$ALIGNED_APK"
           "$APKSIGNER" sign \
-            --ks android/app/debug.keystore \
-            --ks-key-alias androiddebugkey \
-            --ks-pass pass:android \
-            --key-pass pass:android \
+            --ks android/app/openwrt-status-release.keystore \
+            --ks-key-alias "$ANDROID_RELEASE_KEY_ALIAS" \
+            --ks-pass "pass:$ANDROID_RELEASE_KEYSTORE_PASSWORD" \
+            --key-pass "pass:$ANDROID_RELEASE_KEY_PASSWORD" \
             --v1-signing-enabled true \
             --v2-signing-enabled true \
             --v3-signing-enabled true \
@@ -165,9 +165,9 @@ jobs:
           if-no-files-found: error
           retention-days: 14
 
-      - name: Remove temporary CI signing key
+      - name: Remove restored release signing key
         if: always()
-        run: rm -f android/app/debug.keystore
+        run: rm -f android/app/openwrt-status-release.keystore
 
   release:
     name: Publish GitHub Release

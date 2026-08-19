@@ -5,7 +5,7 @@ import { ActivityIndicator, Keyboard, KeyboardAvoidingView, Platform, Pressable,
 import { EmptyState, StatusPill } from "@/components/status-ui";
 import { useColors } from "@/hooks/use-colors";
 import { useColorScheme } from "@/hooks/use-color-scheme";
-import { connectInAppSsh, disconnectInAppSsh, getInAppSshTarget, isInAppSshConnectedFor, isInAppSshSupported, runInAppSshCommand } from "@/lib/native-ssh";
+import { connectInAppSsh, disconnectInAppSsh, getInAppSshTarget, isInAppSshConnectedFor, isInAppSshSupported, runInAppSshCommand, subscribeInAppSshSession } from "@/lib/native-ssh";
 import { useRouterStore } from "@/lib/router-provider";
 
 type ConnectionState = "idle" | "connecting" | "connected" | "error";
@@ -19,6 +19,7 @@ function trimTerminalOutput(value: string) {
 
 export default function ControlScreen() {
   const { selectedProfile, getSelectedCredentials } = useRouterStore();
+  const profile = selectedProfile;
   const colors = useColors();
   const isDark = useColorScheme() === "dark";
   const terminalRef = useRef<ScrollView>(null);
@@ -43,10 +44,12 @@ export default function ControlScreen() {
   }, []);
 
   useEffect(() => {
-    setConnection(selectedProfile && isInAppSshConnectedFor(selectedProfile) ? "connected" : "idle");
-  }, [selectedProfile]);
-
-  const profile = selectedProfile;
+    const syncConnection = () => {
+      setConnection(profile && isInAppSshConnectedFor(profile) ? "connected" : "idle");
+    };
+    syncConnection();
+    return subscribeInAppSshSession(syncConnection);
+  }, [profile]);
   if (!profile) {
     return (
       <View style={[styles.emptyScreen, { backgroundColor: colors.background }]}>

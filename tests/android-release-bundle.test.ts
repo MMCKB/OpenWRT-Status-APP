@@ -41,9 +41,9 @@ describe("Android Release JavaScript bundle", () => {
     const gradleVersion = gradle.match(/versionName\s+"([0-9.]+)"/)?.[1];
     const gradleVersionCode = gradle.match(/versionCode\s+(\d+)/)?.[1];
 
-    expect(expoVersion).toBe("1.0.23");
+    expect(expoVersion).toBe("1.0.24");
     expect(expoVersion).toBe(gradleVersion);
-    expect(expoVersionCode).toBe("19");
+    expect(expoVersionCode).toBe("20");
     expect(expoVersionCode).toBe(gradleVersionCode);
   });
 
@@ -72,9 +72,15 @@ describe("Android Release JavaScript bundle", () => {
     expect(workflow).toContain(
       "android/app/src/main/java/com/app/openwrtstatusapp/MainActivity.kt",
     );
+    expect(workflow).toContain("Restore stable Android release keystore");
+    expect(workflow).toContain("ANDROID_RELEASE_KEYSTORE_B64");
+    expect(workflow).toContain("android/app/openwrt-status-release.keystore");
+    expect(workflow).toContain('--ks-key-alias "$ANDROID_RELEASE_KEY_ALIAS"');
+    expect(workflow).not.toContain("Generate temporary CI debug keystore");
+    expect(workflow).not.toContain("android/app/debug.keystore");
   });
 
-  it("当前源码包含服务、密码显示与可控制的预测性返回手势", () => {
+  it("当前源码包含服务、管理权扩展、密码显示与可控制的预测性返回手势", () => {
     const routerForm = readFileSync(routerFormPath, "utf8");
     const wirelessManager = readFileSync(wirelessManagerPath, "utf8");
     const serviceHealth = readFileSync(serviceHealthPath, "utf8");
@@ -107,6 +113,10 @@ describe("Android Release JavaScript bundle", () => {
     expect(systemAdmin).toContain("路由器密码");
     expect(systemAdmin).toContain("APK 仓库公钥");
     expect(systemAdmin).toContain("LuCI HTTP/HTTPS 服务");
+    expect(systemAdmin).toContain("新增 SSH 实例");
+    expect(systemAdmin).toContain("GatewayPorts");
+    expect(systemAdmin).toContain("从文件导入");
+    expect(systemAdmin).toContain("buildFetchApkRepositoryKeyCommand");
     expect(systemAdmin).toContain("网络设备");
     expect(systemAdmin).toContain("全局网络设置");
     expect(systemAdmin).toContain("链路在线");

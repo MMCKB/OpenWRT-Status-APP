@@ -1,7 +1,12 @@
 export type AutorebootSettings = {
   installed: boolean;
+  section: string;
   enabled: boolean;
   time: string;
+  minute: string;
+  hour: string;
+  day: string;
+  month: string;
   week: string;
 };
 
@@ -12,7 +17,18 @@ export type LedSetting = {
   name: string;
   sysfs: string;
   trigger: string;
+  color: string;
   defaultValue: string;
+};
+
+export type NewLedSettings = Pick<
+  LedSetting,
+  "name" | "sysfs" | "trigger" | "color"
+>;
+
+export type LedCapabilities = {
+  devices: string[];
+  triggers: string[];
 };
 
 export type MountPoint = {
@@ -29,6 +45,17 @@ export type SshAccessSettings = {
   port: string;
   passwordAuth: boolean;
   rootPasswordAuth: boolean;
+  instances: DropbearInstance[];
+};
+
+export type DropbearInstance = {
+  section: string;
+  port: string;
+  interface: string;
+  passwordAuth: boolean;
+  rootPasswordAuth: boolean;
+  gatewayPorts: boolean;
+  enabled: boolean;
 };
 
 export type SshAuthorizedKey = {
@@ -94,6 +121,7 @@ const SAFE_SERVICE = /^[A-Za-z0-9_.-]{1,80}$/;
 const SAFE_VALUE = /^[A-Za-z0-9_./:@,+\-\[\] ]{0,240}$/;
 const SAFE_CRON_FIELD = /^[0-9*/?,\- ]{1,50}$/;
 const SAFE_KEY_NAME = /^[A-Za-z0-9][A-Za-z0-9._-]{0,79}$/;
+const SAFE_LED_OPTION = /^[A-Za-z0-9_.:-]{1,128}$/;
 
 function quote(value: string): string {
   return `'${value.replace(/'/g, `'\\''`)}'`;
@@ -162,27 +190,43 @@ function parseAddressList(value: unknown): string[] {
 }
 
 export function buildAutorebootSnapshotCommand(): string {
-  return `[ -f /etc/config/autoreboot ] && echo 'AUTOREBOOT|installed|yes' || echo 'AUTOREBOOT|installed|no'; section=$(uci -q show autoreboot 2>/dev/null | sed -n 's/^autoreboot\\.\\([^.=]*\\)=\\(global\\|autoreboot\\)$/\\1/p' | head -n 1); [ -n "$section" ] || exit 0; uci -q get "autoreboot.$section.enable" 2>/dev/null | sed 's/^/AUTOREBOOT|enable|/'; uci -q get "autoreboot.$section.enabled" 2>/dev/null | sed 's/^/AUTOREBOOT|enabled|/'; uci -q get "autoreboot.$section.time" 2>/dev/null | sed 's/^/AUTOREBOOT|time|/'; uci -q get "autoreboot.$section.week" 2>/dev/null | sed 's/^/AUTOREBOOT|week|/'; uci -q get "autoreboot.$section.weekdays" 2>/dev/null | sed 's/^/AUTOREBOOT|weekdays|/'`;
+  return `[ -f /etc/config/autoreboot ] && echo 'AUTOREBOOT|installed|yes' || echo 'AUTOREBOOT|installed|no'; section=$(uci -q show autoreboot 2>/dev/null | sed -n 's/^autoreboot\\.\\([^.=]*\\)=\\(global\\|autoreboot\\|login\\)$/\\1/p' | head -n 1); [ -n "$section" ] || exit 0; printf 'AUTOREBOOT|section|%s\\n' "$section"; for key in enable enabled time minute hour day month week weekdays; do uci -q get "autoreboot.$section.$key" 2>/dev/null | sed "s|^|AUTOREBOOT|$key||"; done`;
 }
 
 export function parseAutorebootSettings(output: string): AutorebootSettings {
   const values = parseValueMap("AUTOREBOOT", output);
   return {
     installed: values.get("installed") === "yes",
+    section: values.get("section") || "",
     enabled: enabled(values.get("enable") ?? values.get("enabled")),
-    time: values.get("time") || "04:00",
-    week: values.get("week") || values.get("weekdays") || "",
+    time:
+      values.get("time") ||
+      `${(values.get("hour") || "4").padStart(2, "0")}:${(values.get("minute") || "0").padStart(2, "0")}`,
+    minute: values.get("minute") || "0",
+    hour: values.get("hour") || "4",
+    day: values.get("day") || "*",
+    month: values.get("month") || "*",
+    week: values.get("week") || values.get("weekdays") || "*",
   };
 }
 
 export function buildSaveAutorebootCommand(
-  settings: Pick<AutorebootSettings, "enabled" | "time" | "week">,
+  settings: Pick<
+    AutorebootSettings,
+    "enabled" | "minute" | "hour" | "day" | "month" | "week"
+  >,
 ): string {
-  if (!/^([01]\d|2[0-3]):[0-5]\d$/.test(settings.time))
-    throw new Error("自动重启时间必须为 HH:MM。");
-  if (settings.week && !/^[1-7](,[1-7])*$/.test(settings.week))
-    throw new Error("重启星期仅支持 1-7，并以逗号分隔。");
-  return `[ -f /etc/config/autoreboot ] || { echo '未安装 luci-app-autoreboot / autoreboot。'; exit 2; }; section=$(uci -q show autoreboot 2>/dev/null | sed -n 's/^autoreboot\\.\\([^.=]*\\)=\\(global\\|autoreboot\\)$/\\1/p' | head -n 1); [ -n "$section" ] || { echo '未找到自动重启配置段。'; exit 2; }; cp /etc/config/autoreboot /etc/config/autoreboot.app-backup.$(date +%s); uci set "autoreboot.$section.enable=${settings.enabled ? "1" : "0"}"; uci set "autoreboot.$section.time=${settings.time}"; uci set "autoreboot.$section.week=${settings.week}"; uci commit autoreboot; /etc/init.d/autoreboot restart 2>/dev/null || true; echo '自动重启设置已保存。'`;
+  for (const [label, value] of Object.entries({
+    分钟: settings.minute,
+    小时: settings.hour,
+    日期: settings.day,
+    月份: settings.month,
+    星期: settings.week,
+  })) {
+    if (!SAFE_CRON_FIELD.test(value))
+      throw new Error(`${label}计划字段不合法。`);
+  }
+  return `[ -f /etc/config/autoreboot ] || { echo '未安装 luci-app-autoreboot / autoreboot。'; exit 2; }; section=$(uci -q show autoreboot 2>/dev/null | sed -n 's/^autoreboot\\.\\([^.=]*\\)=\\(global\\|autoreboot\\|login\\)$/\\1/p' | head -n 1); [ -n "$section" ] || section=$(uci add autoreboot login); uci set "autoreboot.$section.enable=${settings.enabled ? "1" : "0"}"; uci set "autoreboot.$section.minute=${settings.minute}"; uci set "autoreboot.$section.hour=${settings.hour}"; uci set "autoreboot.$section.day=${settings.day}"; uci set "autoreboot.$section.month=${settings.month}"; uci set "autoreboot.$section.week=${settings.week}"; uci -q delete "autoreboot.$section.time"; uci commit autoreboot; /etc/init.d/autoreboot restart 2>/dev/null || true; echo '自动重启设置已保存。'`;
 }
 
 export function buildStartupSnapshotCommand(): string {
@@ -208,7 +252,7 @@ export function buildStartupActionCommand(
 }
 
 export function buildLedSnapshotCommand(): string {
-  return `uci -q show system | awk -F= '/=led$/{section=$1; sub(/^system\\./,"",section); print "LED|" section "|name|" section} /^system\\.[^.]+\\.(name|sysfs|trigger|default)=/{key=$1; sub(/^system\\.[^.]+\\./,"",key); value=$2; gsub(/\\047/,"",value); split($1,p,"."); print "LED|" p[2] "|" key "|" value}'`;
+  return `uci -q show system | awk -F= '/=led$/{section=$1; sub(/^system\\./,"",section); print "LED|" section "|name|" section} /^system\\.[^.]+\\.(name|sysfs|trigger|color|default)=/{key=$1; sub(/^system\\.[^.]+\\./,"",key); value=$2; gsub(/\\047/,"",value); split($1,p,"."); print "LED|" p[2] "|" key "|" value}'`;
 }
 
 export function parseLedSettings(output: string): LedSetting[] {
@@ -217,19 +261,48 @@ export function parseLedSettings(output: string): LedSetting[] {
     name: value.name ?? section,
     sysfs: value.sysfs ?? "",
     trigger: value.trigger ?? "none",
+    color: value.color ?? "",
     defaultValue: value.default ?? "0",
   }));
 }
 
+export function buildLedCapabilitiesSnapshotCommand(): string {
+  return `for led in /sys/class/leds/*; do [ -d "$led" ] || continue; name=$(basename "$led"); printf 'LEDCAP|device|%s\\n' "$name"; [ -r "$led/trigger" ] || continue; tr ' ' '\\n' < "$led/trigger" | tr -d '[]' | awk '/^[A-Za-z0-9_.:-]+$/ { print "LEDCAP|trigger|" $0 }'; done | sort -u`;
+}
+
+export function parseLedCapabilities(output: string): LedCapabilities {
+  const devices = new Set<string>();
+  const triggers = new Set<string>();
+  for (const line of output.split(/\r?\n/)) {
+    const match = line.match(/^LEDCAP\|(device|trigger)\|([^|]+)$/);
+    if (!match || !SAFE_LED_OPTION.test(match[2])) continue;
+    if (match[1] === "device") devices.add(match[2]);
+    else triggers.add(match[2]);
+  }
+  return {
+    devices: [...devices].sort((a, b) => a.localeCompare(b)),
+    triggers: [...triggers].sort((a, b) => a.localeCompare(b)),
+  };
+}
+
 export function buildSaveLedCommand(
-  settings: Pick<LedSetting, "section" | "trigger" | "defaultValue">,
+  settings: Pick<LedSetting, "section" | "trigger" | "color" | "defaultValue">,
 ): string {
   assertSection(settings.section);
   assertValue(settings.trigger, "LED 触发器");
+  assertValue(settings.color, "LED 颜色");
   if (!/^[01]$/.test(settings.defaultValue))
     throw new Error("LED 默认状态仅支持 0 或 1。");
   const base = `system.${settings.section}`;
-  return `uci -q get ${quote(base)} >/dev/null || { echo 'LED 配置不存在。'; exit 2; }; cp /etc/config/system /etc/config/system.app-backup.$(date +%s); ${uciSet(`${base}.trigger`, settings.trigger)}; ${uciSet(`${base}.default`, settings.defaultValue)}; uci commit system; /etc/init.d/system reload; echo 'LED 设置已保存。'`;
+  return `uci -q get ${quote(base)} >/dev/null || { echo 'LED 配置不存在。'; exit 2; }; ${uciSet(`${base}.trigger`, settings.trigger)}; ${settings.color ? uciSet(`${base}.color`, settings.color) : uciDelete(`${base}.color`)}; ${uciSet(`${base}.default`, settings.defaultValue)}; uci commit system; /etc/init.d/system reload; echo 'LED 设置已保存。'`;
+}
+
+export function buildAddLedCommand(settings: NewLedSettings): string {
+  assertValue(settings.name, "LED 名称");
+  assertValue(settings.sysfs, "LED 设备");
+  assertValue(settings.trigger, "LED 触发器");
+  if (settings.color) assertValue(settings.color, "LED 颜色");
+  return `section=app_led_$(date +%s); uci set "system.$section=led"; uci set "system.$section.name=${settings.name}"; uci set "system.$section.sysfs=${settings.sysfs}"; uci set "system.$section.trigger=${settings.trigger}"; ${settings.color ? `uci set "system.$section.color=${settings.color}"; ` : ""}uci set "system.$section.default=0"; uci commit system; /etc/init.d/system reload; echo 'LED 已新增。'`;
 }
 
 export function buildMountSnapshotCommand(): string {
@@ -259,16 +332,30 @@ export function buildMountActionCommand(
 }
 
 export function buildSshAccessSnapshotCommand(): string {
-  return `[ -x /etc/init.d/dropbear ] && echo 'SSH|installed|yes' || echo 'SSH|installed|no'; uci -q get dropbear.@dropbear[0].Port 2>/dev/null | sed 's/^/SSH|port|/'; uci -q get dropbear.@dropbear[0].PasswordAuth 2>/dev/null | sed 's/^/SSH|password|/'; uci -q get dropbear.@dropbear[0].RootPasswordAuth 2>/dev/null | sed 's/^/SSH|rootpassword|/'`;
+  return `[ -x /etc/init.d/dropbear ] && echo 'SSH|installed|yes' || echo 'SSH|installed|no'; uci -q show dropbear 2>/dev/null | awk -F= '/=dropbear$/{section=$1; sub(/^dropbear\\./,"",section); print "SSHINSTANCE|" section "|section|" section} /^dropbear\\.[^.]+\\.(Port|Interface|PasswordAuth|RootPasswordAuth|GatewayPorts|enable)=/{key=$1; sub(/^dropbear\\.[^.]+\\./,"",key); value=$2; gsub(/\\047/,"",value); split($1,p,"."); print "SSHINSTANCE|" p[2] "|" key "|" value}'`;
 }
 
 export function parseSshAccessSettings(output: string): SshAccessSettings {
   const values = parseValueMap("SSH", output);
+  const instances = [...parseRecords("SSHINSTANCE", output).entries()].map(
+    ([section, value]) => ({
+      section,
+      port: value.Port || value.port || "22",
+      interface: value.Interface || value.interface || "",
+      passwordAuth: enabled(value.PasswordAuth ?? value.password),
+      rootPasswordAuth: enabled(value.RootPasswordAuth ?? value.rootpassword),
+      gatewayPorts: enabled(value.GatewayPorts ?? value.gatewayports),
+      enabled: value.enable !== "0",
+    }),
+  );
+  const primary = instances[0];
   return {
     installed: values.get("installed") === "yes",
-    port: values.get("port") || "22",
-    passwordAuth: enabled(values.get("password")),
-    rootPasswordAuth: enabled(values.get("rootpassword")),
+    port: primary?.port || values.get("port") || "22",
+    passwordAuth: primary?.passwordAuth ?? enabled(values.get("password")),
+    rootPasswordAuth:
+      primary?.rootPasswordAuth ?? enabled(values.get("rootpassword")),
+    instances,
   };
 }
 
@@ -280,6 +367,75 @@ export function buildSaveSshAccessCommand(
 ): string {
   assertPort(settings.port, "SSH 端口");
   return `[ -x /etc/init.d/dropbear ] || { echo 'Dropbear 未安装。'; exit 2; }; cp /etc/config/dropbear /etc/config/dropbear.app-backup.$(date +%s); ${uciSet("dropbear.@dropbear[0].Port", settings.port)}; ${uciSet("dropbear.@dropbear[0].PasswordAuth", settings.passwordAuth ? "on" : "off")}; ${uciSet("dropbear.@dropbear[0].RootPasswordAuth", settings.rootPasswordAuth ? "on" : "off")}; uci commit dropbear; /etc/init.d/dropbear restart; echo 'SSH 管理权限已保存。'`;
+}
+
+function assertDropbearInstance(
+  settings: Pick<
+    DropbearInstance,
+    | "port"
+    | "interface"
+    | "passwordAuth"
+    | "rootPasswordAuth"
+    | "gatewayPorts"
+    | "enabled"
+  >,
+): void {
+  assertPort(settings.port, "SSH 端口");
+  if (settings.interface.trim()) assertValue(settings.interface, "监听接口");
+}
+
+function dropbearInstanceWrites(
+  base: string,
+  settings: Pick<
+    DropbearInstance,
+    | "port"
+    | "interface"
+    | "passwordAuth"
+    | "rootPasswordAuth"
+    | "gatewayPorts"
+    | "enabled"
+  >,
+): string {
+  const interfaces = settings.interface.trim().split(/\s+/).filter(Boolean);
+  return [
+    uciSet(`${base}.Port`, settings.port),
+    uciDelete(`${base}.Interface`),
+    ...interfaces.map(
+      (item) => `uci add_list ${quote(`${base}.Interface=${item}`)}`,
+    ),
+    uciSet(`${base}.PasswordAuth`, settings.passwordAuth ? "on" : "off"),
+    uciSet(
+      `${base}.RootPasswordAuth`,
+      settings.rootPasswordAuth ? "on" : "off",
+    ),
+    uciSet(`${base}.GatewayPorts`, settings.gatewayPorts ? "on" : "off"),
+    uciSet(`${base}.enable`, settings.enabled ? "1" : "0"),
+  ].join("; ");
+}
+
+export function buildSaveSshInstanceCommand(
+  settings: DropbearInstance,
+): string {
+  assertSection(settings.section);
+  assertDropbearInstance(settings);
+  const base = `dropbear.${settings.section}`;
+  return `[ -x /etc/init.d/dropbear ] || { echo 'Dropbear 未安装。'; exit 2; }; uci -q get ${quote(base)} >/dev/null || { echo 'SSH 实例不存在。'; exit 2; }; ${dropbearInstanceWrites(base, settings)}; uci commit dropbear; /etc/init.d/dropbear restart; echo 'SSH 实例已保存。'`;
+}
+
+export function buildAddSshInstanceCommand(
+  settings: Omit<DropbearInstance, "section">,
+): string {
+  assertDropbearInstance(settings);
+  return `[ -x /etc/init.d/dropbear ] || { echo 'Dropbear 未安装。'; exit 2; }; section=$(uci add dropbear dropbear); ${dropbearInstanceWrites("dropbear.$section", settings)}; uci commit dropbear; /etc/init.d/dropbear restart; echo 'SSH 实例已新增。'`;
+}
+
+export function buildSshInstanceActionCommand(
+  section: string,
+  shouldEnable: boolean,
+): string {
+  assertSection(section);
+  const base = `dropbear.${section}`;
+  return `[ -x /etc/init.d/dropbear ] || { echo 'Dropbear 未安装。'; exit 2; }; uci -q get ${quote(base)} >/dev/null || { echo 'SSH 实例不存在。'; exit 2; }; ${uciSet(`${base}.enable`, shouldEnable ? "1" : "0")}; uci commit dropbear; /etc/init.d/dropbear restart; echo 'SSH 实例已${shouldEnable ? "启用" : "停用"}。'`;
 }
 
 export function buildChangeRouterPasswordCommand(newPassword: string): string {
@@ -351,6 +507,33 @@ export function buildAddApkRepositoryKeyCommand(
   return `mkdir -p /etc/apk/keys; cp /etc/apk/keys/${normalizedName} /etc/apk/keys/${normalizedName}.app-backup.$(date +%s) 2>/dev/null || true; printf '%s' ${quote(publicKey.trim())} > /etc/apk/keys/${normalizedName}; chmod 644 /etc/apk/keys/${normalizedName}; echo 'APK 仓库公钥已保存。'`;
 }
 
+export function buildFetchApkRepositoryKeyCommand(
+  name: string,
+  sourceUrl: string,
+): string {
+  const normalizedName = name.trim().endsWith(".pub")
+    ? name.trim()
+    : `${name.trim()}.pub`;
+  if (!SAFE_KEY_NAME.test(normalizedName))
+    throw new Error("APK 公钥文件名仅支持字母、数字、点、下划线和连字符。");
+  let parsed: URL;
+  try {
+    parsed = new URL(sourceUrl.trim());
+  } catch {
+    throw new Error("公钥文件 URL 无效。");
+  }
+  if (
+    !["http:", "https:"].includes(parsed.protocol) ||
+    !parsed.hostname ||
+    parsed.username ||
+    parsed.password ||
+    parsed.hash
+  )
+    throw new Error("公钥文件 URL 仅支持无认证的 HTTP(S) 地址。");
+  const remote = parsed.toString();
+  return `mkdir -p /etc/apk/keys; tmp=/tmp/${normalizedName}.app-download.$$; trap 'rm -f "$tmp"' EXIT; (command -v uclient-fetch >/dev/null 2>&1 && uclient-fetch -q -O "$tmp" ${quote(remote)}) || (command -v wget >/dev/null 2>&1 && wget -q -O "$tmp" ${quote(remote)}) || { echo '无法下载 APK 仓库公钥。'; exit 2; }; [ -s "$tmp" ] && [ "$(wc -c < "$tmp")" -le 20000 ] || { echo '下载的 APK 公钥为空或过长。'; exit 2; }; mv "$tmp" /etc/apk/keys/${normalizedName}; chmod 644 /etc/apk/keys/${normalizedName}; echo 'APK 仓库公钥已从 URL 导入。'`;
+}
+
 export function buildUhttpdSnapshotCommand(): string {
   return `[ -x /etc/init.d/uhttpd ] && echo 'UHTTPD|installed|yes' || echo 'UHTTPD|installed|no'; uci -q show uhttpd 2>/dev/null | awk -F= '/=uhttpd$/{section=$1; sub(/^uhttpd\\./,"",section); print "UHTTPD|" section "|section|" section} /^uhttpd\\.[^.]+\\.(listen_http|listen_https|redirect_https)=/{key=$1; sub(/^uhttpd\\.[^.]+\\./,"",key); value=$2; gsub(/\\047/,"",value); split($1,p,"."); print "UHTTPD|" p[2] "|" key "|" value}'`;
 }
@@ -381,28 +564,11 @@ function parseListenEntries(value: string, label: string): string[] {
 }
 
 export function buildSaveUhttpdCommand(
-  settings: Pick<
-    UhttpdSettings,
-    "section" | "httpPorts" | "httpsPorts" | "redirectHttps"
-  >,
+  settings: Pick<UhttpdSettings, "section" | "redirectHttps">,
 ): string {
   assertSection(settings.section);
-  const httpEntries = parseListenEntries(settings.httpPorts, "HTTP 监听地址");
-  const httpsEntries = parseListenEntries(
-    settings.httpsPorts,
-    "HTTPS 监听地址",
-  );
-  if (!httpEntries.length && !httpsEntries.length)
-    throw new Error("至少需要保留一个 HTTP 或 HTTPS 监听地址。");
   const base = `uhttpd.${settings.section}`;
-  const writeList = (key: string, entries: string[]) =>
-    [
-      uciDelete(`${base}.${key}`),
-      ...entries.map(
-        (entry) => `uci add_list ${quote(`${base}.${key}=${entry}`)}`,
-      ),
-    ].join("; ");
-  return `[ -x /etc/init.d/uhttpd ] || { echo 'uhttpd 未安装。'; exit 2; }; uci -q get ${quote(base)} >/dev/null || { echo '未找到 uhttpd 配置。'; exit 2; }; cp /etc/config/uhttpd /etc/config/uhttpd.app-backup.$(date +%s); ${writeList("listen_http", httpEntries)}; ${writeList("listen_https", httpsEntries)}; ${uciSet(`${base}.redirect_https`, settings.redirectHttps ? "1" : "0")}; uci commit uhttpd; /etc/init.d/uhttpd reload; echo 'LuCI HTTP/HTTPS 服务设置已保存。'`;
+  return `[ -x /etc/init.d/uhttpd ] || { echo 'uhttpd 未安装。'; exit 2; }; uci -q get ${quote(base)} >/dev/null || { echo '未找到 uhttpd 配置。'; exit 2; }; ${uciSet(`${base}.redirect_https`, settings.redirectHttps ? "1" : "0")}; uci commit uhttpd; /etc/init.d/uhttpd reload; echo 'HTTPS 重定向设置已保存。'`;
 }
 
 export function buildNetworkInterfaceSnapshotCommand(): string {

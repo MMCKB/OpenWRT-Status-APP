@@ -2,8 +2,10 @@ import { describe, expect, it } from "vitest";
 
 import {
   buildAddApkRepositoryKeyCommand,
+  buildAddSshInstanceCommand,
   buildAddSshAuthorizedKeyCommand,
   buildChangeRouterPasswordCommand,
+  buildFetchApkRepositoryKeyCommand,
   buildLedSnapshotCommand,
   buildMountActionCommand,
   buildNetworkInterfaceDeleteCommand,
@@ -14,6 +16,7 @@ import {
   buildSaveNetworkGlobalCommand,
   buildSaveNetworkInterfaceCommand,
   buildSaveSshAccessCommand,
+  buildSaveSshInstanceCommand,
   buildSaveUhttpdCommand,
   buildScheduledActionCommand,
   buildStartupActionCommand,
@@ -37,7 +40,7 @@ describe("LuCI 系统管理命令", () => {
       parseAutorebootSettings(
         "AUTOREBOOT|installed|yes\nAUTOREBOOT|enable|1\nAUTOREBOOT|time|03:30\nAUTOREBOOT|week|1,7",
       ),
-    ).toEqual({
+    ).toMatchObject({
       installed: true,
       enabled: true,
       time: "03:30",
@@ -59,6 +62,7 @@ describe("LuCI 系统管理命令", () => {
         name: "WAN",
         sysfs: "green:wan",
         trigger: "netdev",
+        color: "",
         defaultValue: "1",
       },
     ]);
@@ -96,18 +100,26 @@ describe("LuCI 系统管理命令", () => {
       parseSshAccessSettings(
         "SSH|installed|yes\nSSH|port|2222\nSSH|password|on\nSSH|rootpassword|off",
       ),
-    ).toEqual({
+    ).toMatchObject({
       installed: true,
       port: "2222",
       passwordAuth: true,
       rootPasswordAuth: false,
+      instances: [],
     });
   });
 
-  it("为高风险配置生成带备份和受控重载的命令", () => {
+  it("为高风险配置生成受控重载命令且不额外创建配置副本", () => {
     expect(
-      buildSaveAutorebootCommand({ enabled: true, time: "04:00", week: "1,7" }),
-    ).toContain("/etc/config/autoreboot.app-backup.$(date +%s)");
+      buildSaveAutorebootCommand({
+        enabled: true,
+        minute: "0",
+        hour: "4",
+        day: "*",
+        month: "*",
+        week: "1,7",
+      }),
+    ).not.toContain("app-backup");
     expect(buildMountActionCommand("usb", false)).toContain(
       "uci set 'fstab.usb.enabled=0'",
     );
@@ -118,6 +130,27 @@ describe("LuCI 系统管理命令", () => {
         rootPasswordAuth: false,
       }),
     ).toContain("/etc/init.d/dropbear restart");
+    expect(
+      buildSaveSshInstanceCommand({
+        section: "main",
+        port: "2222",
+        interface: "lan wan",
+        passwordAuth: false,
+        rootPasswordAuth: false,
+        gatewayPorts: true,
+        enabled: true,
+      }),
+    ).toContain("dropbear.main.GatewayPorts=on");
+    expect(
+      buildAddSshInstanceCommand({
+        port: "2223",
+        interface: "lan",
+        passwordAuth: true,
+        rootPasswordAuth: true,
+        gatewayPorts: false,
+        enabled: true,
+      }),
+    ).toContain("uci add dropbear dropbear");
     expect(
       buildSaveNetworkInterfaceCommand({
         section: "lan",
@@ -172,6 +205,19 @@ describe("LuCI 系统管理命令", () => {
       "APK 公钥文件名",
     );
     expect(() =>
+      buildFetchApkRepositoryKeyCommand("vendor", "ftp://example.com/key.pub"),
+    ).toThrow("HTTP(S)");
+    expect(() =>
+      buildAddSshInstanceCommand({
+        port: "0",
+        interface: "lan",
+        passwordAuth: true,
+        rootPasswordAuth: true,
+        gatewayPorts: false,
+        enabled: true,
+      }),
+    ).toThrow("SSH 端口");
+    expect(() =>
       buildSaveNetworkDeviceCommand({
         section: "@device[0]",
         name: "br-lan",
@@ -194,6 +240,7 @@ describe("LuCI 系统管理命令", () => {
         name: "wan",
         sysfs: "green:wan",
         trigger: "netdev",
+        color: "",
         defaultValue: "1",
       },
     ]);
@@ -208,6 +255,7 @@ describe("LuCI 系统管理命令", () => {
       buildSaveLedCommand({
         section: "@led[0]",
         trigger: "netdev",
+        color: "blue",
         defaultValue: "1",
       }),
     ).toContain("'system.@led[0].trigger=netdev'");
@@ -218,7 +266,7 @@ describe("LuCI 系统管理命令", () => {
       parseAutorebootSettings(
         "AUTOREBOOT|installed|yes\nAUTOREBOOT|enabled|on\nAUTOREBOOT|time|02:15\nAUTOREBOOT|weekdays|1,3,5",
       ),
-    ).toEqual({
+    ).toMatchObject({
       installed: true,
       enabled: true,
       time: "02:15",
@@ -264,13 +312,45 @@ describe("LuCI 系统管理命令", () => {
       "/etc/apk/keys/vendor.pub",
     );
     expect(
+      buildFetchApkRepositoryKeyCommand(
+        "vendor",
+        "https://example.com/keys/vendor.pub",
+      ),
+    ).toContain("uclient-fetch");
+    expect(
       buildSaveUhttpdCommand({
         section: "main",
-        httpPorts: "0.0.0.0:80",
-        httpsPorts: "[::]:443",
         redirectHttps: true,
       }),
     ).toContain("/etc/init.d/uhttpd reload");
+    expect(
+      buildSaveUhttpdCommand({ section: "main", redirectHttps: true }),
+    ).not.toContain("listen_http");
+  });
+
+  it("解析 LuCI Dropbear 多实例及其监听接口和权限", () => {
+    expect(
+      parseSshAccessSettings(
+        "SSH|installed|yes\nSSHINSTANCE|main|section|main\nSSHINSTANCE|main|Port|22\nSSHINSTANCE|main|Interface|lan wan\nSSHINSTANCE|main|PasswordAuth|on\nSSHINSTANCE|main|RootPasswordAuth|off\nSSHINSTANCE|main|GatewayPorts|on\nSSHINSTANCE|main|enable|1\nSSHINSTANCE|guest|section|guest\nSSHINSTANCE|guest|Port|2222\nSSHINSTANCE|guest|enable|0",
+      ),
+    ).toMatchObject({
+      installed: true,
+      port: "22",
+      passwordAuth: true,
+      rootPasswordAuth: false,
+      instances: [
+        {
+          section: "main",
+          port: "22",
+          interface: "lan wan",
+          passwordAuth: true,
+          rootPasswordAuth: false,
+          gatewayPorts: true,
+          enabled: true,
+        },
+        { section: "guest", port: "2222", enabled: false },
+      ],
+    });
   });
 
   it("解析接口运行状态并提供接口、设备和全局网络的受控操作", () => {

@@ -127,6 +127,14 @@ public class OpenWrtSshModule extends ReactContextBaseJavaModule {
   }
 
   @ReactMethod
+  public void isConnected(String key, Promise promise) {
+    executor.execute(() -> {
+      Session session = sessions.get(key);
+      promise.resolve(session != null && session.isConnected());
+    });
+  }
+
+  @ReactMethod
   public void uploadFile(String key, String localUri, String remotePath, Promise promise) {
     executor.execute(() -> {
       Session session = sessions.get(key);
