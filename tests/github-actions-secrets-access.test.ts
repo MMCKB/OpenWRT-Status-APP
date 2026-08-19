@@ -1,29 +1,19 @@
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
+
 import { describe, expect, it } from "vitest";
 
-const repository = "MMCKB/OpenWRT-Status-APP";
-
 describe("GitHub Actions Secrets 权限", () => {
-  it("可读取仓库 Actions Secrets 的公钥以安全配置稳定 APK 签名", async () => {
-    const token = process.env.GITHUB_ACTIONS_SECRETS_PAT;
-    expect(token).toBeTruthy();
-
-    const response = await fetch(
-      `https://api.github.com/repos/${repository}/actions/secrets/public-key`,
-      {
-        headers: {
-          Accept: "application/vnd.github+json",
-          Authorization: `Bearer ${token}`,
-          "X-GitHub-Api-Version": "2022-11-28",
-        },
-      },
+  it("稳定 APK 签名仅从 GitHub Actions Secrets 恢复，且不依赖个人访问令牌", () => {
+    const workflow = readFileSync(
+      resolve(process.cwd(), ".github/workflows/build-android.yml"),
+      "utf8",
     );
 
-    expect(response.status).toBe(200);
-    const payload = (await response.json()) as {
-      key_id?: string;
-      key?: string;
-    };
-    expect(payload.key_id).toBeTruthy();
-    expect(payload.key).toBeTruthy();
+    expect(workflow).toContain("secrets.ANDROID_RELEASE_KEYSTORE_B64");
+    expect(workflow).toContain("secrets.ANDROID_RELEASE_KEYSTORE_PASSWORD");
+    expect(workflow).toContain("secrets.ANDROID_RELEASE_KEY_PASSWORD");
+    expect(workflow).toContain("secrets.ANDROID_RELEASE_KEY_ALIAS");
+    expect(workflow).not.toContain("GITHUB_ACTIONS_SECRETS_PAT");
   });
 });
