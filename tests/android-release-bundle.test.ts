@@ -61,13 +61,16 @@ describe("Android Release JavaScript bundle", () => {
     expect(workflow).toContain(
       "test ! -e android/app/src/main/assets/index.android.bundle",
     );
-    expect(workflow).toContain('grep -aF "PassWall2"');
-    expect(workflow).toContain('grep -aF "visibility-off"');
-    expect(workflow).toContain('grep -aF "预测性返回手势"');
+    expect(workflow).toContain('grep -aqF "PassWall2"');
+    expect(workflow).toContain('grep -aqF "visibility-off"');
+    expect(workflow).toContain('grep -aqF "预测性返回手势"');
     expect(workflow).not.toContain(
       '! unzip -p "$FINAL_APK" assets/index.android.bundle | grep -aF "预测性返回手势"',
     );
     expect(workflow).toContain('grep -F "setPredictiveBackEnabled"');
+    expect(workflow).toContain(
+      "android/app/src/main/java/com/app/openwrtstatusapp/MainActivity.kt",
+    );
   });
 
   it("当前源码包含服务、密码显示与可控制的预测性返回手势", () => {
