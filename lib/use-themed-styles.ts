@@ -29,8 +29,6 @@ const DARK_COLOR_MAP: Record<string, keyof ReturnType<typeof useColors>> = {
   "#C5D2D9": "border",
   "#EEF2F4": "border",
   "#007E7A": "primary",
-  "#B13939": "error",
-  "#A43131": "error",
   "#FDEBEC": "error",
   "#FFF0F0": "error",
 };

@@ -3,7 +3,7 @@ import * as DocumentPicker from "expo-document-picker";
 import * as FileSystem from "expo-file-system/legacy";
 import * as Sharing from "expo-sharing";
 import { useRouter } from "expo-router";
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { ActivityIndicator, FlatList, KeyboardAvoidingView, Modal, Platform, Pressable, RefreshControl, ScrollView, StyleSheet, Text, TextInput, View } from "react-native";
 import { AppDialog as Alert } from "@/components/app-dialog";
 
@@ -73,8 +73,6 @@ export default function FilesScreen() {
   const [promptValue, setPromptValue] = useState("");
   const [editor, setEditor] = useState<EditorState>(null);
   const [isSavingText, setIsSavingText] = useState(false);
-
-  useEffect(() => () => disconnectInAppSsh(), []);
 
   const profile = selectedProfile;
   if (!profile) {

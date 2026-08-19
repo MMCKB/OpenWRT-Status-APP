@@ -112,6 +112,9 @@ export function RouterProvider({ children }: { children: ReactNode }) {
         )
           ? savedSettings.selectedRouterId
           : (savedProfiles[0]?.id ?? null);
+        void setPredictiveBackEnabled(
+          savedSettings.predictiveBackEnabled,
+        ).catch(() => undefined);
         setProfiles(savedProfiles);
         setSettings({ ...savedSettings, selectedRouterId });
       })
@@ -251,9 +254,14 @@ export function RouterProvider({ children }: { children: ReactNode }) {
       const existing = id
         ? profiles.find((profile) => profile.id === id)
         : undefined;
+      const name = draft.name.trim() || "我的 OpenWrt";
+      const duplicate = profiles.find(
+        (profile) => profile.name.trim() === name && profile.id !== id,
+      );
+      if (duplicate) throw new Error("已有同名路由器，请使用不同的名称。");
       const profile: RouterProfile = {
         id: existing?.id ?? makeId(),
-        name: draft.name.trim() || "我的 OpenWrt",
+        name,
         baseUrl: normalizeRouterEndpoint(draft.baseUrl),
         username: draft.username.trim() || "root",
         sshUsername:

@@ -5,7 +5,7 @@ import { ActivityIndicator, Keyboard, KeyboardAvoidingView, Platform, Pressable,
 import { EmptyState, StatusPill } from "@/components/status-ui";
 import { useColors } from "@/hooks/use-colors";
 import { useColorScheme } from "@/hooks/use-color-scheme";
-import { connectInAppSsh, disconnectInAppSsh, getInAppSshTarget, isInAppSshSupported, runInAppSshCommand } from "@/lib/native-ssh";
+import { connectInAppSsh, disconnectInAppSsh, getInAppSshTarget, isInAppSshConnectedFor, isInAppSshSupported, runInAppSshCommand } from "@/lib/native-ssh";
 import { useRouterStore } from "@/lib/router-provider";
 
 type ConnectionState = "idle" | "connecting" | "connected" | "error";
@@ -29,8 +29,6 @@ export default function ControlScreen() {
   const [history, setHistory] = useState<string[]>([]);
   const [historyIndex, setHistoryIndex] = useState(-1);
 
-  useEffect(() => () => disconnectInAppSsh(), []);
-
   useEffect(() => {
     const showEvent = Platform.OS === "ios" ? "keyboardWillShow" : "keyboardDidShow";
     const hideEvent = Platform.OS === "ios" ? "keyboardWillHide" : "keyboardDidHide";
@@ -43,6 +41,10 @@ export default function ControlScreen() {
       hide.remove();
     };
   }, []);
+
+  useEffect(() => {
+    setConnection(selectedProfile && isInAppSshConnectedFor(selectedProfile) ? "connected" : "idle");
+  }, [selectedProfile]);
 
   const profile = selectedProfile;
   if (!profile) {

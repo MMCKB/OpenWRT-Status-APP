@@ -29,9 +29,25 @@ class MainActivity : ReactActivity() {
     SplashScreenManager.registerOnActivity(this)
     // @generated end expo-splashscreen
     super.onCreate(null)
-    val enabled = getSharedPreferences("openwrt-status", Context.MODE_PRIVATE)
+    applyPredictiveBackEnabled(getPredictiveBackEnabled())
+  }
+
+  override fun onResume() {
+    super.onResume()
+    applyPredictiveBackEnabled(getPredictiveBackEnabled())
+  }
+
+  override fun onDestroy() {
+    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU && predictiveBackRegistered) {
+      onBackInvokedDispatcher.unregisterOnBackInvokedCallback(predictiveBackCallback)
+      predictiveBackRegistered = false
+    }
+    super.onDestroy()
+  }
+
+  private fun getPredictiveBackEnabled(): Boolean {
+    return getSharedPreferences("openwrt-status", Context.MODE_PRIVATE)
       .getBoolean("predictive-back-enabled", true)
-    applyPredictiveBackEnabled(enabled)
   }
 
   /** Called through OpenWrtBackGestureModule when the user changes the in-app setting. */

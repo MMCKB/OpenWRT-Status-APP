@@ -374,9 +374,6 @@ export default function FirewallScreen() {
       </SectionCard>
 
       <SectionCard title="新增通信规则">
-        <Text style={[styles.caption, { color: colors.muted }]}>
-          通过图形化表单新增允许、拒绝或丢弃通信的规则。
-        </Text>
         <Pressable
           disabled={disabled}
           onPress={() => setTrafficModalVisible(true)}
@@ -685,9 +682,6 @@ export default function FirewallScreen() {
       </SectionCard>
 
       <SectionCard title="新增端口转发">
-        <Text style={[styles.caption, { color: colors.muted }]}>
-          通过图形化表单设置外部端口、内网地址、协议与目标端口。
-        </Text>
         <Pressable
           disabled={disabled}
           onPress={() => setPortForwardModalVisible(true)}
@@ -1042,7 +1036,7 @@ const styles = StyleSheet.create({
   },
   deleteText: { fontSize: 12, fontWeight: "800" },
   form: { padding: 15, gap: 10 },
-  row: { flexDirection: "row", gap: 10 },
+  row: { gap: 10 },
   input: {
     minHeight: 44,
     borderWidth: 1,
@@ -1050,7 +1044,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12,
     fontSize: 13,
   },
-  half: { flex: 1, minWidth: 0 },
+  half: { alignSelf: "stretch" },
   protocols: { flexDirection: "row", gap: 8 },
   protocol: {
     flex: 1,

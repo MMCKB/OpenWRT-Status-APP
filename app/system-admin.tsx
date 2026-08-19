@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   ActivityIndicator,
+  Modal,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -16,34 +17,60 @@ import { EmptyState, SectionCard, StatusPill } from "@/components/status-ui";
 import { useColors } from "@/hooks/use-colors";
 import { useManagedSsh } from "@/hooks/use-managed-ssh";
 import {
+  buildAddApkRepositoryKeyCommand,
+  buildAddSshAuthorizedKeyCommand,
   buildAutorebootSnapshotCommand,
+  buildApkRepositoryKeysSnapshotCommand,
+  buildChangeRouterPasswordCommand,
   buildCronSnapshotCommand,
   buildLedSnapshotCommand,
   buildMountActionCommand,
   buildMountSnapshotCommand,
+  buildNetworkDeviceSnapshotCommand,
+  buildNetworkGlobalSnapshotCommand,
+  buildNetworkInterfaceDeleteCommand,
+  buildNetworkInterfaceRestartCommand,
   buildNetworkInterfaceSnapshotCommand,
+  buildNetworkInterfaceStatusCommand,
   buildSaveAutorebootCommand,
   buildSaveLedCommand,
   buildSaveNetworkInterfaceCommand,
+  buildSaveNetworkDeviceCommand,
+  buildSaveNetworkGlobalCommand,
   buildSaveSshAccessCommand,
+  buildSaveUhttpdCommand,
   buildScheduledActionCommand,
   buildSshAccessSnapshotCommand,
+  buildSshAuthorizedKeysSnapshotCommand,
   buildStartupActionCommand,
   buildStartupSnapshotCommand,
   parseAutorebootSettings,
+  parseApkRepositoryKeys,
   parseCronEntries,
   parseLedSettings,
   parseMountPoints,
   parseNetworkInterfaceSettings,
+  parseNetworkInterfaceStatus,
+  parseNetworkDeviceSettings,
+  parseNetworkGlobalSettings,
   parseSshAccessSettings,
+  parseSshAuthorizedKeys,
   parseStartupServices,
+  parseUhttpdSettings,
+  buildUhttpdSnapshotCommand,
+  type ApkRepositoryKey,
   type AutorebootSettings,
   type LedSetting,
   type MountPoint,
   type NetworkInterfaceSettings,
+  type NetworkInterfaceStatus,
+  type NetworkDeviceSettings,
+  type NetworkGlobalSettings,
   type ScheduledAction,
   type SshAccessSettings,
+  type SshAuthorizedKey,
   type StartupService,
+  type UhttpdSettings,
 } from "@/lib/openwrt-luci-system";
 
 type Panel =
@@ -77,6 +104,18 @@ const emptySsh: SshAccessSettings = {
   passwordAuth: true,
   rootPasswordAuth: true,
 };
+const emptyUhttpd: UhttpdSettings = {
+  installed: false,
+  section: "@uhttpd[0]",
+  httpPorts: "0.0.0.0:80",
+  httpsPorts: "0.0.0.0:443",
+  redirectHttps: false,
+};
+const emptyNetworkGlobal: NetworkGlobalSettings = {
+  section: "globals",
+  ulaPrefix: "",
+  packetSteering: false,
+};
 
 export default function SystemAdminScreen() {
   const colors = useColors();
@@ -89,7 +128,23 @@ export default function SystemAdminScreen() {
   const [leds, setLeds] = useState<LedSetting[]>([]);
   const [mounts, setMounts] = useState<MountPoint[]>([]);
   const [ssh, setSsh] = useState(emptySsh);
+  const [sshKeys, setSshKeys] = useState<SshAuthorizedKey[]>([]);
+  const [newSshKey, setNewSshKey] = useState("");
+  const [routerPassword, setRouterPassword] = useState("");
+  const [routerPasswordConfirmation, setRouterPasswordConfirmation] =
+    useState("");
+  const [apkKeys, setApkKeys] = useState<ApkRepositoryKey[]>([]);
+  const [apkKeyName, setApkKeyName] = useState("");
+  const [apkKeyValue, setApkKeyValue] = useState("");
+  const [uhttpd, setUhttpd] = useState(emptyUhttpd);
   const [interfaces, setInterfaces] = useState<NetworkInterfaceSettings[]>([]);
+  const [interfaceStatuses, setInterfaceStatuses] = useState<
+    NetworkInterfaceStatus[]
+  >([]);
+  const [networkDevices, setNetworkDevices] = useState<NetworkDeviceSettings[]>(
+    [],
+  );
+  const [networkGlobal, setNetworkGlobal] = useState(emptyNetworkGlobal);
   const [cronEntries, setCronEntries] = useState<string[]>([]);
   const [weekday, setWeekday] = useState("*");
   const [hour, setHour] = useState("04");
@@ -109,7 +164,13 @@ export default function SystemAdminScreen() {
         ledRaw,
         mountRaw,
         sshRaw,
+        sshKeysRaw,
+        apkKeysRaw,
+        uhttpdRaw,
         networkRaw,
+        interfaceStatusRaw,
+        networkDeviceRaw,
+        networkGlobalRaw,
         cronRaw,
       ] = await Promise.all([
         execute(buildAutorebootSnapshotCommand()),
@@ -117,7 +178,13 @@ export default function SystemAdminScreen() {
         execute(buildLedSnapshotCommand()),
         execute(buildMountSnapshotCommand()),
         execute(buildSshAccessSnapshotCommand()),
+        execute(buildSshAuthorizedKeysSnapshotCommand()),
+        execute(buildApkRepositoryKeysSnapshotCommand()),
+        execute(buildUhttpdSnapshotCommand()),
         execute(buildNetworkInterfaceSnapshotCommand()),
+        execute(buildNetworkInterfaceStatusCommand()),
+        execute(buildNetworkDeviceSnapshotCommand()),
+        execute(buildNetworkGlobalSnapshotCommand()),
         execute(buildCronSnapshotCommand()),
       ]);
       setAutoreboot(parseAutorebootSettings(autorebootRaw));
@@ -125,7 +192,13 @@ export default function SystemAdminScreen() {
       setLeds(parseLedSettings(ledRaw));
       setMounts(parseMountPoints(mountRaw));
       setSsh(parseSshAccessSettings(sshRaw));
+      setSshKeys(parseSshAuthorizedKeys(sshKeysRaw));
+      setApkKeys(parseApkRepositoryKeys(apkKeysRaw));
+      setUhttpd(parseUhttpdSettings(uhttpdRaw));
       setInterfaces(parseNetworkInterfaceSettings(networkRaw));
+      setInterfaceStatuses(parseNetworkInterfaceStatus(interfaceStatusRaw));
+      setNetworkDevices(parseNetworkDeviceSettings(networkDeviceRaw));
+      setNetworkGlobal(parseNetworkGlobalSettings(networkGlobalRaw));
       setCronEntries(parseCronEntries(cronRaw));
     } catch (reason) {
       setOutput(
@@ -465,27 +538,267 @@ export default function SystemAdminScreen() {
                     )
                   }
                 />
+                <View
+                  style={[styles.subsection, { borderTopColor: colors.border }]}
+                >
+                  <Text
+                    style={[
+                      styles.subsectionTitle,
+                      { color: colors.foreground },
+                    ]}
+                  >
+                    路由器密码
+                  </Text>
+                  <Text style={[styles.help, { color: colors.muted }]}>
+                    修改 root 帐户密码。保存后，当前 SSH 会话可能需要重新认证。
+                  </Text>
+                  <TextField
+                    label="新密码"
+                    value={routerPassword}
+                    onChangeText={setRouterPassword}
+                    placeholder="至少设置一个非空密码"
+                    secureTextEntry
+                    colors={colors}
+                  />
+                  <TextField
+                    label="确认新密码"
+                    value={routerPasswordConfirmation}
+                    onChangeText={setRouterPasswordConfirmation}
+                    placeholder="再次输入新密码"
+                    secureTextEntry
+                    colors={colors}
+                  />
+                  <PrimaryButton
+                    label="修改路由器密码"
+                    disabled={
+                      disabled ||
+                      !routerPassword ||
+                      routerPassword !== routerPasswordConfirmation
+                    }
+                    color={colors.primary}
+                    onPress={() =>
+                      confirm(
+                        "修改路由器密码",
+                        "将修改 root 帐户密码。请妥善保存新密码。",
+                        () => buildChangeRouterPasswordCommand(routerPassword),
+                        "路由器密码已修改。",
+                      )
+                    }
+                  />
+                </View>
+                <View
+                  style={[styles.subsection, { borderTopColor: colors.border }]}
+                >
+                  <Text
+                    style={[
+                      styles.subsectionTitle,
+                      { color: colors.foreground },
+                    ]}
+                  >
+                    SSH 公钥
+                  </Text>
+                  <Text style={[styles.help, { color: colors.muted }]}>
+                    已配置 {sshKeys.length} 个公钥。添加后可用于禁用密码登录。
+                  </Text>
+                  {sshKeys.slice(0, 4).map((key, index) => (
+                    <Text
+                      key={`${key.value}-${index}`}
+                      selectable
+                      style={[styles.mono, { color: colors.muted }]}
+                      numberOfLines={1}
+                    >
+                      {key.type}
+                      {key.comment ? ` · ${key.comment}` : ""}
+                    </Text>
+                  ))}
+                  <TextField
+                    label="新增 OpenSSH 公钥"
+                    value={newSshKey}
+                    onChangeText={setNewSshKey}
+                    placeholder="ssh-ed25519 AAAA… 设备备注"
+                    multiline
+                    colors={colors}
+                  />
+                  <PrimaryButton
+                    label="添加 SSH 公钥"
+                    disabled={disabled || !newSshKey.trim()}
+                    color={colors.primary}
+                    onPress={() =>
+                      confirm(
+                        "添加 SSH 公钥",
+                        "将向 /etc/dropbear/authorized_keys 追加此公钥。",
+                        () => buildAddSshAuthorizedKeyCommand(newSshKey),
+                        "SSH 公钥已添加。",
+                      )
+                    }
+                  />
+                </View>
+                <View
+                  style={[styles.subsection, { borderTopColor: colors.border }]}
+                >
+                  <Text
+                    style={[
+                      styles.subsectionTitle,
+                      { color: colors.foreground },
+                    ]}
+                  >
+                    APK 仓库公钥
+                  </Text>
+                  <Text style={[styles.help, { color: colors.muted }]}>
+                    已发现 {apkKeys.length} 个 /etc/apk/keys 公钥文件。
+                  </Text>
+                  {apkKeys.slice(0, 4).map((key) => (
+                    <Text
+                      key={key.name}
+                      selectable
+                      style={[styles.mono, { color: colors.muted }]}
+                    >
+                      {key.name} · {key.bytes} B
+                    </Text>
+                  ))}
+                  <TextField
+                    label="公钥文件名"
+                    value={apkKeyName}
+                    onChangeText={setApkKeyName}
+                    placeholder="example.pub"
+                    colors={colors}
+                  />
+                  <TextField
+                    label="公钥内容"
+                    value={apkKeyValue}
+                    onChangeText={setApkKeyValue}
+                    placeholder="粘贴 APK 仓库签名公钥"
+                    multiline
+                    colors={colors}
+                  />
+                  <PrimaryButton
+                    label="保存 APK 仓库公钥"
+                    disabled={
+                      disabled || !apkKeyName.trim() || !apkKeyValue.trim()
+                    }
+                    color={colors.primary}
+                    onPress={() =>
+                      confirm(
+                        "保存 APK 仓库公钥",
+                        "将写入 /etc/apk/keys。请仅添加可信仓库提供的签名公钥。",
+                        () =>
+                          buildAddApkRepositoryKeyCommand(
+                            apkKeyName,
+                            apkKeyValue,
+                          ),
+                        "APK 仓库公钥已保存。",
+                      )
+                    }
+                  />
+                </View>
+                <View
+                  style={[styles.subsection, { borderTopColor: colors.border }]}
+                >
+                  <Text
+                    style={[
+                      styles.subsectionTitle,
+                      { color: colors.foreground },
+                    ]}
+                  >
+                    LuCI HTTP/HTTPS 服务
+                  </Text>
+                  {!uhttpd.installed ? (
+                    <Text style={[styles.help, { color: colors.warning }]}>
+                      未检测到 uhttpd，无法配置 LuCI Web 服务。
+                    </Text>
+                  ) : (
+                    <>
+                      <TextField
+                        label="HTTP 监听地址"
+                        value={uhttpd.httpPorts}
+                        onChangeText={(value) =>
+                          setUhttpd((current) => ({
+                            ...current,
+                            httpPorts: value,
+                          }))
+                        }
+                        placeholder="0.0.0.0:80"
+                        colors={colors}
+                      />
+                      <TextField
+                        label="HTTPS 监听地址"
+                        value={uhttpd.httpsPorts}
+                        onChangeText={(value) =>
+                          setUhttpd((current) => ({
+                            ...current,
+                            httpsPorts: value,
+                          }))
+                        }
+                        placeholder="0.0.0.0:443"
+                        colors={colors}
+                      />
+                      <SettingSwitch
+                        label="将 HTTP 重定向至 HTTPS"
+                        value={uhttpd.redirectHttps}
+                        onValueChange={(value) =>
+                          setUhttpd((current) => ({
+                            ...current,
+                            redirectHttps: value,
+                          }))
+                        }
+                        colors={colors}
+                      />
+                      <PrimaryButton
+                        label="保存 LuCI 服务设置"
+                        disabled={disabled}
+                        color={colors.primary}
+                        onPress={() =>
+                          confirm(
+                            "保存 LuCI 服务设置",
+                            "uhttpd 将重载，网页管理界面可能短暂不可用。",
+                            () => buildSaveUhttpdCommand(uhttpd),
+                            "LuCI HTTP/HTTPS 服务设置已保存。",
+                          )
+                        }
+                      />
+                    </>
+                  )}
+                </View>
               </>
             )}
           </View>
         ) : null}
 
         {panel === "network" ? (
-          <View>
+          <View style={styles.body}>
             {interfaces.length ? (
-              interfaces.map((item, index) => (
-                <NetworkRow
+              interfaces.map((item) => (
+                <NetworkInterfaceCard
                   key={item.section}
                   item={item}
+                  status={interfaceStatuses.find(
+                    (status) => status.section === item.section,
+                  )}
                   disabled={disabled}
                   colors={colors}
-                  divider={index > 0}
                   onSave={(next) =>
                     confirm(
                       "保存接口设置",
                       `将更新 ${item.section} 并重载网络；连接可能短暂中断。`,
                       () => buildSaveNetworkInterfaceCommand(next),
                       "接口设置已保存。",
+                      true,
+                    )
+                  }
+                  onRestart={() =>
+                    confirm(
+                      "重启接口",
+                      `将短暂关闭并重新启动 ${item.section}。`,
+                      () => buildNetworkInterfaceRestartCommand(item.section),
+                      `${item.section} 已重启。`,
+                    )
+                  }
+                  onDelete={() =>
+                    confirm(
+                      "删除接口",
+                      `将删除 ${item.section} 的 UCI 配置并重载网络，此操作无法直接撤销。`,
+                      () => buildNetworkInterfaceDeleteCommand(item.section),
+                      `${item.section} 已删除。`,
                       true,
                     )
                   }
@@ -498,6 +811,87 @@ export default function SystemAdminScreen() {
                 description="请确认路由器允许 UCI 网络配置读取后刷新。"
               />
             )}
+            <View
+              style={[styles.subsection, { borderTopColor: colors.border }]}
+            >
+              <Text
+                style={[styles.subsectionTitle, { color: colors.foreground }]}
+              >
+                网络设备
+              </Text>
+              <Text style={[styles.help, { color: colors.muted }]}>
+                配置 LuCI“网络 → 接口 → 设备”中的已有设备；保存会重载网络。
+              </Text>
+              {networkDevices.length ? (
+                networkDevices.map((device) => (
+                  <NetworkDeviceRow
+                    key={device.section}
+                    item={device}
+                    disabled={disabled}
+                    colors={colors}
+                    onSave={(next) =>
+                      confirm(
+                        "保存网络设备",
+                        `将更新 ${device.name || device.section} 并重载网络。`,
+                        () => buildSaveNetworkDeviceCommand(next),
+                        "网络设备设置已保存。",
+                        true,
+                      )
+                    }
+                  />
+                ))
+              ) : (
+                <Text style={[styles.help, { color: colors.muted }]}>
+                  未读取到独立的 network device 段。
+                </Text>
+              )}
+            </View>
+            <View
+              style={[styles.subsection, { borderTopColor: colors.border }]}
+            >
+              <Text
+                style={[styles.subsectionTitle, { color: colors.foreground }]}
+              >
+                全局网络设置
+              </Text>
+              <TextField
+                label="IPv6 ULA 前缀"
+                value={networkGlobal.ulaPrefix}
+                onChangeText={(value) =>
+                  setNetworkGlobal((current) => ({
+                    ...current,
+                    ulaPrefix: value,
+                  }))
+                }
+                placeholder="fd00:1234:5678::/48"
+                colors={colors}
+              />
+              <SettingSwitch
+                label="启用数据包转发加速"
+                value={networkGlobal.packetSteering}
+                onValueChange={(value) =>
+                  setNetworkGlobal((current) => ({
+                    ...current,
+                    packetSteering: value,
+                  }))
+                }
+                colors={colors}
+              />
+              <PrimaryButton
+                label="保存全局网络设置"
+                disabled={disabled}
+                color={colors.primary}
+                onPress={() =>
+                  confirm(
+                    "保存全局网络设置",
+                    "将更新全局网络配置并重载网络。",
+                    () => buildSaveNetworkGlobalCommand(networkGlobal),
+                    "全局网络设置已保存。",
+                    true,
+                  )
+                }
+              />
+            </View>
           </View>
         ) : null}
 
@@ -659,6 +1053,8 @@ function TextField({
   onChangeText,
   placeholder,
   keyboardType,
+  secureTextEntry = false,
+  multiline = false,
   colors,
 }: {
   label: string;
@@ -666,6 +1062,8 @@ function TextField({
   onChangeText: (value: string) => void;
   placeholder?: string;
   keyboardType?: "default" | "number-pad";
+  secureTextEntry?: boolean;
+  multiline?: boolean;
   colors: ReturnType<typeof useColors>;
 }) {
   return (
@@ -679,6 +1077,9 @@ function TextField({
         placeholder={placeholder}
         placeholderTextColor={colors.muted}
         keyboardType={keyboardType}
+        secureTextEntry={secureTextEntry}
+        multiline={multiline}
+        textAlignVertical={multiline ? "top" : "center"}
         autoCapitalize="none"
         style={[
           styles.input,
@@ -801,20 +1202,25 @@ function LedRow({
   );
 }
 
-function NetworkRow({
+function NetworkInterfaceCard({
   item,
+  status,
   disabled,
   colors,
   onSave,
-  divider,
+  onRestart,
+  onDelete,
 }: {
   item: NetworkInterfaceSettings;
+  status?: NetworkInterfaceStatus;
   disabled: boolean;
   colors: ReturnType<typeof useColors>;
   onSave: (value: NetworkInterfaceSettings) => void;
-  divider: boolean;
+  onRestart: () => void;
+  onDelete: () => void;
 }) {
   const [draft, setDraft] = useState(item);
+  const [editing, setEditing] = useState(false);
   const update = (
     key: keyof NetworkInterfaceSettings,
     value: string | boolean,
@@ -822,70 +1228,363 @@ function NetworkRow({
   return (
     <View
       style={[
-        styles.body,
-        divider && {
-          borderTopWidth: StyleSheet.hairlineWidth,
-          borderTopColor: colors.border,
-        },
+        styles.interfaceCard,
+        { backgroundColor: colors.background, borderColor: colors.border },
       ]}
     >
       <View style={styles.interfaceHeader}>
-        <Text style={[styles.rowTitle, { color: colors.foreground }]}>
-          {item.section}
-        </Text>
-        <StatusPill label={draft.proto} tone="normal" />
+        <View style={styles.rowCopy}>
+          <Text style={[styles.rowTitle, { color: colors.foreground }]}>
+            {item.section}
+          </Text>
+          <Text style={[styles.help, { color: colors.muted }]}>
+            {status?.device || item.device || "未绑定设备"}
+          </Text>
+        </View>
+        <View style={styles.statusStack}>
+          <StatusPill label={status?.proto || item.proto} tone="normal" />
+          <StatusPill
+            label={status?.up ? "链路在线" : "链路离线"}
+            tone={status?.up ? "success" : "warning"}
+          />
+        </View>
       </View>
-      <TextField
-        label="协议（dhcp / static / pppoe）"
-        value={draft.proto}
-        onChangeText={(value) => update("proto", value)}
-        colors={colors}
-      />
-      <TextField
-        label="设备"
-        value={draft.device}
-        onChangeText={(value) => update("device", value)}
-        placeholder="eth0.2"
-        colors={colors}
-      />
-      <TextField
-        label="IPv4 地址"
-        value={draft.ipaddr}
-        onChangeText={(value) => update("ipaddr", value)}
-        colors={colors}
-      />
-      <TextField
-        label="子网掩码"
-        value={draft.netmask}
-        onChangeText={(value) => update("netmask", value)}
-        colors={colors}
-      />
-      <TextField
-        label="网关"
-        value={draft.gateway}
-        onChangeText={(value) => update("gateway", value)}
-        colors={colors}
-      />
-      <TextField
-        label="DNS（以空格分隔）"
-        value={draft.dns}
-        onChangeText={(value) => update("dns", value)}
-        colors={colors}
-      />
-      <SettingSwitch
-        label="随系统启动"
-        value={draft.auto}
-        onValueChange={(value) => update("auto", value)}
-        colors={colors}
-      />
-      <PrimaryButton
-        label={`保存 ${item.section}`}
-        disabled={disabled}
-        color={colors.primary}
-        onPress={() => onSave(draft)}
-      />
+      <View style={styles.interfaceMetrics}>
+        <InterfaceDetail
+          label="运行时间"
+          value={
+            status?.uptimeSeconds == null
+              ? "—"
+              : formatUptime(status.uptimeSeconds)
+          }
+          colors={colors}
+        />
+        <InterfaceDetail
+          label="MAC"
+          value={status?.mac || "—"}
+          colors={colors}
+        />
+        <InterfaceDetail
+          label="IPv4"
+          value={status?.ipv4.join(", ") || item.ipaddr || "—"}
+          colors={colors}
+        />
+        <InterfaceDetail
+          label="IPv6"
+          value={status?.ipv6.join(", ") || "—"}
+          colors={colors}
+        />
+      </View>
+      <View style={styles.cardActionRow}>
+        <SmallButton
+          label="重启"
+          disabled={disabled}
+          color={colors.primary}
+          onPress={onRestart}
+        />
+        <SmallButton
+          label="编辑"
+          disabled={disabled}
+          color={colors.primary}
+          onPress={() => {
+            setDraft(item);
+            setEditing(true);
+          }}
+        />
+        <SmallButton
+          label="删除"
+          disabled={disabled}
+          color={colors.error}
+          onPress={onDelete}
+        />
+      </View>
+      <Modal
+        visible={editing}
+        animationType="slide"
+        transparent
+        onRequestClose={() => setEditing(false)}
+      >
+        <View style={styles.modalBackdrop}>
+          <View
+            style={[
+              styles.modalSheet,
+              { backgroundColor: colors.surface, borderColor: colors.border },
+            ]}
+          >
+            <View style={styles.modalHeader}>
+              <View>
+                <Text style={[styles.modalTitle, { color: colors.foreground }]}>
+                  编辑 {item.section}
+                </Text>
+                <Text style={[styles.help, { color: colors.muted }]}>
+                  保存后网络会短暂重载。
+                </Text>
+              </View>
+              <Pressable
+                onPress={() => setEditing(false)}
+                style={({ pressed }) => [
+                  styles.closeButton,
+                  { borderColor: colors.border },
+                  pressed && styles.pressed,
+                ]}
+              >
+                <Text
+                  style={[styles.closeButtonText, { color: colors.foreground }]}
+                >
+                  关闭
+                </Text>
+              </Pressable>
+            </View>
+            <ScrollView
+              contentContainerStyle={styles.modalContent}
+              keyboardShouldPersistTaps="handled"
+            >
+              <TextField
+                label="协议（dhcp / static / pppoe）"
+                value={draft.proto}
+                onChangeText={(value) => update("proto", value)}
+                colors={colors}
+              />
+              <TextField
+                label="设备"
+                value={draft.device}
+                onChangeText={(value) => update("device", value)}
+                placeholder="eth0.2"
+                colors={colors}
+              />
+              <TextField
+                label="IPv4 地址"
+                value={draft.ipaddr}
+                onChangeText={(value) => update("ipaddr", value)}
+                colors={colors}
+              />
+              <TextField
+                label="子网掩码"
+                value={draft.netmask}
+                onChangeText={(value) => update("netmask", value)}
+                colors={colors}
+              />
+              <TextField
+                label="网关"
+                value={draft.gateway}
+                onChangeText={(value) => update("gateway", value)}
+                colors={colors}
+              />
+              <TextField
+                label="DNS（以空格分隔）"
+                value={draft.dns}
+                onChangeText={(value) => update("dns", value)}
+                colors={colors}
+              />
+              <SettingSwitch
+                label="随系统启动"
+                value={draft.auto}
+                onValueChange={(value) => update("auto", value)}
+                colors={colors}
+              />
+              <PrimaryButton
+                label={`保存 ${item.section}`}
+                disabled={disabled}
+                color={colors.primary}
+                onPress={() => {
+                  onSave(draft);
+                  setEditing(false);
+                }}
+              />
+            </ScrollView>
+          </View>
+        </View>
+      </Modal>
     </View>
   );
+}
+
+function NetworkDeviceRow({
+  item,
+  disabled,
+  colors,
+  onSave,
+}: {
+  item: NetworkDeviceSettings;
+  disabled: boolean;
+  colors: ReturnType<typeof useColors>;
+  onSave: (value: NetworkDeviceSettings) => void;
+}) {
+  const [draft, setDraft] = useState(item);
+  const [editing, setEditing] = useState(false);
+  const update = (key: keyof NetworkDeviceSettings, value: string | boolean) =>
+    setDraft((current) => ({ ...current, [key]: value }));
+  return (
+    <View
+      style={[
+        styles.deviceRow,
+        { backgroundColor: colors.background, borderColor: colors.border },
+      ]}
+    >
+      <View style={styles.rowCopy}>
+        <Text style={[styles.rowTitle, { color: colors.foreground }]}>
+          {item.name || item.section}
+        </Text>
+        <Text style={[styles.help, { color: colors.muted }]}>
+          {[item.type, item.macaddr, item.mtu ? `MTU ${item.mtu}` : ""]
+            .filter(Boolean)
+            .join(" · ") || "默认设备设置"}
+        </Text>
+      </View>
+      <SmallButton
+        label="编辑"
+        disabled={disabled}
+        color={colors.primary}
+        onPress={() => {
+          setDraft(item);
+          setEditing(true);
+        }}
+      />
+      <Modal
+        visible={editing}
+        animationType="slide"
+        transparent
+        onRequestClose={() => setEditing(false)}
+      >
+        <View style={styles.modalBackdrop}>
+          <View
+            style={[
+              styles.modalSheet,
+              { backgroundColor: colors.surface, borderColor: colors.border },
+            ]}
+          >
+            <View style={styles.modalHeader}>
+              <Text style={[styles.modalTitle, { color: colors.foreground }]}>
+                编辑网络设备
+              </Text>
+              <Pressable
+                onPress={() => setEditing(false)}
+                style={({ pressed }) => [
+                  styles.closeButton,
+                  { borderColor: colors.border },
+                  pressed && styles.pressed,
+                ]}
+              >
+                <Text
+                  style={[styles.closeButtonText, { color: colors.foreground }]}
+                >
+                  关闭
+                </Text>
+              </Pressable>
+            </View>
+            <ScrollView
+              contentContainerStyle={styles.modalContent}
+              keyboardShouldPersistTaps="handled"
+            >
+              <TextField
+                label="设备名称"
+                value={draft.name}
+                onChangeText={(value) => update("name", value)}
+                colors={colors}
+              />
+              <TextField
+                label="设备类型"
+                value={draft.type}
+                onChangeText={(value) => update("type", value)}
+                placeholder="bridge / 8021q"
+                colors={colors}
+              />
+              <TextField
+                label="MAC 地址"
+                value={draft.macaddr}
+                onChangeText={(value) => update("macaddr", value)}
+                placeholder="00:11:22:33:44:55"
+                colors={colors}
+              />
+              <TextField
+                label="MTU"
+                value={draft.mtu}
+                onChangeText={(value) => update("mtu", value)}
+                keyboardType="number-pad"
+                colors={colors}
+              />
+              <SettingSwitch
+                label="启用 IPv6"
+                value={draft.ipv6}
+                onValueChange={(value) => update("ipv6", value)}
+                colors={colors}
+              />
+              <PrimaryButton
+                label="保存网络设备"
+                disabled={disabled}
+                color={colors.primary}
+                onPress={() => {
+                  onSave(draft);
+                  setEditing(false);
+                }}
+              />
+            </ScrollView>
+          </View>
+        </View>
+      </Modal>
+    </View>
+  );
+}
+
+function InterfaceDetail({
+  label,
+  value,
+  colors,
+}: {
+  label: string;
+  value: string;
+  colors: ReturnType<typeof useColors>;
+}) {
+  return (
+    <View style={styles.interfaceDetail}>
+      <Text style={[styles.detailLabel, { color: colors.muted }]}>{label}</Text>
+      <Text
+        selectable
+        numberOfLines={2}
+        style={[styles.detailValue, { color: colors.foreground }]}
+      >
+        {value}
+      </Text>
+    </View>
+  );
+}
+
+function SmallButton({
+  label,
+  disabled,
+  color,
+  onPress,
+}: {
+  label: string;
+  disabled: boolean;
+  color: string;
+  onPress: () => void;
+}) {
+  return (
+    <Pressable
+      disabled={disabled}
+      onPress={onPress}
+      style={({ pressed }) => [
+        styles.smallButton,
+        { borderColor: color },
+        pressed && styles.pressed,
+        disabled && styles.disabled,
+      ]}
+    >
+      <Text style={[styles.smallButtonText, { color }]}>{label}</Text>
+    </Pressable>
+  );
+}
+
+function formatUptime(seconds: number): string {
+  const days = Math.floor(seconds / 86_400);
+  const hours = Math.floor((seconds % 86_400) / 3_600);
+  const minutes = Math.floor((seconds % 3_600) / 60);
+  return days
+    ? `${days} 天 ${hours} 小时`
+    : hours
+      ? `${hours} 小时 ${minutes} 分`
+      : `${minutes} 分`;
 }
 
 const styles = StyleSheet.create({
@@ -965,6 +1664,67 @@ const styles = StyleSheet.create({
     justifyContent: "space-between",
     alignItems: "center",
   },
+  subsection: {
+    borderTopWidth: StyleSheet.hairlineWidth,
+    paddingTop: 16,
+    gap: 12,
+    marginTop: 4,
+  },
+  subsectionTitle: { fontSize: 15, fontWeight: "800" },
+  interfaceCard: { borderWidth: 1, borderRadius: 14, padding: 14, gap: 12 },
+  statusStack: { alignItems: "flex-end", gap: 6 },
+  interfaceMetrics: { flexDirection: "row", flexWrap: "wrap", gap: 10 },
+  interfaceDetail: { width: "47%", gap: 2 },
+  detailLabel: { fontSize: 11, fontWeight: "700" },
+  detailValue: { fontSize: 12, lineHeight: 18, fontWeight: "700" },
+  cardActionRow: { flexDirection: "row", gap: 8 },
+  smallButton: {
+    minHeight: 35,
+    flex: 1,
+    justifyContent: "center",
+    alignItems: "center",
+    borderWidth: 1,
+    borderRadius: 9,
+    paddingHorizontal: 9,
+  },
+  smallButtonText: { fontSize: 12, fontWeight: "800" },
+  deviceRow: {
+    borderWidth: 1,
+    borderRadius: 12,
+    padding: 12,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+  },
+  modalBackdrop: {
+    flex: 1,
+    justifyContent: "flex-end",
+    backgroundColor: "rgba(0,0,0,0.46)",
+  },
+  modalSheet: {
+    maxHeight: "88%",
+    borderTopLeftRadius: 24,
+    borderTopRightRadius: 24,
+    borderWidth: 1,
+    overflow: "hidden",
+  },
+  modalHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    padding: 18,
+    paddingBottom: 13,
+  },
+  modalTitle: { fontSize: 18, fontWeight: "800" },
+  modalContent: { paddingHorizontal: 18, paddingBottom: 30, gap: 14 },
+  closeButton: {
+    minHeight: 34,
+    justifyContent: "center",
+    paddingHorizontal: 11,
+    borderRadius: 9,
+    borderWidth: 1,
+  },
+  closeButtonText: { fontSize: 12, fontWeight: "800" },
   pressed: { opacity: 0.72 },
   disabled: { opacity: 0.45 },
 });

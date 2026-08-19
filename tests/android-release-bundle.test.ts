@@ -5,6 +5,7 @@ import { describe, expect, it } from "vitest";
 
 const projectRoot = process.cwd();
 const gradlePath = resolve(projectRoot, "android/app/build.gradle");
+const expoConfigPath = resolve(projectRoot, "app.config.ts");
 const workflowPath = resolve(
   projectRoot,
   ".github/workflows/build-android.yml",
@@ -29,8 +30,23 @@ const mainActivityPath = resolve(
   projectRoot,
   "android/app/src/main/java/com/app/openwrtstatusapp/MainActivity.kt",
 );
+const routerProviderPath = resolve(projectRoot, "lib/router-provider.tsx");
 
 describe("Android Release JavaScript bundle", () => {
+  it("保持 Expo 与 Gradle 的 Android 发布版本一致", () => {
+    const expoConfig = readFileSync(expoConfigPath, "utf8");
+    const gradle = readFileSync(gradlePath, "utf8");
+    const expoVersion = expoConfig.match(/version:\s*"([0-9.]+)"/)?.[1];
+    const expoVersionCode = expoConfig.match(/versionCode:\s*(\d+)/)?.[1];
+    const gradleVersion = gradle.match(/versionName\s+"([0-9.]+)"/)?.[1];
+    const gradleVersionCode = gradle.match(/versionCode\s+(\d+)/)?.[1];
+
+    expect(expoVersion).toBe("1.0.23");
+    expect(expoVersion).toBe(gradleVersion);
+    expect(expoVersionCode).toBe("19");
+    expect(expoVersionCode).toBe(gradleVersionCode);
+  });
+
   it("仅将 debug 视为可调试变体，确保 release 从当前源码重新打包", () => {
     const gradle = readFileSync(gradlePath, "utf8");
     expect(gradle).toMatch(/debuggableVariants\s*=\s*\["debug"\]/);
@@ -61,6 +77,7 @@ describe("Android Release JavaScript bundle", () => {
     const settings = readFileSync(settingsPath, "utf8");
     const backGestureModule = readFileSync(backGestureModulePath, "utf8");
     const mainActivity = readFileSync(mainActivityPath, "utf8");
+    const routerProvider = readFileSync(routerProviderPath, "utf8");
 
     expect(routerForm).toContain("isPasswordVisible");
     expect(routerForm).toContain("isSshPasswordVisible");
@@ -79,11 +96,25 @@ describe("Android Release JavaScript bundle", () => {
     expect(wirelessManager).toContain("加密方式");
     expect(systemAdmin).toContain("定时重启");
     expect(systemAdmin).toContain("计划任务");
+    expect(systemAdmin).toContain("路由器密码");
+    expect(systemAdmin).toContain("APK 仓库公钥");
+    expect(systemAdmin).toContain("LuCI HTTP/HTTPS 服务");
+    expect(systemAdmin).toContain("网络设备");
+    expect(systemAdmin).toContain("全局网络设置");
+    expect(systemAdmin).toContain("链路在线");
     expect(firewall).toContain("通信规则");
     expect(settings).toContain("预测性返回手势");
     expect(backGestureModule).toContain("OpenWrtBackGesture");
     expect(backGestureModule).toContain("predictive-back-enabled");
     expect(mainActivity).toContain("setPredictiveBackEnabled");
     expect(mainActivity).toContain("OnBackInvokedCallback");
+    expect(mainActivity).toContain("PRIORITY_DEFAULT");
+    expect(mainActivity).toContain("onBackPressedDispatcher.onBackPressed()");
+    expect(mainActivity).toContain("override fun onResume()");
+    expect(mainActivity).toContain("override fun onDestroy()");
+    expect(routerProvider).toMatch(
+      /setPredictiveBackEnabled\(\s*savedSettings\.predictiveBackEnabled\s*,?\s*\)/,
+    );
+    expect(routerProvider).toContain("已有同名路由器，请使用不同的名称。");
   });
 });
