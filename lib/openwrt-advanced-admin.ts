@@ -424,16 +424,15 @@ export function buildPluginSettingsSnapshotCommand(id: ProxyServiceId) {
   const service = serviceDefinition(id);
   const pkg = pluginUciPackage(id);
   const prefix = `__PLUGIN_SETTINGS__|${id}`;
-  return [
-    `[ -x /etc/init.d/${service.initName} ] || { printf '${prefix}|missing\\n'; exit 0; }`,
-    `if [ ! -r ${shellQuote(service.configPath)} ]; then printf '${prefix}|missing\\n'; exit 0; fi`,
-    `printf '${prefix}|present\\n'`,
+  const scan = [
     `uci -q show ${shellQuote(pkg)} 2>/dev/null | while IFS= read -r line; do`,
-    `case "$line" in`,
-    `${pkg}.*.*=*) section=$(printf '%s' "$line" | cut -d. -f2); option=$(printf '%s' "$line" | cut -d. -f3 | cut -d= -f1); value=$(printf '%s' "$line" | cut -d= -f2-); printf 'VALUE|%s|%s|%s\\n' "$section" "$option" "$value" ;;`,
-    `${pkg}.*=*) section=$(printf '%s' "$line" | cut -d. -f2 | cut -d= -f1); type=$(printf '%s' "$line" | cut -d= -f2-); printf 'SECTION|%s|%s\\n' "$section" "$type" ;;`,
-    `esac; done`,
-  ].join("; ");
+    '  case "$line" in',
+    `    ${pkg}.*.*=*) section=$(printf '%s' "$line" | cut -d. -f2); option=$(printf '%s' "$line" | cut -d. -f3 | cut -d= -f1); value=$(printf '%s' "$line" | cut -d= -f2-); printf 'VALUE|%s|%s|%s\\n' "$section" "$option" "$value" ;;`,
+    `    ${pkg}.*=*) section=$(printf '%s' "$line" | cut -d. -f2 | cut -d= -f1); type=$(printf '%s' "$line" | cut -d= -f2-); printf 'SECTION|%s|%s\\n' "$section" "$type" ;;`,
+    "  esac",
+    "done",
+  ].join("\n");
+  return `[ -x /etc/init.d/${service.initName} ] || { printf '${prefix}|missing\\n'; exit 0; }; if [ ! -r ${shellQuote(service.configPath)} ]; then printf '${prefix}|missing\\n'; exit 0; fi; printf '${prefix}|present\\n'; ${scan}`;
 }
 
 export function parsePluginSettingsSnapshot(
@@ -446,11 +445,16 @@ export function parsePluginSettingsSnapshot(
   const markerIndex = normalized.indexOf(marker);
   if (markerIndex < 0) throw new Error("服务设置返回格式无效。");
   const lines = normalized.slice(markerIndex).split("\n");
-  const exists = lines[0].trim() === `${marker}present`;
-  if (!exists && lines[0].trim() !== `${marker}missing`)
+  const markerLineIndex = lines.findIndex((line) =>
+    ["present", "missing"].includes(line.trim().slice(marker.length)),
+  );
+  if (markerLineIndex < 0) throw new Error("服务设置返回格式无效。");
+  const markerLine = lines[markerLineIndex].trim();
+  const exists = markerLine === `${marker}present`;
+  if (!exists && markerLine !== `${marker}missing`)
     throw new Error("服务设置返回格式无效。");
   const sections = new Map<string, PluginSettingsSection>();
-  for (const line of lines.slice(1)) {
+  for (const line of lines.slice(markerLineIndex + 1)) {
     const sectionMatch = line.match(
       /^SECTION\|(@?[A-Za-z0-9_-]+(?:\[\d+\])?)\|([A-Za-z0-9_-]+)$/,
     );

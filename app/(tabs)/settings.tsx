@@ -1,14 +1,6 @@
 import MaterialIcons from "@expo/vector-icons/MaterialIcons";
 import { useRouter } from "expo-router";
-import {
-  Platform,
-  Pressable,
-  ScrollView,
-  StyleSheet,
-  Switch,
-  Text,
-  View,
-} from "react-native";
+import { Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
 
 import { SectionCard, sharedStyles } from "@/components/status-ui";
 import { useColors } from "@/hooks/use-colors";
@@ -41,7 +33,6 @@ const themeOptions: {
 export default function SettingsScreen() {
   const {
     settings,
-    updatePredictiveBackEnabled,
     updateRefreshInterval,
     updateTrafficInterfaceIds,
     updateStatusTrafficView,
@@ -161,31 +152,6 @@ export default function SettingsScreen() {
             })}
           </View>
         </SectionCard>
-        {Platform.OS === "android" ? (
-          <SectionCard title="系统导航">
-            <View style={styles.navigationRow}>
-              <View style={styles.infoText}>
-                <Text style={[styles.infoTitle, { color: colors.foreground }]}>
-                  预测性返回手势
-                </Text>
-                <Text style={[styles.infoDescription, { color: colors.muted }]}>
-                  启用 Android 13+ 的系统返回预览。Android 13
-                  需在开发者选项中打开预测性返回动画；Android 14+
-                  由系统直接显示。
-                </Text>
-              </View>
-              <Switch
-                value={settings.predictiveBackEnabled}
-                onValueChange={(enabled) =>
-                  void updatePredictiveBackEnabled(enabled)
-                }
-                trackColor={{ false: colors.border, true: colors.primary }}
-                thumbColor="#FFFFFF"
-                accessibilityLabel="预测性返回手势"
-              />
-            </View>
-          </SectionCard>
-        ) : null}
         <SectionCard title="实时流量网口">
           <Text style={[styles.cardDescription, { color: colors.muted }]}>
             默认仅展示主 WAN。勾选后可同时显示 LAN、备用 WAN

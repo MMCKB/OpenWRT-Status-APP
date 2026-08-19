@@ -15,7 +15,6 @@ const defaultSettings: RouterSettings = {
   refreshIntervalSeconds: 60,
   trafficInterfaceIds: [],
   statusTrafficView: "full",
-  predictiveBackEnabled: true,
 };
 
 function passwordKey(routerId: string) {
@@ -86,10 +85,6 @@ export async function loadSettings(): Promise<RouterSettings> {
         : defaultSettings.trafficInterfaceIds,
       statusTrafficView:
         decoded.statusTrafficView === "compact" ? "compact" : "full",
-      predictiveBackEnabled:
-        typeof decoded.predictiveBackEnabled === "boolean"
-          ? decoded.predictiveBackEnabled
-          : defaultSettings.predictiveBackEnabled,
     };
   } catch {
     return defaultSettings;

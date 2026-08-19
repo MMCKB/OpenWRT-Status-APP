@@ -115,7 +115,7 @@ const tools = [
   },
   {
     title: "系统管理",
-    description: "管理定时重启、启动项、LED、挂载点、SSH、接口和计划任务。",
+    description: "管理启动项、LED、挂载点、SSH、接口和计划任务。",
     icon: "admin-panel-settings",
     target: "/system-admin",
   },

@@ -144,16 +144,13 @@ jobs:
           APK_BADGING="$($AAPT dump badging "$FINAL_APK")"
           printf '%s\n' "$APK_BADGING" | grep -F "versionCode='$VERSION_CODE'"
           printf '%s\n' "$APK_BADGING" | grep -F "versionName='$VERSION_NAME'"
-          # Verify that the release embeds the current service-management,
-          # password-visibility, and Android 13+ back-gesture setting code,
+          # Verify that the release embeds the current service-management and
+          # password-visibility code rather than an old JavaScript bundle.
           # rather than an old JavaScript bundle.
           # Do not use grep -q here: with pipefail it closes early and makes
           # unzip fail with SIGPIPE even when the marker is present.
           unzip -p "$FINAL_APK" assets/index.android.bundle | grep -aF "PassWall2" >/dev/null
           unzip -p "$FINAL_APK" assets/index.android.bundle | grep -aF "visibility-off" >/dev/null
-          unzip -p "$FINAL_APK" assets/index.android.bundle | grep -aF "predictiveBackEnabled" >/dev/null
-          grep -F "setPredictiveBackEnabled" \
-            android/app/src/main/java/com/app/openwrtstatusapp/MainActivity.kt
           sha256sum "$FINAL_APK" | tee "${FINAL_APK}.sha256"
           rm -f "$ALIGNED_APK"
 

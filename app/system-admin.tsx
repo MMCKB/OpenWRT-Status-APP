@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import * as DocumentPicker from "expo-document-picker";
 import * as FileSystem from "expo-file-system/legacy";
+import MaterialIcons from "@expo/vector-icons/MaterialIcons";
 import {
   ActivityIndicator,
   Modal,
@@ -21,16 +22,20 @@ import { useManagedSsh } from "@/hooks/use-managed-ssh";
 import {
   buildAddApkRepositoryKeyCommand,
   buildAddLedCommand,
+  buildAddMountCommand,
+  buildAutoMountUnconfiguredCommand,
   buildAddSshInstanceCommand,
   buildAddSshAuthorizedKeyCommand,
-  buildAutorebootSnapshotCommand,
   buildApkRepositoryKeysSnapshotCommand,
   buildChangeRouterPasswordCommand,
-  buildCronSnapshotCommand,
   buildFetchApkRepositoryKeyCommand,
   buildLedCapabilitiesSnapshotCommand,
+  buildDeleteLedCommand,
+  buildDeleteMountCommand,
+  buildGenerateMountConfigCommand,
+  buildLuciThemesSnapshotCommand,
   buildLedSnapshotCommand,
-  buildMountActionCommand,
+  buildMountConnectedDevicesCommand,
   buildMountSnapshotCommand,
   buildNetworkDeviceSnapshotCommand,
   buildNetworkGlobalSnapshotCommand,
@@ -38,24 +43,24 @@ import {
   buildNetworkInterfaceRestartCommand,
   buildNetworkInterfaceSnapshotCommand,
   buildNetworkInterfaceStatusCommand,
-  buildSaveAutorebootCommand,
   buildSaveLedCommand,
+  buildSaveMountCommand,
   buildSaveNetworkInterfaceCommand,
   buildSaveNetworkDeviceCommand,
   buildSaveNetworkGlobalCommand,
   buildSaveSshInstanceCommand,
   buildSaveUhttpdCommand,
-  buildScheduledActionCommand,
+  buildSetLuciThemeCommand,
   buildSshAccessSnapshotCommand,
   buildSshInstanceActionCommand,
   buildSshAuthorizedKeysSnapshotCommand,
   buildStartupActionCommand,
   buildStartupSnapshotCommand,
-  parseAutorebootSettings,
   parseApkRepositoryKeys,
-  parseCronEntries,
   parseLedCapabilities,
   parseLedSettings,
+  parseLuciThemes,
+  parseMountedFileSystems,
   parseMountPoints,
   parseNetworkInterfaceSettings,
   parseNetworkInterfaceStatus,
@@ -63,57 +68,39 @@ import {
   parseNetworkGlobalSettings,
   parseSshAccessSettings,
   parseSshAuthorizedKeys,
+  parseSwapPartitions,
   parseStartupServices,
   parseUhttpdSettings,
   buildUhttpdSnapshotCommand,
   type ApkRepositoryKey,
-  type AutorebootSettings,
   type DropbearInstance,
   type LedSetting,
   type LedCapabilities,
+  type LuciTheme,
   type MountPoint,
+  type MountedFileSystem,
   type NewLedSettings,
   type NetworkInterfaceSettings,
   type NetworkInterfaceStatus,
   type NetworkDeviceSettings,
   type NetworkGlobalSettings,
-  type ScheduledAction,
   type SshAccessSettings,
   type SshAuthorizedKey,
   type StartupService,
+  type SwapPartition,
   type UhttpdSettings,
 } from "@/lib/openwrt-luci-system";
 
-type Panel =
-  | "automation"
-  | "startup"
-  | "led"
-  | "mount"
-  | "ssh"
-  | "network"
-  | "cron";
+type Panel = "startup" | "led" | "mount" | "ssh" | "network";
 
 const PANELS: Array<{ id: Panel; label: string }> = [
-  { id: "automation", label: "定时重启" },
   { id: "startup", label: "启动项" },
   { id: "led", label: "LED" },
   { id: "mount", label: "挂载点" },
   { id: "ssh", label: "管理权" },
   { id: "network", label: "接口" },
-  { id: "cron", label: "计划任务" },
 ];
 
-const emptyAutoreboot: AutorebootSettings = {
-  installed: false,
-  section: "",
-  enabled: false,
-  time: "04:00",
-  minute: "0",
-  hour: "4",
-  day: "*",
-  month: "*",
-  week: "*",
-};
 const emptySsh: SshAccessSettings = {
   installed: false,
   port: "22",
@@ -145,10 +132,9 @@ const emptyNetworkGlobal: NetworkGlobalSettings = {
 export default function SystemAdminScreen() {
   const colors = useColors();
   const { execute, error, hasRouter, isRunning, isSupported } = useManagedSsh();
-  const [panel, setPanel] = useState<Panel>("automation");
+  const [panel, setPanel] = useState<Panel>("startup");
   const [loading, setLoading] = useState(false);
   const [output, setOutput] = useState<string | null>(null);
-  const [autoreboot, setAutoreboot] = useState(emptyAutoreboot);
   const [services, setServices] = useState<StartupService[]>([]);
   const [leds, setLeds] = useState<LedSetting[]>([]);
   const [ledCapabilities, setLedCapabilities] = useState<LedCapabilities>({
@@ -156,6 +142,10 @@ export default function SystemAdminScreen() {
     triggers: [],
   });
   const [mounts, setMounts] = useState<MountPoint[]>([]);
+  const [mountedFileSystems, setMountedFileSystems] = useState<
+    MountedFileSystem[]
+  >([]);
+  const [swapPartitions, setSwapPartitions] = useState<SwapPartition[]>([]);
   const [ssh, setSsh] = useState(emptySsh);
   const [sshKeys, setSshKeys] = useState<SshAuthorizedKey[]>([]);
   const [newSshKey, setNewSshKey] = useState("");
@@ -167,6 +157,7 @@ export default function SystemAdminScreen() {
   const [apkKeyValue, setApkKeyValue] = useState("");
   const [apkKeyUrl, setApkKeyUrl] = useState("");
   const [uhttpd, setUhttpd] = useState(emptyUhttpd);
+  const [luciThemes, setLuciThemes] = useState<LuciTheme[]>([]);
   const [interfaces, setInterfaces] = useState<NetworkInterfaceSettings[]>([]);
   const [interfaceStatuses, setInterfaceStatuses] = useState<
     NetworkInterfaceStatus[]
@@ -175,12 +166,6 @@ export default function SystemAdminScreen() {
     [],
   );
   const [networkGlobal, setNetworkGlobal] = useState(emptyNetworkGlobal);
-  const [cronEntries, setCronEntries] = useState<string[]>([]);
-  const [weekday, setWeekday] = useState("*");
-  const [hour, setHour] = useState("04");
-  const [minute, setMinute] = useState("00");
-  const [scheduledAction, setScheduledAction] =
-    useState<ScheduledAction>("reboot");
 
   const disabled = !hasRouter || !isSupported || isRunning || loading;
 
@@ -189,7 +174,6 @@ export default function SystemAdminScreen() {
     setLoading(true);
     try {
       const [
-        autorebootRaw,
         startupRaw,
         ledRaw,
         ledCapabilitiesRaw,
@@ -198,13 +182,12 @@ export default function SystemAdminScreen() {
         sshKeysRaw,
         apkKeysRaw,
         uhttpdRaw,
+        luciThemesRaw,
         networkRaw,
         interfaceStatusRaw,
         networkDeviceRaw,
         networkGlobalRaw,
-        cronRaw,
       ] = await Promise.all([
-        execute(buildAutorebootSnapshotCommand()),
         execute(buildStartupSnapshotCommand()),
         execute(buildLedSnapshotCommand()),
         execute(buildLedCapabilitiesSnapshotCommand()),
@@ -213,26 +196,27 @@ export default function SystemAdminScreen() {
         execute(buildSshAuthorizedKeysSnapshotCommand()),
         execute(buildApkRepositoryKeysSnapshotCommand()),
         execute(buildUhttpdSnapshotCommand()),
+        execute(buildLuciThemesSnapshotCommand()),
         execute(buildNetworkInterfaceSnapshotCommand()),
         execute(buildNetworkInterfaceStatusCommand()),
         execute(buildNetworkDeviceSnapshotCommand()),
         execute(buildNetworkGlobalSnapshotCommand()),
-        execute(buildCronSnapshotCommand()),
       ]);
-      setAutoreboot(parseAutorebootSettings(autorebootRaw));
       setServices(parseStartupServices(startupRaw));
       setLeds(parseLedSettings(ledRaw));
       setLedCapabilities(parseLedCapabilities(ledCapabilitiesRaw));
       setMounts(parseMountPoints(mountRaw));
+      setMountedFileSystems(parseMountedFileSystems(mountRaw));
+      setSwapPartitions(parseSwapPartitions(mountRaw));
       setSsh(parseSshAccessSettings(sshRaw));
       setSshKeys(parseSshAuthorizedKeys(sshKeysRaw));
       setApkKeys(parseApkRepositoryKeys(apkKeysRaw));
       setUhttpd(parseUhttpdSettings(uhttpdRaw));
+      setLuciThemes(parseLuciThemes(luciThemesRaw));
       setInterfaces(parseNetworkInterfaceSettings(networkRaw));
       setInterfaceStatuses(parseNetworkInterfaceStatus(interfaceStatusRaw));
       setNetworkDevices(parseNetworkDeviceSettings(networkDeviceRaw));
       setNetworkGlobal(parseNetworkGlobalSettings(networkGlobalRaw));
-      setCronEntries(parseCronEntries(cronRaw));
     } catch (reason) {
       setOutput(
         reason instanceof Error ? reason.message : "读取系统配置失败。",
@@ -316,7 +300,6 @@ export default function SystemAdminScreen() {
   const title = useMemo(
     () =>
       ({
-        automation: "定时重启",
         startup: "启动项",
         led: "LED 配置",
         mount: "挂载点",
@@ -363,87 +346,6 @@ export default function SystemAdminScreen() {
         ))}
       </ScrollView>
       <SectionCard title={title}>
-        {panel === "automation" ? (
-          <View style={styles.body}>
-            {!autoreboot.installed ? (
-              <EmptyState
-                icon="schedule"
-                title="未检测到 autoreboot"
-                description="请先在软件包管理中安装 luci-app-autoreboot 或 autoreboot。"
-              />
-            ) : (
-              <>
-                <SettingSwitch
-                  label="启用自动重启"
-                  value={autoreboot.enabled}
-                  onValueChange={(value) =>
-                    setAutoreboot((current) => ({ ...current, enabled: value }))
-                  }
-                  colors={colors}
-                />
-                <TextField
-                  label="分钟"
-                  value={autoreboot.minute}
-                  onChangeText={(value) =>
-                    setAutoreboot((current) => ({ ...current, minute: value }))
-                  }
-                  placeholder="0"
-                  colors={colors}
-                />
-                <TextField
-                  label="小时"
-                  value={autoreboot.hour}
-                  onChangeText={(value) =>
-                    setAutoreboot((current) => ({ ...current, hour: value }))
-                  }
-                  placeholder="4"
-                  colors={colors}
-                />
-                <TextField
-                  label="日期"
-                  value={autoreboot.day}
-                  onChangeText={(value) =>
-                    setAutoreboot((current) => ({ ...current, day: value }))
-                  }
-                  placeholder="*"
-                  colors={colors}
-                />
-                <TextField
-                  label="月份"
-                  value={autoreboot.month}
-                  onChangeText={(value) =>
-                    setAutoreboot((current) => ({ ...current, month: value }))
-                  }
-                  placeholder="*"
-                  colors={colors}
-                />
-                <TextField
-                  label="星期"
-                  value={autoreboot.week}
-                  onChangeText={(value) =>
-                    setAutoreboot((current) => ({ ...current, week: value }))
-                  }
-                  placeholder="*"
-                  colors={colors}
-                />
-                <PrimaryButton
-                  label="保存定时重启"
-                  disabled={disabled}
-                  color={colors.primary}
-                  onPress={() =>
-                    confirm(
-                      "保存定时重启",
-                      "将更新路由器的自动重启计划。",
-                      () => buildSaveAutorebootCommand(autoreboot),
-                      "自动重启设置已保存。",
-                    )
-                  }
-                />
-              </>
-            )}
-          </View>
-        ) : null}
-
         {panel === "startup" ? (
           <View>
             {services.length ? (
@@ -503,10 +405,23 @@ export default function SystemAdminScreen() {
                   disabled={disabled}
                   colors={colors}
                   onSave={(next) =>
+                    leds.some(
+                      (item) =>
+                        item.section !== led.section && item.name === next.name,
+                    )
+                      ? setOutput("LED 名称已存在，请选择其他名称。")
+                      : confirm(
+                          "保存 LED 设置",
+                          `将更新“${led.name}”的触发器并重载系统设置。`,
+                          () => buildSaveLedCommand(next),
+                        )
+                  }
+                  onDelete={() =>
                     confirm(
-                      "保存 LED 设置",
-                      `将更新“${led.name}”的触发器并重载系统设置。`,
-                      () => buildSaveLedCommand(next),
+                      "删除 LED 配置",
+                      `将删除“${led.name}”配置。此操作不会删除路由器上的 LED 设备。`,
+                      () => buildDeleteLedCommand(led.section),
+                      "LED 配置已删除。",
                     )
                   }
                   divider={index > 0}
@@ -524,12 +439,14 @@ export default function SystemAdminScreen() {
               colors={colors}
               capabilities={ledCapabilities}
               onCreate={(next) =>
-                confirm(
-                  "新增 LED",
-                  `将新增“${next.name}”LED 配置。`,
-                  () => buildAddLedCommand(next),
-                  "LED 已新增。",
-                )
+                leds.some((item) => item.name === next.name)
+                  ? setOutput("LED 名称已存在，不能重复添加。")
+                  : confirm(
+                      "新增 LED",
+                      `将新增“${next.name}”LED 配置。`,
+                      () => buildAddLedCommand(next),
+                      "LED 已新增。",
+                    )
               }
             />
           </View>
@@ -537,43 +454,83 @@ export default function SystemAdminScreen() {
 
         {panel === "mount" ? (
           <View>
+            <View style={styles.cardActionRow}>
+              <NewMountPointForm
+                disabled={disabled}
+                colors={colors}
+                onCreate={(mount) =>
+                  confirm(
+                    "新增挂载点",
+                    `将为 ${mount.device || "所选设备"} 创建挂载配置。`,
+                    () => buildAddMountCommand(mount),
+                    "挂载点已新增。",
+                  )
+                }
+              />
+              <SmallButton
+                label="生成配置"
+                disabled={disabled}
+                color={colors.primary}
+                onPress={() =>
+                  confirm(
+                    "生成挂载配置",
+                    "将扫描已连接分区并生成缺失的 fstab 配置。",
+                    buildGenerateMountConfigCommand,
+                  )
+                }
+              />
+            </View>
+            <View style={styles.cardActionRow}>
+              <SmallButton
+                label="挂载已连接设备"
+                disabled={disabled}
+                color={colors.primary}
+                onPress={() =>
+                  confirm(
+                    "挂载已连接设备",
+                    "将执行已配置挂载点。",
+                    buildMountConnectedDevicesCommand,
+                  )
+                }
+              />
+              <SmallButton
+                label="自动挂载未配置分区"
+                disabled={disabled}
+                color={colors.primary}
+                onPress={() =>
+                  confirm(
+                    "自动挂载分区",
+                    "将为尚未配置的磁盘和交换分区生成并启用挂载配置。",
+                    buildAutoMountUnconfiguredCommand,
+                  )
+                }
+              />
+            </View>
             {mounts.length ? (
               mounts.map((mount, index) => (
-                <View
+                <MountPointCard
                   key={mount.section}
-                  style={[
-                    styles.row,
-                    index > 0 && {
-                      borderTopWidth: StyleSheet.hairlineWidth,
-                      borderTopColor: colors.border,
-                    },
-                  ]}
-                >
-                  <View style={styles.rowCopy}>
-                    <Text
-                      style={[styles.rowTitle, { color: colors.foreground }]}
-                    >
-                      {mount.target || "未设置挂载路径"}
-                    </Text>
-                    <Text style={[styles.help, { color: colors.muted }]}>
-                      {[mount.device, mount.fstype]
-                        .filter(Boolean)
-                        .join(" · ") || "未识别设备"}
-                    </Text>
-                  </View>
-                  <Switch
-                    value={mount.enabled}
-                    disabled={disabled}
-                    onValueChange={(value) =>
-                      confirm(
-                        value ? "启用挂载点" : "停用挂载点",
-                        `${mount.target || mount.section} 将${value ? "恢复" : "停止"}自动挂载。`,
-                        () => buildMountActionCommand(mount.section, value),
-                      )
-                    }
-                    trackColor={{ false: colors.border, true: colors.primary }}
-                  />
-                </View>
+                  mount={mount}
+                  disabled={disabled}
+                  colors={colors}
+                  divider={index > 0}
+                  onSave={(next) =>
+                    confirm(
+                      "保存挂载点",
+                      `将保存 ${next.target || next.section} 的配置。`,
+                      () => buildSaveMountCommand(next),
+                    )
+                  }
+                  onDelete={() =>
+                    confirm(
+                      "删除挂载点",
+                      `将删除 ${mount.target || mount.section} 的配置。`,
+                      () => buildDeleteMountCommand(mount.section),
+                      "挂载点已删除。",
+                      true,
+                    )
+                  }
+                />
               ))
             ) : (
               <EmptyState
@@ -581,6 +538,63 @@ export default function SystemAdminScreen() {
                 title="未配置挂载点"
                 description="请在路由器上插入存储设备或创建 fstab 挂载配置后刷新。"
               />
+            )}
+            <Text style={[styles.fieldLabel, { color: colors.foreground }]}>
+              已挂载的文件系统
+            </Text>
+            {mountedFileSystems.length ? (
+              mountedFileSystems.map((item) => (
+                <View
+                  key={`${item.target}-${item.device}`}
+                  style={[
+                    styles.deviceRow,
+                    {
+                      backgroundColor: colors.background,
+                      borderColor: colors.border,
+                    },
+                  ]}
+                >
+                  <View style={styles.rowCopy}>
+                    <Text
+                      style={[styles.rowTitle, { color: colors.foreground }]}
+                    >
+                      {item.target}
+                    </Text>
+                    <Text style={[styles.help, { color: colors.muted }]}>
+                      {[item.device, item.fstype].filter(Boolean).join(" · ")}
+                    </Text>
+                  </View>
+                </View>
+              ))
+            ) : (
+              <Text style={[styles.help, { color: colors.muted }]}>
+                未检测到已挂载的文件系统。
+              </Text>
+            )}
+            <Text style={[styles.fieldLabel, { color: colors.foreground }]}>
+              已启用的交换分区
+            </Text>
+            {swapPartitions.length ? (
+              swapPartitions.map((item) => (
+                <View
+                  key={item.device}
+                  style={[
+                    styles.deviceRow,
+                    {
+                      backgroundColor: colors.background,
+                      borderColor: colors.border,
+                    },
+                  ]}
+                >
+                  <Text style={[styles.rowTitle, { color: colors.foreground }]}>
+                    {item.device}
+                  </Text>
+                </View>
+              ))
+            ) : (
+              <Text style={[styles.help, { color: colors.muted }]}>
+                未检测到已启用的交换分区。
+              </Text>
             )}
           </View>
         ) : null}
@@ -887,6 +901,73 @@ export default function SystemAdminScreen() {
                     </>
                   )}
                 </View>
+                <View
+                  style={[styles.subsection, { borderTopColor: colors.border }]}
+                >
+                  <Text
+                    style={[
+                      styles.subsectionTitle,
+                      { color: colors.foreground },
+                    ]}
+                  >
+                    LuCI 主题
+                  </Text>
+                  <Text style={[styles.help, { color: colors.muted }]}>
+                    显示路由器中实际安装的主题。切换后请在浏览器刷新 LuCI
+                    管理页面。
+                  </Text>
+                  {luciThemes.length ? (
+                    luciThemes.map((theme) => (
+                      <Pressable
+                        key={theme.name}
+                        disabled={disabled || theme.active}
+                        onPress={() =>
+                          confirm(
+                            "切换 LuCI 主题",
+                            `将 LuCI 主题切换为“${theme.name}”。`,
+                            () => buildSetLuciThemeCommand(theme.name),
+                            "LuCI 主题已切换。",
+                          )
+                        }
+                        style={({ pressed }) => [
+                          styles.themeRow,
+                          {
+                            backgroundColor: theme.active
+                              ? colors.primary + "18"
+                              : colors.background,
+                            borderColor: theme.active
+                              ? colors.primary
+                              : colors.border,
+                            opacity: pressed && !theme.active ? 0.72 : 1,
+                          },
+                        ]}
+                      >
+                        <View style={styles.rowCopy}>
+                          <Text
+                            style={[
+                              styles.rowTitle,
+                              { color: colors.foreground },
+                            ]}
+                          >
+                            {theme.name}
+                          </Text>
+                          <Text style={[styles.help, { color: colors.muted }]}>
+                            {theme.active ? "当前使用" : "点按切换"}
+                          </Text>
+                        </View>
+                        <MaterialIcons
+                          name={theme.active ? "check-circle" : "chevron-right"}
+                          size={theme.active ? 20 : 22}
+                          color={theme.active ? colors.primary : colors.muted}
+                        />
+                      </Pressable>
+                    ))
+                  ) : (
+                    <Text style={[styles.help, { color: colors.muted }]}>
+                      未发现可切换的 LuCI 主题目录。
+                    </Text>
+                  )}
+                </View>
               </>
             )}
           </View>
@@ -1020,114 +1101,6 @@ export default function SystemAdminScreen() {
                 }
               />
             </View>
-          </View>
-        ) : null}
-
-        {panel === "cron" ? (
-          <View style={styles.body}>
-            <Text style={[styles.help, { color: colors.muted }]}>
-              创建由本应用标记的常用计划任务；其他现有 crontab
-              条目只读显示，不会被应用修改。
-            </Text>
-            <TextField
-              label="分钟"
-              value={minute}
-              onChangeText={setMinute}
-              placeholder="00"
-              colors={colors}
-            />
-            <TextField
-              label="小时"
-              value={hour}
-              onChangeText={setHour}
-              placeholder="04"
-              colors={colors}
-            />
-            <TextField
-              label="星期（* 或 1-7）"
-              value={weekday}
-              onChangeText={setWeekday}
-              placeholder="*"
-              colors={colors}
-            />
-            <View style={styles.choiceRow}>
-              {(
-                [
-                  ["reboot", "重启路由器"],
-                  ["wan-reconnect", "重连 WAN"],
-                  ["ddns-refresh", "刷新 DDNS"],
-                ] as Array<[ScheduledAction, string]>
-              ).map(([id, label]) => (
-                <Pressable
-                  key={id}
-                  onPress={() => setScheduledAction(id)}
-                  style={({ pressed }) => [
-                    styles.choice,
-                    {
-                      borderColor:
-                        scheduledAction === id ? colors.primary : colors.border,
-                      backgroundColor:
-                        scheduledAction === id
-                          ? colors.primary
-                          : colors.surface,
-                    },
-                    pressed && styles.pressed,
-                  ]}
-                >
-                  <Text
-                    style={{
-                      color:
-                        scheduledAction === id ? "#fff" : colors.foreground,
-                      fontSize: 12,
-                      fontWeight: "800",
-                    }}
-                  >
-                    {label}
-                  </Text>
-                </Pressable>
-              ))}
-            </View>
-            <PrimaryButton
-              label="保存常用计划任务"
-              disabled={disabled}
-              color={colors.primary}
-              onPress={() =>
-                confirm(
-                  "保存计划任务",
-                  "将替换该类型此前由本应用创建的计划任务。",
-                  () =>
-                    buildScheduledActionCommand(
-                      minute,
-                      hour,
-                      weekday,
-                      scheduledAction,
-                    ),
-                  "计划任务已保存。",
-                )
-              }
-            />
-            {cronEntries.length ? (
-              <View
-                style={[
-                  styles.readOnly,
-                  { backgroundColor: colors.background },
-                ]}
-              >
-                {cronEntries.map((entry, index) => (
-                  <Text
-                    key={`${entry}-${index}`}
-                    selectable
-                    style={[styles.mono, { color: colors.foreground }]}
-                  >
-                    {entry}
-                  </Text>
-                ))}
-              </View>
-            ) : (
-              <Text style={[styles.help, { color: colors.muted }]}>
-                未发现 crontab 条目。
-              </Text>
-            )}
           </View>
         ) : null}
       </SectionCard>
@@ -1279,77 +1252,155 @@ function NewLedForm({
   capabilities: LedCapabilities;
   onCreate: (value: NewLedSettings) => void;
 }) {
-  const [name, setName] = useState("");
+  const [editing, setEditing] = useState(false);
   const [sysfs, setSysfs] = useState("");
   const [trigger, setTrigger] = useState("none");
-  const [color, setColor] = useState("");
-  const canCreate = !disabled && Boolean(name.trim() && sysfs.trim());
+  const [delayOn, setDelayOn] = useState("500");
+  const [delayOff, setDelayOff] = useState("500");
+  const activeDevices = capabilities.devices;
+  const activeTriggers = capabilities.triggers.filter(
+    (value) => LED_TRIGGER_LABELS[value],
+  );
+  const reset = () => {
+    setSysfs(activeDevices[0] ?? "");
+    setTrigger("none");
+    setDelayOn("500");
+    setDelayOff("500");
+  };
   return (
     <View style={[styles.subsection, { borderTopColor: colors.border }]}>
-      <Text style={[styles.subsectionTitle, { color: colors.foreground }]}>
-        添加 LED
-      </Text>
-      <TextField
-        label="名称"
-        value={name}
-        onChangeText={setName}
-        placeholder="例如：状态灯"
-        colors={colors}
-      />
-      <TextField
-        label="LED 设备（sysfs）"
-        value={sysfs}
-        onChangeText={setSysfs}
-        placeholder="例如：green:status"
-        colors={colors}
-      />
-      {capabilities.devices.length ? (
-        <ChoiceChips
-          values={capabilities.devices}
-          selected={sysfs}
-          onSelect={setSysfs}
-          colors={colors}
-        />
-      ) : null}
-      <TextField
-        label="触发器"
-        value={trigger}
-        onChangeText={setTrigger}
-        placeholder="none / timer / netdev / heartbeat"
-        colors={colors}
-      />
-      <ChoiceChips
-        values={capabilities.triggers}
-        selected={trigger}
-        onSelect={setTrigger}
-        colors={colors}
-      />
-      <TextField
-        label="颜色"
-        value={color}
-        onChangeText={setColor}
-        placeholder="white / red / green / blue / amber"
-        colors={colors}
-      />
-      <ChoiceChips
-        values={["", "white", "red", "green", "blue", "amber"]}
-        selected={color}
-        onSelect={setColor}
-        colors={colors}
-        emptyLabel="不指定"
-      />
       <PrimaryButton
         label="添加 LED"
-        disabled={!canCreate}
+        disabled={disabled || !activeDevices.length}
         color={colors.primary}
-        onPress={() =>
-          onCreate({
-            name: name.trim(),
-            sysfs: sysfs.trim(),
-            trigger: trigger.trim(),
-            color: color.trim(),
-          })
-        }
+        onPress={() => {
+          reset();
+          setEditing(true);
+        }}
+      />
+      <Modal
+        visible={editing}
+        transparent
+        animationType="slide"
+        onRequestClose={() => setEditing(false)}
+      >
+        <View style={styles.modalBackdrop}>
+          <View
+            style={[
+              styles.modalSheet,
+              { backgroundColor: colors.surface, borderColor: colors.border },
+            ]}
+          >
+            <View style={styles.modalHeader}>
+              <Text style={[styles.modalTitle, { color: colors.foreground }]}>
+                添加 LED 配置
+              </Text>
+              <SmallButton
+                label="关闭"
+                disabled={false}
+                color={colors.border}
+                onPress={() => setEditing(false)}
+              />
+            </View>
+            <ScrollView
+              contentContainerStyle={styles.modalContent}
+              keyboardShouldPersistTaps="handled"
+            >
+              <Text style={[styles.help, { color: colors.muted }]}>
+                名称会使用所选 LED 设备名称，避免创建重复配置。
+              </Text>
+              <Text style={[styles.fieldLabel, { color: colors.foreground }]}>
+                LED 名称
+              </Text>
+              <ChoiceChips
+                values={activeDevices}
+                selected={sysfs}
+                onSelect={setSysfs}
+                colors={colors}
+              />
+              <Text style={[styles.fieldLabel, { color: colors.foreground }]}>
+                触发器
+              </Text>
+              <ChoiceChips
+                values={activeTriggers}
+                selected={trigger}
+                onSelect={setTrigger}
+                colors={colors}
+                labels={LED_TRIGGER_LABELS}
+              />
+              {trigger === "timer" ? (
+                <LedTimerChoices
+                  delayOn={delayOn}
+                  delayOff={delayOff}
+                  onDelayOn={setDelayOn}
+                  onDelayOff={setDelayOff}
+                  colors={colors}
+                />
+              ) : null}
+              <PrimaryButton
+                label="保存新增 LED"
+                disabled={disabled || !sysfs}
+                color={colors.primary}
+                onPress={() => {
+                  onCreate({
+                    name: sysfs,
+                    sysfs,
+                    trigger,
+                    delayOn: trigger === "timer" ? delayOn : "",
+                    delayOff: trigger === "timer" ? delayOff : "",
+                  });
+                  setEditing(false);
+                }}
+              />
+            </ScrollView>
+          </View>
+        </View>
+      </Modal>
+    </View>
+  );
+}
+
+const LED_TRIGGER_LABELS: Record<string, string> = {
+  "default-on": "始终开启（kernel: default-on）",
+  heartbeat: "心跳闪烁（kernel: heartbeat）",
+  netdev: "网络设备活动（kernel: netdev）",
+  none: "始终关闭（kernel: none）",
+  timer: "自定义闪烁间隔（kernel: timer）",
+};
+
+function LedTimerChoices({
+  delayOn,
+  delayOff,
+  onDelayOn,
+  onDelayOff,
+  colors,
+}: {
+  delayOn: string;
+  delayOff: string;
+  onDelayOn: (value: string) => void;
+  onDelayOff: (value: string) => void;
+  colors: ReturnType<typeof useColors>;
+}) {
+  const values = ["100", "250", "500", "1000", "2000"];
+  return (
+    <View style={styles.field}>
+      <Text style={[styles.fieldLabel, { color: colors.foreground }]}>
+        开启时间（毫秒）
+      </Text>
+      <ChoiceChips
+        values={values}
+        selected={delayOn}
+        onSelect={onDelayOn}
+        colors={colors}
+      />
+      <Text style={[styles.fieldLabel, { color: colors.foreground }]}>
+        关闭时间（毫秒）
+      </Text>
+      <ChoiceChips
+        values={values}
+        selected={delayOff}
+        onSelect={onDelayOff}
+        colors={colors}
       />
     </View>
   );
@@ -1361,12 +1412,14 @@ function ChoiceChips({
   onSelect,
   colors,
   emptyLabel = "无",
+  labels,
 }: {
   values: string[];
   selected: string;
   onSelect: (value: string) => void;
   colors: ReturnType<typeof useColors>;
   emptyLabel?: string;
+  labels?: Record<string, string>;
 }) {
   return (
     <View style={styles.choiceRow}>
@@ -1392,7 +1445,7 @@ function ChoiceChips({
                 fontWeight: "800",
               }}
             >
-              {value || emptyLabel}
+              {(labels?.[value] ?? value) || emptyLabel}
             </Text>
           </Pressable>
         );
@@ -1652,6 +1705,7 @@ function LedRow({
   colors,
   capabilities,
   onSave,
+  onDelete,
   divider,
 }: {
   led: LedSetting;
@@ -1659,69 +1713,408 @@ function LedRow({
   colors: ReturnType<typeof useColors>;
   capabilities: LedCapabilities;
   onSave: (
-    value: Pick<LedSetting, "section" | "trigger" | "color" | "defaultValue">,
+    value: Pick<
+      LedSetting,
+      "section" | "name" | "sysfs" | "trigger" | "delayOn" | "delayOff"
+    >,
   ) => void;
+  onDelete: () => void;
   divider: boolean;
 }) {
-  const [trigger, setTrigger] = useState(led.trigger);
-  const [color, setColor] = useState(led.color);
+  const [expanded, setExpanded] = useState(false);
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState(led);
+  useEffect(() => setDraft(led), [led]);
+  const triggers = Object.keys(LED_TRIGGER_LABELS).filter((value) =>
+    capabilities.triggers.includes(value),
+  );
+  const triggerLabel = LED_TRIGGER_LABELS[led.trigger] ?? led.trigger;
   return (
     <View
       style={[
-        styles.body,
+        styles.interfaceCard,
+        { backgroundColor: colors.background, borderColor: colors.border },
         divider && {
-          borderTopWidth: StyleSheet.hairlineWidth,
-          borderTopColor: colors.border,
+          marginTop: 10,
         },
       ]}
     >
-      <Text style={[styles.rowTitle, { color: colors.foreground }]}>
-        {led.name}
-      </Text>
+      <Pressable
+        onPress={() => setExpanded((value) => !value)}
+        style={({ pressed }) => [styles.ledSummary, pressed && styles.pressed]}
+      >
+        <View style={styles.rowCopy}>
+          <Text style={[styles.rowTitle, { color: colors.foreground }]}>
+            {led.name}
+          </Text>
+          <Text style={[styles.help, { color: colors.muted }]}>
+            {led.sysfs || "未绑定 LED 设备"}
+          </Text>
+          <Text style={[styles.help, { color: colors.muted }]}>
+            {triggerLabel}
+            {led.trigger === "timer"
+              ? ` · 开 ${led.delayOn || "500"}ms / 关 ${led.delayOff || "500"}ms`
+              : ""}
+          </Text>
+        </View>
+        <MaterialIcons
+          name={expanded ? "expand-less" : "expand-more"}
+          size={24}
+          color={colors.muted}
+        />
+      </Pressable>
+      {expanded ? (
+        <View style={styles.cardActionRow}>
+          <SmallButton
+            label="编辑"
+            disabled={disabled}
+            color={colors.primary}
+            onPress={() => {
+              setDraft(led);
+              setEditing(true);
+            }}
+          />
+          <SmallButton
+            label="删除"
+            disabled={disabled}
+            color={colors.error}
+            onPress={onDelete}
+          />
+        </View>
+      ) : null}
+      <Modal
+        visible={editing}
+        transparent
+        animationType="slide"
+        onRequestClose={() => setEditing(false)}
+      >
+        <View style={styles.modalBackdrop}>
+          <View
+            style={[
+              styles.modalSheet,
+              { backgroundColor: colors.surface, borderColor: colors.border },
+            ]}
+          >
+            <View style={styles.modalHeader}>
+              <Text style={[styles.modalTitle, { color: colors.foreground }]}>
+                编辑 LED 配置
+              </Text>
+              <SmallButton
+                label="关闭"
+                disabled={false}
+                color={colors.border}
+                onPress={() => setEditing(false)}
+              />
+            </View>
+            <ScrollView
+              contentContainerStyle={styles.modalContent}
+              keyboardShouldPersistTaps="handled"
+            >
+              <Text style={[styles.fieldLabel, { color: colors.foreground }]}>
+                名称与 LED 名称
+              </Text>
+              <ChoiceChips
+                values={capabilities.devices}
+                selected={draft.sysfs}
+                onSelect={(sysfs) =>
+                  setDraft((value) => ({ ...value, sysfs, name: sysfs }))
+                }
+                colors={colors}
+              />
+              <Text style={[styles.fieldLabel, { color: colors.foreground }]}>
+                触发器
+              </Text>
+              <ChoiceChips
+                values={triggers.length ? triggers : ["none"]}
+                selected={draft.trigger}
+                onSelect={(trigger) =>
+                  setDraft((value) => ({ ...value, trigger }))
+                }
+                colors={colors}
+                labels={LED_TRIGGER_LABELS}
+              />
+              {draft.trigger === "timer" ? (
+                <LedTimerChoices
+                  delayOn={draft.delayOn || "500"}
+                  delayOff={draft.delayOff || "500"}
+                  onDelayOn={(delayOn) =>
+                    setDraft((value) => ({ ...value, delayOn }))
+                  }
+                  onDelayOff={(delayOff) =>
+                    setDraft((value) => ({ ...value, delayOff }))
+                  }
+                  colors={colors}
+                />
+              ) : null}
+              <PrimaryButton
+                label="保存"
+                disabled={disabled || !draft.name || !draft.sysfs}
+                color={colors.primary}
+                onPress={() => {
+                  onSave({
+                    section: draft.section,
+                    name: draft.name,
+                    sysfs: draft.sysfs,
+                    trigger: draft.trigger,
+                    delayOn: draft.trigger === "timer" ? draft.delayOn : "",
+                    delayOff: draft.trigger === "timer" ? draft.delayOff : "",
+                  });
+                  setEditing(false);
+                }}
+              />
+            </ScrollView>
+          </View>
+        </View>
+      </Modal>
+    </View>
+  );
+}
+
+function MountPointFields({
+  value,
+  onChange,
+  colors,
+}: {
+  value: Omit<MountPoint, "section">;
+  onChange: (value: Omit<MountPoint, "section">) => void;
+  colors: ReturnType<typeof useColors>;
+}) {
+  const update = (
+    key: keyof Omit<MountPoint, "section">,
+    next: string | boolean,
+  ) => onChange({ ...value, [key]: next });
+  return (
+    <>
+      <TextField
+        label="挂载路径"
+        value={value.target}
+        onChangeText={(next) => update("target", next)}
+        placeholder="/mnt/sda1"
+        colors={colors}
+      />
+      <TextField
+        label="设备路径"
+        value={value.device}
+        onChangeText={(next) => update("device", next)}
+        placeholder="/dev/sda1"
+        colors={colors}
+      />
+      <TextField
+        label="文件系统"
+        value={value.fstype}
+        onChangeText={(next) => update("fstype", next)}
+        placeholder="ext4"
+        colors={colors}
+      />
+      <SettingSwitch
+        label="开机自动挂载"
+        value={value.enabled}
+        onValueChange={(next) => update("enabled", next)}
+        colors={colors}
+      />
+      <SettingSwitch
+        label="挂载前检查文件系统"
+        value={value.enabledFsck}
+        onValueChange={(next) => update("enabledFsck", next)}
+        colors={colors}
+      />
+    </>
+  );
+}
+
+function MountPointCard({
+  mount,
+  disabled,
+  colors,
+  divider,
+  onSave,
+  onDelete,
+}: {
+  mount: MountPoint;
+  disabled: boolean;
+  colors: ReturnType<typeof useColors>;
+  divider: boolean;
+  onSave: (value: MountPoint) => void;
+  onDelete: () => void;
+}) {
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState(mount);
+  useEffect(() => setDraft(mount), [mount]);
+  return (
+    <View
+      style={[
+        styles.interfaceCard,
+        { backgroundColor: colors.background, borderColor: colors.border },
+        divider && { marginTop: 10 },
+      ]}
+    >
+      <View style={styles.interfaceHeader}>
+        <View style={styles.rowCopy}>
+          <Text style={[styles.rowTitle, { color: colors.foreground }]}>
+            {mount.target || "未设置挂载路径"}
+          </Text>
+          <Text style={[styles.help, { color: colors.muted }]}>
+            {[mount.device, mount.fstype].filter(Boolean).join(" · ") ||
+              "未识别设备"}
+          </Text>
+        </View>
+        <StatusPill
+          label={mount.enabled ? "自动挂载" : "已停用"}
+          tone={mount.enabled ? "success" : "warning"}
+        />
+      </View>
       <Text style={[styles.help, { color: colors.muted }]}>
-        {led.sysfs || led.section}
+        挂载前文件系统检查：{mount.enabledFsck ? "开启" : "关闭"}
       </Text>
-      <TextField
-        label="触发器"
-        value={trigger}
-        onChangeText={setTrigger}
-        placeholder="none / timer / netdev / heartbeat"
-        colors={colors}
-      />
-      <ChoiceChips
-        values={capabilities.triggers}
-        selected={trigger}
-        onSelect={setTrigger}
-        colors={colors}
-      />
-      <TextField
-        label="LED 颜色"
-        value={color}
-        onChangeText={setColor}
-        placeholder="white / red / green / blue / amber"
-        colors={colors}
-      />
-      <ChoiceChips
-        values={["", "white", "red", "green", "blue", "amber"]}
-        selected={color}
-        onSelect={setColor}
-        colors={colors}
-        emptyLabel="不指定"
-      />
-      <PrimaryButton
-        label="保存 LED"
+      <View style={styles.cardActionRow}>
+        <SmallButton
+          label="编辑"
+          disabled={disabled}
+          color={colors.primary}
+          onPress={() => {
+            setDraft(mount);
+            setEditing(true);
+          }}
+        />
+        <SmallButton
+          label="删除"
+          disabled={disabled}
+          color={colors.error}
+          onPress={onDelete}
+        />
+      </View>
+      <Modal
+        visible={editing}
+        transparent
+        animationType="slide"
+        onRequestClose={() => setEditing(false)}
+      >
+        <View style={styles.modalBackdrop}>
+          <View
+            style={[
+              styles.modalSheet,
+              { backgroundColor: colors.surface, borderColor: colors.border },
+            ]}
+          >
+            <View style={styles.modalHeader}>
+              <Text style={[styles.modalTitle, { color: colors.foreground }]}>
+                编辑挂载点
+              </Text>
+              <SmallButton
+                label="关闭"
+                disabled={false}
+                color={colors.border}
+                onPress={() => setEditing(false)}
+              />
+            </View>
+            <ScrollView
+              contentContainerStyle={styles.modalContent}
+              keyboardShouldPersistTaps="handled"
+            >
+              <MountPointFields
+                value={draft}
+                onChange={(next) =>
+                  setDraft((current) => ({ ...current, ...next }))
+                }
+                colors={colors}
+              />
+              <PrimaryButton
+                label="保存"
+                disabled={
+                  disabled || !draft.target.trim() || !draft.device.trim()
+                }
+                color={colors.primary}
+                onPress={() => {
+                  onSave(draft);
+                  setEditing(false);
+                }}
+              />
+            </ScrollView>
+          </View>
+        </View>
+      </Modal>
+    </View>
+  );
+}
+
+function NewMountPointForm({
+  disabled,
+  colors,
+  onCreate,
+}: {
+  disabled: boolean;
+  colors: ReturnType<typeof useColors>;
+  onCreate: (value: Omit<MountPoint, "section">) => void;
+}) {
+  const empty: Omit<MountPoint, "section"> = {
+    target: "",
+    device: "",
+    fstype: "auto",
+    enabled: true,
+    enabledFsck: false,
+  };
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState(empty);
+  return (
+    <>
+      <SmallButton
+        label="新增挂载点"
         disabled={disabled}
         color={colors.primary}
-        onPress={() =>
-          onSave({
-            section: led.section,
-            trigger,
-            color,
-            defaultValue: led.defaultValue,
-          })
-        }
+        onPress={() => {
+          setDraft(empty);
+          setEditing(true);
+        }}
       />
-    </View>
+      <Modal
+        visible={editing}
+        transparent
+        animationType="slide"
+        onRequestClose={() => setEditing(false)}
+      >
+        <View style={styles.modalBackdrop}>
+          <View
+            style={[
+              styles.modalSheet,
+              { backgroundColor: colors.surface, borderColor: colors.border },
+            ]}
+          >
+            <View style={styles.modalHeader}>
+              <Text style={[styles.modalTitle, { color: colors.foreground }]}>
+                新增挂载点
+              </Text>
+              <SmallButton
+                label="关闭"
+                disabled={false}
+                color={colors.border}
+                onPress={() => setEditing(false)}
+              />
+            </View>
+            <ScrollView
+              contentContainerStyle={styles.modalContent}
+              keyboardShouldPersistTaps="handled"
+            >
+              <MountPointFields
+                value={draft}
+                onChange={setDraft}
+                colors={colors}
+              />
+              <PrimaryButton
+                label="创建挂载点"
+                disabled={
+                  disabled || !draft.target.trim() || !draft.device.trim()
+                }
+                color={colors.primary}
+                onPress={() => {
+                  onCreate(draft);
+                  setEditing(false);
+                }}
+              />
+            </ScrollView>
+          </View>
+        </View>
+      </Modal>
+    </>
   );
 }
 
@@ -2195,6 +2588,18 @@ const styles = StyleSheet.create({
   },
   subsectionTitle: { fontSize: 15, fontWeight: "800" },
   interfaceCard: { borderWidth: 1, borderRadius: 14, padding: 14, gap: 12 },
+  themeRow: {
+    minHeight: 60,
+    borderWidth: 1,
+    borderRadius: 12,
+    paddingHorizontal: 13,
+    paddingVertical: 10,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+  },
+  ledSummary: { flexDirection: "row", alignItems: "center", gap: 10 },
+  actionRow: { flexDirection: "row", gap: 8, alignItems: "center" },
   statusStack: { alignItems: "flex-end", gap: 6 },
   interfaceMetrics: { flexDirection: "row", flexWrap: "wrap", gap: 10 },
   interfaceDetail: { width: "47%", gap: 2 },

@@ -179,9 +179,10 @@ describe("高级 OpenWrt 服务与网络管理", () => {
   });
 
   it("解析并受控保存服务完整 UCI 设置", () => {
-    expect(buildPluginSettingsSnapshotCommand("ddns")).toContain(
-      "uci -q show 'ddns'",
-    );
+    const snapshotCommand = buildPluginSettingsSnapshotCommand("ddns");
+    expect(snapshotCommand).toContain("uci -q show 'ddns'");
+    expect(snapshotCommand).toContain("while IFS= read -r line; do");
+    expect(snapshotCommand).toContain('case "$line" in');
     expect(
       parsePluginSettingsSnapshot(
         "ddns",
@@ -204,6 +205,29 @@ describe("高级 OpenWrt 服务与网络管理", () => {
           section: "@global[0]",
           type: "global",
           values: { check_interval: "10" },
+        },
+      ],
+    });
+    expect(
+      parsePluginSettingsSnapshot(
+        "openclash",
+        "BusyBox v1.36.1 (2026-08-19)\nroot@OpenWrt:~# __PLUGIN_SETTINGS__|openclash|present\nSECTION|config|openclash\nVALUE|config|enable|'1'\nVALUE|config|config_path|'/etc/openclash/config/config.yaml'\nSECTION|@dnsmasq[0]|dnsmasq\nVALUE|@dnsmasq[0]|enable|'1'\nroot@OpenWrt:~# ",
+      ),
+    ).toMatchObject({
+      exists: true,
+      sections: [
+        {
+          section: "config",
+          type: "openclash",
+          values: {
+            enable: "1",
+            config_path: "/etc/openclash/config/config.yaml",
+          },
+        },
+        {
+          section: "@dnsmasq[0]",
+          type: "dnsmasq",
+          values: { enable: "1" },
         },
       ],
     });

@@ -47,7 +47,7 @@ const config: ExpoConfig = {
       projectId: "c4d4af65-fe2b-4803-8ba9-5efecb95d126",
     },
   },
-  version: "1.0.24",
+  version: "1.0.25",
   orientation: "portrait",
   icon: "./assets/images/icon.png",
   scheme: env.scheme,
@@ -70,9 +70,7 @@ const config: ExpoConfig = {
       foregroundImage: "./assets/images/android-icon-foreground.png",
     },
     edgeToEdgeEnabled: true,
-    // Android 13+ 使用系统预测性返回预览；ReactActivity 仍负责将完成手势分发给 Expo Router。
-    predictiveBackGestureEnabled: true,
-    versionCode: 20,
+    versionCode: 21,
     package: env.androidPackage,
     permissions: ["POST_NOTIFICATIONS"],
     intentFilters: [

@@ -840,6 +840,39 @@ export function buildWanDiagnosticCommand(
   return `nc -z -w 4 ${hostname} ${port} 2>&1 || busybox nc -z -w 4 ${hostname} ${port} 2>&1`;
 }
 
+function requireDnsAddress(value: string) {
+  const address = value.trim();
+  if (
+    !/^([0-9]{1,3}\.){3}[0-9]{1,3}$/.test(address) &&
+    !/^[0-9a-fA-F:]+$/.test(address)
+  ) {
+    throw new Error("DNS 服务器仅支持 IPv4 或 IPv6 地址。");
+  }
+  return address;
+}
+
+export function buildDnsLatencyCommand(
+  interfaceName: string,
+  dnsServer: string,
+  family: "ipv4" | "ipv6",
+  hostname = "openwrt.org",
+) {
+  const wan = requireIdentifier(interfaceName, "WAN 接口");
+  const server = requireDnsAddress(dnsServer);
+  const query = hostname.trim();
+  if (!/^[A-Za-z0-9.-]+$/.test(query)) {
+    throw new Error("查询域名格式无效。");
+  }
+  const familyFlag = family === "ipv6" ? "-6" : "-4";
+  const label = family === "ipv6" ? "IPv6" : "IPv4";
+  return `echo 'OPENWRT_DNS|${label}|${server}|${query}'; start=$(date +%s%3N 2>/dev/null || date +%s000); nslookup ${familyFlag} ${query} ${server} >/tmp/openwrt-app-dns.$$ 2>&1; code=$?; end=$(date +%s%3N 2>/dev/null || date +%s000); cat /tmp/openwrt-app-dns.$$; rm -f /tmp/openwrt-app-dns.$$; echo "OPENWRT_DNS_RESULT|exit=$code|elapsed_ms=$((end-start))|wan=${wan}"`;
+}
+
+export function buildNatDiagnosticCommand(interfaceName: string) {
+  const wan = requireIdentifier(interfaceName, "WAN 接口");
+  return `echo 'OPENWRT_NAT|wan=${wan}'; echo '--- 本地出口 ---'; ifstatus ${wan} 2>/dev/null; echo '--- 防火墙 NAT ---'; uci -q show firewall | grep -E "=zone|\.name='wan|\.masq='1" || true; echo '--- IPv4 公网映射 ---'; if command -v stunclient >/dev/null 2>&1; then stunclient -i ${wan} stun.l.google.com 19302 2>&1 || stunclient stun.l.google.com 19302 2>&1; else echo '未安装 stunclient：可安装 stunclient 获取 STUN 映射地址。'; fi; echo '--- IPv4 连通性 ---'; ping -I ${wan} -c 1 -W 3 1.1.1.1 2>&1; echo '--- IPv6 连通性 ---'; ping6 -I ${wan} -c 1 -W 3 2606:4700:4700::1111 2>&1 || ping -6 -I ${wan} -c 1 -W 3 2606:4700:4700::1111 2>&1`;
+}
+
 export function buildWanReconnectCommand(interfaceName: string) {
   const wan = requireIdentifier(interfaceName, "WAN 接口");
   return `ifdown ${wan}; sleep 2; ifup ${wan}; ifstatus ${wan}`;

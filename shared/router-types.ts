@@ -16,8 +16,6 @@ export interface RouterSettings {
   trafficInterfaceIds: string[];
   /** Full includes rate charts; compact keeps only concise throughput values. */
   statusTrafficView: "full" | "compact";
-  /** Android 13+ uses the registered platform predictive-back callback when enabled. */
-  predictiveBackEnabled: boolean;
 }
 
 export interface SystemStatus {

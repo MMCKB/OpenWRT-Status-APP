@@ -14,7 +14,6 @@ import {
   fetchRouterTraffic,
   normalizeRouterEndpoint,
 } from "@/lib/openwrt-client";
-import { setPredictiveBackEnabled } from "@/lib/native-back-gesture";
 import { recordWanTrafficHistory } from "@/lib/traffic-history";
 import {
   loadPassword,
@@ -64,7 +63,6 @@ interface RouterContextValue {
   updateRefreshInterval: (seconds: number) => Promise<void>;
   updateTrafficInterfaceIds: (interfaceIds: string[]) => Promise<void>;
   updateStatusTrafficView: (view: "full" | "compact") => Promise<void>;
-  updatePredictiveBackEnabled: (enabled: boolean) => Promise<void>;
   getSelectedCredentials: () => Promise<{
     luciPassword: string | null;
     sshPassword: string;
@@ -84,7 +82,6 @@ export function RouterProvider({ children }: { children: ReactNode }) {
     refreshIntervalSeconds: 60,
     trafficInterfaceIds: [],
     statusTrafficView: "full",
-    predictiveBackEnabled: true,
   });
   const [selectedStatus, setSelectedStatus] = useState<RouterStatus | null>(
     null,
@@ -112,9 +109,6 @@ export function RouterProvider({ children }: { children: ReactNode }) {
         )
           ? savedSettings.selectedRouterId
           : (savedProfiles[0]?.id ?? null);
-        void setPredictiveBackEnabled(
-          savedSettings.predictiveBackEnabled,
-        ).catch(() => undefined);
         setProfiles(savedProfiles);
         setSettings({ ...savedSettings, selectedRouterId });
       })
@@ -370,16 +364,6 @@ export function RouterProvider({ children }: { children: ReactNode }) {
     [settings],
   );
 
-  const updatePredictiveBackEnabled = useCallback(
-    async (enabled: boolean) => {
-      const next = { ...settings, predictiveBackEnabled: enabled };
-      await setPredictiveBackEnabled(enabled);
-      setSettings(next);
-      await saveSettings(next);
-    },
-    [settings],
-  );
-
   const getSelectedCredentials = useCallback(async () => {
     if (!selectedProfile) return null;
     const [luciPassword, sshPassword] = await Promise.all([
@@ -408,7 +392,6 @@ export function RouterProvider({ children }: { children: ReactNode }) {
       updateRefreshInterval,
       updateTrafficInterfaceIds,
       updateStatusTrafficView,
-      updatePredictiveBackEnabled,
       getSelectedCredentials,
     }),
     [
@@ -427,7 +410,6 @@ export function RouterProvider({ children }: { children: ReactNode }) {
       updateRefreshInterval,
       updateTrafficInterfaceIds,
       updateStatusTrafficView,
-      updatePredictiveBackEnabled,
       getSelectedCredentials,
     ],
   );

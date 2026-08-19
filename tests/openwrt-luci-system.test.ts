@@ -7,10 +7,9 @@ import {
   buildChangeRouterPasswordCommand,
   buildFetchApkRepositoryKeyCommand,
   buildLedSnapshotCommand,
-  buildMountActionCommand,
+  buildSaveMountCommand,
   buildNetworkInterfaceDeleteCommand,
   buildNetworkInterfaceRestartCommand,
-  buildSaveAutorebootCommand,
   buildSaveLedCommand,
   buildSaveNetworkDeviceCommand,
   buildSaveNetworkGlobalCommand,
@@ -20,7 +19,6 @@ import {
   buildSaveUhttpdCommand,
   buildScheduledActionCommand,
   buildStartupActionCommand,
-  parseAutorebootSettings,
   parseApkRepositoryKeys,
   parseLedSettings,
   parseMountPoints,
@@ -35,17 +33,7 @@ import {
 } from "@/lib/openwrt-luci-system";
 
 describe("LuCI 系统管理命令", () => {
-  it("解析自动重启、启动项、LED、挂载和接口快照", () => {
-    expect(
-      parseAutorebootSettings(
-        "AUTOREBOOT|installed|yes\nAUTOREBOOT|enable|1\nAUTOREBOOT|time|03:30\nAUTOREBOOT|week|1,7",
-      ),
-    ).toMatchObject({
-      installed: true,
-      enabled: true,
-      time: "03:30",
-      week: "1,7",
-    });
+  it("解析启动项、LED、挂载和接口快照", () => {
     expect(
       parseStartupServices("STARTUP|network|enabled\nSTARTUP|ddns|disabled"),
     ).toEqual([
@@ -54,7 +42,7 @@ describe("LuCI 系统管理命令", () => {
     ]);
     expect(
       parseLedSettings(
-        "LED|wan|name|WAN\nLED|wan|sysfs|green:wan\nLED|wan|trigger|netdev\nLED|wan|default|1",
+        "LED|wan|name|WAN\nLED|wan|sysfs|green:wan\nLED|wan|trigger|netdev",
       ),
     ).toEqual([
       {
@@ -62,8 +50,8 @@ describe("LuCI 系统管理命令", () => {
         name: "WAN",
         sysfs: "green:wan",
         trigger: "netdev",
-        color: "",
-        defaultValue: "1",
+        delayOn: "",
+        delayOff: "",
       },
     ]);
     expect(
@@ -111,18 +99,15 @@ describe("LuCI 系统管理命令", () => {
 
   it("为高风险配置生成受控重载命令且不额外创建配置副本", () => {
     expect(
-      buildSaveAutorebootCommand({
-        enabled: true,
-        minute: "0",
-        hour: "4",
-        day: "*",
-        month: "*",
-        week: "1,7",
+      buildSaveMountCommand({
+        section: "usb",
+        target: "/mnt/usb",
+        device: "ABCD-1234",
+        fstype: "ext4",
+        enabled: false,
+        enabledFsck: false,
       }),
-    ).not.toContain("app-backup");
-    expect(buildMountActionCommand("usb", false)).toContain(
-      "uci set 'fstab.usb.enabled=0'",
-    );
+    ).toContain("uci set 'fstab.usb.enabled=0'");
     expect(
       buildSaveSshAccessCommand({
         port: "2222",
@@ -232,7 +217,7 @@ describe("LuCI 系统管理命令", () => {
   it("兼容 LuCI 生成的匿名 UCI 配置段", () => {
     expect(
       parseLedSettings(
-        "LED|@led[0]|name|wan\nLED|@led[0]|sysfs|green:wan\nLED|@led[0]|trigger|netdev\nLED|@led[0]|default|1",
+        "LED|@led[0]|name|wan\nLED|@led[0]|sysfs|green:wan\nLED|@led[0]|trigger|netdev",
       ),
     ).toEqual([
       {
@@ -240,8 +225,8 @@ describe("LuCI 系统管理命令", () => {
         name: "wan",
         sysfs: "green:wan",
         trigger: "netdev",
-        color: "",
-        defaultValue: "1",
+        delayOn: "",
+        delayOff: "",
       },
     ]);
     expect(
@@ -254,24 +239,23 @@ describe("LuCI 系统管理命令", () => {
     expect(
       buildSaveLedCommand({
         section: "@led[0]",
+        name: "wan",
+        sysfs: "green:wan",
         trigger: "netdev",
-        color: "blue",
-        defaultValue: "1",
+        delayOn: "1000",
+        delayOff: "1000",
       }),
     ).toContain("'system.@led[0].trigger=netdev'");
-    expect(buildMountActionCommand("@mount[0]", false)).toContain(
-      "'fstab.@mount[0].enabled=0'",
-    );
     expect(
-      parseAutorebootSettings(
-        "AUTOREBOOT|installed|yes\nAUTOREBOOT|enabled|on\nAUTOREBOOT|time|02:15\nAUTOREBOOT|weekdays|1,3,5",
-      ),
-    ).toMatchObject({
-      installed: true,
-      enabled: true,
-      time: "02:15",
-      week: "1,3,5",
-    });
+      buildSaveMountCommand({
+        section: "@mount[0]",
+        target: "/mnt/usb",
+        device: "ABCD-1234",
+        fstype: "ext4",
+        enabled: false,
+        enabledFsck: false,
+      }),
+    ).toContain("'fstab.@mount[0].enabled=0'");
   });
 
   it("解析并安全保存管理权配置", () => {

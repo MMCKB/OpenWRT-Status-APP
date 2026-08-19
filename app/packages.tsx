@@ -22,7 +22,6 @@ import {
   connectInAppSsh,
   disconnectInAppSsh,
   getInAppSshTarget,
-  isInAppSshConnectedFor,
   isInAppSshSupported,
   runInAppSshCommand,
 } from "@/lib/native-ssh";
@@ -59,9 +58,7 @@ export default function PackagesScreen() {
   const profile = selectedProfile ?? profiles[0];
   const target = profile ? getInAppSshTarget(profile) : "root@localhost:22";
 
-  const [connection, setConnection] = useState<ConnectionState>(() =>
-    profile && isInAppSshConnectedFor(profile) ? "connected" : "idle",
-  );
+  const [connection, setConnection] = useState<ConnectionState>("idle");
   const [notice, setNotice] =
     useState<string>("连接后即可管理路由器系统软件包。");
   const [isLoading, setIsLoading] = useState<boolean>(false);
@@ -84,14 +81,6 @@ export default function PackagesScreen() {
   const [actionOutput, setActionOutput] = useState<string>("");
 
   const isConnected = connection === "connected";
-
-  useFocusEffect(
-    useCallback(() => {
-      setConnection(
-        profile && isInAppSshConnectedFor(profile) ? "connected" : "idle",
-      );
-    }, [profile]),
-  );
 
   if (!profile) {
     return (
@@ -1230,11 +1219,9 @@ const baseStyles = StyleSheet.create({
     borderRadius: 8,
     alignItems: "center",
     justifyContent: "center",
-    backgroundColor: "#FFF0F0",
-    borderWidth: 1,
-    borderColor: "#F5C6C6",
+    backgroundColor: "#C93D3D",
   },
-  removeButtonText: { color: "#B13939", fontSize: 12, fontWeight: "800" },
+  removeButtonText: { color: "#FFFFFF", fontSize: 12, fontWeight: "800" },
   emptyList: {
     alignItems: "center",
     justifyContent: "center",

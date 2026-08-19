@@ -3,10 +3,6 @@ import expo.modules.splashscreen.SplashScreenManager
 
 import android.os.Build
 import android.os.Bundle
-import android.content.Context
-import android.window.OnBackInvokedCallback
-import android.window.OnBackInvokedDispatcher
-
 import com.facebook.react.ReactActivity
 import com.facebook.react.ReactActivityDelegate
 import com.facebook.react.defaults.DefaultNewArchitectureEntryPoint.fabricEnabled
@@ -15,11 +11,6 @@ import com.facebook.react.defaults.DefaultReactActivityDelegate
 import expo.modules.ReactActivityDelegateWrapper
 
 class MainActivity : ReactActivity() {
-  private var predictiveBackRegistered = false
-  private val predictiveBackCallback = OnBackInvokedCallback {
-    onBackPressedDispatcher.onBackPressed()
-  }
-
   override fun onCreate(savedInstanceState: Bundle?) {
     // Set the theme to AppTheme BEFORE onCreate to support
     // coloring the background, status bar, and navigation bar.
@@ -29,48 +20,6 @@ class MainActivity : ReactActivity() {
     SplashScreenManager.registerOnActivity(this)
     // @generated end expo-splashscreen
     super.onCreate(null)
-    applyPredictiveBackEnabled(getPredictiveBackEnabled())
-  }
-
-  override fun onResume() {
-    super.onResume()
-    applyPredictiveBackEnabled(getPredictiveBackEnabled())
-  }
-
-  override fun onDestroy() {
-    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU && predictiveBackRegistered) {
-      onBackInvokedDispatcher.unregisterOnBackInvokedCallback(predictiveBackCallback)
-      predictiveBackRegistered = false
-    }
-    super.onDestroy()
-  }
-
-  private fun getPredictiveBackEnabled(): Boolean {
-    return getSharedPreferences("openwrt-status", Context.MODE_PRIVATE)
-      .getBoolean("predictive-back-enabled", true)
-  }
-
-  /** Called through OpenWrtBackGestureModule when the user changes the in-app setting. */
-  fun setPredictiveBackEnabled(enabled: Boolean) {
-    getSharedPreferences("openwrt-status", Context.MODE_PRIVATE)
-      .edit()
-      .putBoolean("predictive-back-enabled", enabled)
-      .apply()
-    applyPredictiveBackEnabled(enabled)
-  }
-
-  private fun applyPredictiveBackEnabled(enabled: Boolean) {
-    if (Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU) return
-    if (enabled && !predictiveBackRegistered) {
-      onBackInvokedDispatcher.registerOnBackInvokedCallback(
-        OnBackInvokedDispatcher.PRIORITY_DEFAULT,
-        predictiveBackCallback,
-      )
-      predictiveBackRegistered = true
-    } else if (!enabled && predictiveBackRegistered) {
-      onBackInvokedDispatcher.unregisterOnBackInvokedCallback(predictiveBackCallback)
-      predictiveBackRegistered = false
-    }
   }
 
   /**

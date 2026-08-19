@@ -1,15 +1,3 @@
-export type AutorebootSettings = {
-  installed: boolean;
-  section: string;
-  enabled: boolean;
-  time: string;
-  minute: string;
-  hour: string;
-  day: string;
-  month: string;
-  week: string;
-};
-
 export type StartupService = { name: string; enabled: boolean };
 
 export type LedSetting = {
@@ -17,13 +5,13 @@ export type LedSetting = {
   name: string;
   sysfs: string;
   trigger: string;
-  color: string;
-  defaultValue: string;
+  delayOn: string;
+  delayOff: string;
 };
 
 export type NewLedSettings = Pick<
   LedSetting,
-  "name" | "sysfs" | "trigger" | "color"
+  "name" | "sysfs" | "trigger" | "delayOn" | "delayOff"
 >;
 
 export type LedCapabilities = {
@@ -38,6 +26,16 @@ export type MountPoint = {
   fstype: string;
   enabled: boolean;
   enabledFsck: boolean;
+};
+
+export type MountedFileSystem = {
+  target: string;
+  device: string;
+  fstype: string;
+};
+
+export type SwapPartition = {
+  device: string;
 };
 
 export type SshAccessSettings = {
@@ -75,6 +73,11 @@ export type UhttpdSettings = {
   httpPorts: string;
   httpsPorts: string;
   redirectHttps: boolean;
+};
+
+export type LuciTheme = {
+  name: string;
+  active: boolean;
 };
 
 export type NetworkInterfaceSettings = {
@@ -189,46 +192,6 @@ function parseAddressList(value: unknown): string[] {
   });
 }
 
-export function buildAutorebootSnapshotCommand(): string {
-  return `[ -f /etc/config/autoreboot ] && echo 'AUTOREBOOT|installed|yes' || echo 'AUTOREBOOT|installed|no'; section=$(uci -q show autoreboot 2>/dev/null | sed -n 's/^autoreboot\\.\\([^.=]*\\)=\\(global\\|autoreboot\\|login\\)$/\\1/p' | head -n 1); [ -n "$section" ] || exit 0; printf 'AUTOREBOOT|section|%s\\n' "$section"; for key in enable enabled time minute hour day month week weekdays; do uci -q get "autoreboot.$section.$key" 2>/dev/null | sed "s|^|AUTOREBOOT|$key||"; done`;
-}
-
-export function parseAutorebootSettings(output: string): AutorebootSettings {
-  const values = parseValueMap("AUTOREBOOT", output);
-  return {
-    installed: values.get("installed") === "yes",
-    section: values.get("section") || "",
-    enabled: enabled(values.get("enable") ?? values.get("enabled")),
-    time:
-      values.get("time") ||
-      `${(values.get("hour") || "4").padStart(2, "0")}:${(values.get("minute") || "0").padStart(2, "0")}`,
-    minute: values.get("minute") || "0",
-    hour: values.get("hour") || "4",
-    day: values.get("day") || "*",
-    month: values.get("month") || "*",
-    week: values.get("week") || values.get("weekdays") || "*",
-  };
-}
-
-export function buildSaveAutorebootCommand(
-  settings: Pick<
-    AutorebootSettings,
-    "enabled" | "minute" | "hour" | "day" | "month" | "week"
-  >,
-): string {
-  for (const [label, value] of Object.entries({
-    分钟: settings.minute,
-    小时: settings.hour,
-    日期: settings.day,
-    月份: settings.month,
-    星期: settings.week,
-  })) {
-    if (!SAFE_CRON_FIELD.test(value))
-      throw new Error(`${label}计划字段不合法。`);
-  }
-  return `[ -f /etc/config/autoreboot ] || { echo '未安装 luci-app-autoreboot / autoreboot。'; exit 2; }; section=$(uci -q show autoreboot 2>/dev/null | sed -n 's/^autoreboot\\.\\([^.=]*\\)=\\(global\\|autoreboot\\|login\\)$/\\1/p' | head -n 1); [ -n "$section" ] || section=$(uci add autoreboot login); uci set "autoreboot.$section.enable=${settings.enabled ? "1" : "0"}"; uci set "autoreboot.$section.minute=${settings.minute}"; uci set "autoreboot.$section.hour=${settings.hour}"; uci set "autoreboot.$section.day=${settings.day}"; uci set "autoreboot.$section.month=${settings.month}"; uci set "autoreboot.$section.week=${settings.week}"; uci -q delete "autoreboot.$section.time"; uci commit autoreboot; /etc/init.d/autoreboot restart 2>/dev/null || true; echo '自动重启设置已保存。'`;
-}
-
 export function buildStartupSnapshotCommand(): string {
   return `for link in /etc/rc.d/S*; do [ -L "$link" ] || continue; target=$(readlink "$link"); name=$(basename "$target"); printf 'STARTUP|%s|enabled\\n' "$name"; done; for file in /etc/init.d/*; do [ -x "$file" ] || continue; name=$(basename "$file"); [ -e "/etc/rc.d/S"*"$name" ] || printf 'STARTUP|%s|disabled\\n' "$name"; done | sort -t'|' -k2,2`;
 }
@@ -252,18 +215,21 @@ export function buildStartupActionCommand(
 }
 
 export function buildLedSnapshotCommand(): string {
-  return `uci -q show system | awk -F= '/=led$/{section=$1; sub(/^system\\./,"",section); print "LED|" section "|name|" section} /^system\\.[^.]+\\.(name|sysfs|trigger|color|default)=/{key=$1; sub(/^system\\.[^.]+\\./,"",key); value=$2; gsub(/\\047/,"",value); split($1,p,"."); print "LED|" p[2] "|" key "|" value}'`;
+  return `uci -q show system | awk -F= '/=led$/{section=$1; sub(/^system\\./,"",section); print "LED|" section "|name|" section} /^system\\.[^.]+\\.(name|sysfs|trigger|delayon|delayoff)=/{key=$1; sub(/^system\\.[^.]+\\./,"",key); value=$2; gsub(/\\047/,"",value); split($1,p,"."); print "LED|" p[2] "|" key "|" value}'`;
 }
 
 export function parseLedSettings(output: string): LedSetting[] {
-  return [...parseRecords("LED", output).entries()].map(([section, value]) => ({
-    section,
-    name: value.name ?? section,
-    sysfs: value.sysfs ?? "",
-    trigger: value.trigger ?? "none",
-    color: value.color ?? "",
-    defaultValue: value.default ?? "0",
-  }));
+  return [...parseRecords("LED", output).entries()].map(([section, value]) => {
+    const trigger = value.trigger ?? "none";
+    return {
+      section,
+      name: value.name ?? section,
+      sysfs: value.sysfs ?? "",
+      trigger,
+      delayOn: trigger === "timer" ? (value.delayon ?? "1000") : "",
+      delayOff: trigger === "timer" ? (value.delayoff ?? "1000") : "",
+    };
+  });
 }
 
 export function buildLedCapabilitiesSnapshotCommand(): string {
@@ -277,7 +243,10 @@ export function parseLedCapabilities(output: string): LedCapabilities {
     const match = line.match(/^LEDCAP\|(device|trigger)\|([^|]+)$/);
     if (!match || !SAFE_LED_OPTION.test(match[2])) continue;
     if (match[1] === "device") devices.add(match[2]);
-    else triggers.add(match[2]);
+    else if (
+      ["default-on", "heartbeat", "netdev", "none", "timer"].includes(match[2])
+    )
+      triggers.add(match[2]);
   }
   return {
     devices: [...devices].sort((a, b) => a.localeCompare(b)),
@@ -286,27 +255,59 @@ export function parseLedCapabilities(output: string): LedCapabilities {
 }
 
 export function buildSaveLedCommand(
-  settings: Pick<LedSetting, "section" | "trigger" | "color" | "defaultValue">,
+  settings: Pick<
+    LedSetting,
+    "section" | "name" | "sysfs" | "trigger" | "delayOn" | "delayOff"
+  >,
 ): string {
   assertSection(settings.section);
+  assertValue(settings.name, "LED 名称");
+  assertValue(settings.sysfs, "LED 设备");
   assertValue(settings.trigger, "LED 触发器");
-  assertValue(settings.color, "LED 颜色");
-  if (!/^[01]$/.test(settings.defaultValue))
-    throw new Error("LED 默认状态仅支持 0 或 1。");
+  assertLedIntervals(settings.trigger, settings.delayOn, settings.delayOff);
   const base = `system.${settings.section}`;
-  return `uci -q get ${quote(base)} >/dev/null || { echo 'LED 配置不存在。'; exit 2; }; ${uciSet(`${base}.trigger`, settings.trigger)}; ${settings.color ? uciSet(`${base}.color`, settings.color) : uciDelete(`${base}.color`)}; ${uciSet(`${base}.default`, settings.defaultValue)}; uci commit system; /etc/init.d/system reload; echo 'LED 设置已保存。'`;
+  const timerWrites =
+    settings.trigger === "timer"
+      ? `${uciSet(`${base}.delayon`, settings.delayOn)}; ${uciSet(`${base}.delayoff`, settings.delayOff)};`
+      : `${uciDelete(`${base}.delayon`)}; ${uciDelete(`${base}.delayoff`)};`;
+  return `uci -q get ${quote(base)} >/dev/null || { echo 'LED 配置不存在。'; exit 2; }; existing=$(uci -q get ${quote(`${base}.name`)}); if uci -q show system | sed -n "s/^system\\.[^.]*\\.name='\\(.*\\)'$/\\1/p" | grep -Fx ${quote(settings.name)} | grep -Fvx "$existing" >/dev/null; then echo 'LED 名称已存在。'; exit 2; fi; ${uciSet(`${base}.name`, settings.name)}; ${uciSet(`${base}.sysfs`, settings.sysfs)}; ${uciSet(`${base}.trigger`, settings.trigger)}; ${timerWrites} ${uciDelete(`${base}.color`)}; ${uciDelete(`${base}.default`)}; uci commit system; /etc/init.d/system reload; echo 'LED 设置已保存。'`;
 }
 
 export function buildAddLedCommand(settings: NewLedSettings): string {
   assertValue(settings.name, "LED 名称");
   assertValue(settings.sysfs, "LED 设备");
   assertValue(settings.trigger, "LED 触发器");
-  if (settings.color) assertValue(settings.color, "LED 颜色");
-  return `section=app_led_$(date +%s); uci set "system.$section=led"; uci set "system.$section.name=${settings.name}"; uci set "system.$section.sysfs=${settings.sysfs}"; uci set "system.$section.trigger=${settings.trigger}"; ${settings.color ? `uci set "system.$section.color=${settings.color}"; ` : ""}uci set "system.$section.default=0"; uci commit system; /etc/init.d/system reload; echo 'LED 已新增。'`;
+  assertLedIntervals(settings.trigger, settings.delayOn, settings.delayOff);
+  const timerWrites =
+    settings.trigger === "timer"
+      ? `uci set "system.$section.delayon=${settings.delayOn}"; uci set "system.$section.delayoff=${settings.delayOff}";`
+      : "";
+  return `if uci -q show system | sed -n "s/^system\\.[^.]*\\.name='\\(.*\\)'$/\\1/p" | grep -Fx ${quote(settings.name)} >/dev/null; then echo 'LED 名称已存在。'; exit 2; fi; section=$(uci add system led); uci set "system.$section.name=${settings.name}"; uci set "system.$section.sysfs=${settings.sysfs}"; uci set "system.$section.trigger=${settings.trigger}"; ${timerWrites} uci commit system; /etc/init.d/system reload; echo 'LED 已新增。'`;
+}
+
+function assertLedIntervals(
+  trigger: string,
+  delayOn: string,
+  delayOff: string,
+): void {
+  if (trigger !== "timer") return;
+  for (const [label, value] of [
+    ["开启时间", delayOn],
+    ["关闭时间", delayOff],
+  ]) {
+    if (!/^\d{1,8}$/.test(value) || Number(value) < 1)
+      throw new Error(`${label}必须为正整数毫秒。`);
+  }
+}
+
+export function buildDeleteLedCommand(section: string): string {
+  assertSection(section);
+  const base = `system.${section}`;
+  return `uci -q get ${quote(base)} >/dev/null || { echo 'LED 配置不存在。'; exit 2; }; ${uciDelete(base)}; uci commit system; /etc/init.d/system reload; echo 'LED 已删除。'`;
 }
 
 export function buildMountSnapshotCommand(): string {
-  return `uci -q show fstab | awk -F= '/=mount$/{section=$1; sub(/^fstab\\./,"",section); print "MOUNT|" section "|section|" section} /^fstab\\.[^.]+\\.(target|device|uuid|fstype|enabled|enabled_fsck)=/{key=$1; sub(/^fstab\\.[^.]+\\./,"",key); value=$2; gsub(/\\047/,"",value); split($1,p,"."); print "MOUNT|" p[2] "|" key "|" value}'`;
+  return `uci -q show fstab | awk -F= '/=mount$/{section=$1; sub(/^fstab\\./,"",section); print "MOUNT|" section "|section|" section} /^fstab\\.[^.]+\\.(target|device|uuid|fstype|enabled|enabled_fsck)=/{key=$1; sub(/^fstab\\.[^.]+\\./,"",key); value=$2; gsub(/\\047/,"",value); split($1,p,"."); print "MOUNT|" p[2] "|" key "|" value}'; awk '{print "MOUNTED|" $2 "|" $1 "|" $3}' /proc/mounts 2>/dev/null; swapon --noheadings --raw --output NAME 2>/dev/null | awk 'NF {print "SWAP|" $1}'`;
 }
 
 export function parseMountPoints(output: string): MountPoint[] {
@@ -322,6 +323,22 @@ export function parseMountPoints(output: string): MountPoint[] {
   );
 }
 
+export function parseMountedFileSystems(output: string): MountedFileSystem[] {
+  return output.split(/\r?\n/).flatMap((line) => {
+    const match = line.match(/^MOUNTED\|([^|]+)\|([^|]+)\|([^|]+)$/);
+    return match
+      ? [{ target: match[1], device: match[2], fstype: match[3] }]
+      : [];
+  });
+}
+
+export function parseSwapPartitions(output: string): SwapPartition[] {
+  return output.split(/\r?\n/).flatMap((line) => {
+    const match = line.match(/^SWAP\|([^|]+)$/);
+    return match ? [{ device: match[1] }] : [];
+  });
+}
+
 export function buildMountActionCommand(
   section: string,
   shouldEnable: boolean,
@@ -329,6 +346,59 @@ export function buildMountActionCommand(
   assertSection(section);
   const base = `fstab.${section}`;
   return `uci -q get ${quote(base)} >/dev/null || { echo '挂载点配置不存在。'; exit 2; }; cp /etc/config/fstab /etc/config/fstab.app-backup.$(date +%s); ${uciSet(`${base}.enabled`, shouldEnable ? "1" : "0")}; uci commit fstab; /etc/init.d/fstab restart; block mount 2>/dev/null || true; echo '挂载点已${shouldEnable ? "启用" : "停用"}。'`;
+}
+
+function assertMountPoint(settings: Omit<MountPoint, "section">): void {
+  assertValue(settings.target, "挂载路径");
+  assertValue(settings.device, "设备或 UUID");
+  assertValue(settings.fstype, "文件系统类型");
+  if (!settings.target.startsWith("/"))
+    throw new Error("挂载路径必须以 / 开头。");
+}
+
+function mountWrites(
+  base: string,
+  settings: Omit<MountPoint, "section">,
+): string {
+  return [
+    uciSet(`${base}.target`, settings.target),
+    uciSet(`${base}.device`, settings.device),
+    uciSet(`${base}.fstype`, settings.fstype),
+    uciSet(`${base}.enabled`, settings.enabled ? "1" : "0"),
+    uciSet(`${base}.enabled_fsck`, settings.enabledFsck ? "1" : "0"),
+  ].join("; ");
+}
+
+export function buildAddMountCommand(
+  settings: Omit<MountPoint, "section">,
+): string {
+  assertMountPoint(settings);
+  return `section=$(uci add fstab mount); ${mountWrites("fstab.$section", settings)}; uci commit fstab; /etc/init.d/fstab restart; block mount 2>/dev/null || true; echo '挂载点已新增。'`;
+}
+
+export function buildSaveMountCommand(settings: MountPoint): string {
+  assertSection(settings.section);
+  assertMountPoint(settings);
+  const base = `fstab.${settings.section}`;
+  return `uci -q get ${quote(base)} >/dev/null || { echo '挂载点配置不存在。'; exit 2; }; ${mountWrites(base, settings)}; uci commit fstab; /etc/init.d/fstab restart; block mount 2>/dev/null || true; echo '挂载点已保存。'`;
+}
+
+export function buildDeleteMountCommand(section: string): string {
+  assertSection(section);
+  const base = `fstab.${section}`;
+  return `uci -q get ${quote(base)} >/dev/null || { echo '挂载点配置不存在。'; exit 2; }; ${uciDelete(base)}; uci commit fstab; /etc/init.d/fstab restart; echo '挂载点已删除。'`;
+}
+
+export function buildGenerateMountConfigCommand(): string {
+  return `block detect > /etc/config/fstab; uci commit fstab; /etc/init.d/fstab restart; echo '已根据已连接设备生成挂载配置。'`;
+}
+
+export function buildMountConnectedDevicesCommand(): string {
+  return `block mount; echo '已尝试挂载已连接的设备与交换分区。'`;
+}
+
+export function buildAutoMountUnconfiguredCommand(): string {
+  return `block mount; swapon -a 2>/dev/null || true; echo '已尝试自动挂载未配置的磁盘分区和交换分区。'`;
 }
 
 export function buildSshAccessSnapshotCommand(): string {
@@ -571,6 +641,33 @@ export function buildSaveUhttpdCommand(
   return `[ -x /etc/init.d/uhttpd ] || { echo 'uhttpd 未安装。'; exit 2; }; uci -q get ${quote(base)} >/dev/null || { echo '未找到 uhttpd 配置。'; exit 2; }; ${uciSet(`${base}.redirect_https`, settings.redirectHttps ? "1" : "0")}; uci commit uhttpd; /etc/init.d/uhttpd reload; echo 'HTTPS 重定向设置已保存。'`;
 }
 
+export function buildLuciThemesSnapshotCommand(): string {
+  return 'active=$(uci -q get luci.main.mediaurlbase 2>/dev/null || true); active="${active##*/}"; for dir in /www/luci-static/*; do [ -d "$dir" ] || continue; name=$(basename "$dir"); case "$name" in *[!A-Za-z0-9_-]*|\'\') continue;; esac; printf \'THEME|%s|%s\\n\' "$name" "$([ "$name" = "$active" ] && echo active || echo inactive)"; done | sort -t\'|\' -k2,2';
+}
+
+export function parseLuciThemes(output: string): LuciTheme[] {
+  const themes = new Map<string, LuciTheme>();
+  for (const line of output.split(/\r?\n/)) {
+    const match = line.match(
+      /^THEME\|([A-Za-z0-9_-]{1,64})\|(active|inactive)$/,
+    );
+    if (!match) continue;
+    themes.set(match[1], { name: match[1], active: match[2] === "active" });
+  }
+  return [...themes.values()].sort((a, b) => {
+    if (a.active !== b.active) return a.active ? -1 : 1;
+    return a.name.localeCompare(b.name);
+  });
+}
+
+export function buildSetLuciThemeCommand(theme: string): string {
+  if (!/^[A-Za-z0-9_-]{1,64}$/.test(theme)) {
+    throw new Error("LuCI 主题名称不合法。");
+  }
+  const target = `/www/luci-static/${theme}`;
+  return `[ -d ${quote(target)} ] || { echo '未找到此 LuCI 主题。'; exit 2; }; uci -q get luci.main >/dev/null || uci set luci.main=core; ${uciSet("luci.main.mediaurlbase", `/luci-static/${theme}`)}; uci commit luci; /etc/init.d/uhttpd reload 2>/dev/null || true; echo 'LuCI 主题已切换。'`;
+}
+
 export function buildNetworkInterfaceSnapshotCommand(): string {
   return `uci -q show network | awk -F= '/=interface$/{section=$1; sub(/^network\\./,"",section); print "IFACE|" section "|section|" section} /^network\\.[^.]+\\.(proto|device|ifname|ipaddr|netmask|gateway|dns|auto)=/{key=$1; sub(/^network\\.[^.]+\\./,"",key); value=$2; gsub(/\\047/,"",value); split($1,p,"."); print "IFACE|" p[2] "|" key "|" value}'`;
 }
@@ -593,7 +690,7 @@ export function parseNetworkInterfaceSettings(
 }
 
 export function buildNetworkInterfaceStatusCommand(): string {
-  return `ubus call network.interface dump; ip -o link 2>/dev/null | awk '{name=$2; sub(/:$/,"",name); sub(/@.*/,"",name); for (i=1; i<=NF; i++) if ($i == "link/ether") { print "IFMAC|" name "|" $(i+1); break }}'`;
+  return 'ubus call network.interface dump; ip -o link 2>/dev/null | awk \'{name=$2; sub(/:$/, "", name); sub(/@.*/, "", name); for (i=1; i<=NF; i++) if ($i == "link/ether") { print "IFMAC|" name "|" $(i+1); break }}\'';
 }
 
 export function parseNetworkInterfaceStatus(

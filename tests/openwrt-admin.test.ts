@@ -6,8 +6,10 @@ import {
   buildBackupCommand,
   buildDhcpStaticLeaseDeleteCommand,
   buildDhcpStaticLeaseSaveCommand,
+  buildDnsLatencyCommand,
   buildDockerContainerCommand,
   buildDockerContainerLogsCommand,
+  buildNatDiagnosticCommand,
   buildPerformanceBenchmarkCommand,
   buildRestoreCommand,
   buildServiceCommand,
@@ -264,6 +266,23 @@ describe("OpenWrt 管理命令与解析", () => {
     expect(() =>
       buildWanDiagnosticCommand("wan; reboot", "ping", "1.1.1.1"),
     ).toThrow("WAN 接口格式无效");
+  });
+
+  it("支持经指定 WAN 发起 IPv4/IPv6 DNS 延迟测试和 NAT 连通性检测", () => {
+    expect(
+      buildDnsLatencyCommand("wan", "1.1.1.1", "ipv4", "openwrt.org"),
+    ).toContain("nslookup -4 openwrt.org 1.1.1.1");
+    expect(
+      buildDnsLatencyCommand("wan6", "2606:4700:4700::1111", "ipv6"),
+    ).toContain("nslookup -6 openwrt.org 2606:4700:4700::1111");
+    expect(buildNatDiagnosticCommand("wan")).toContain("stunclient");
+    expect(buildNatDiagnosticCommand("wan")).toContain("IPv6 连通性");
+    expect(() => buildDnsLatencyCommand("wan", "dns; reboot", "ipv4")).toThrow(
+      "DNS 服务器仅支持 IPv4 或 IPv6 地址",
+    );
+    expect(() => buildNatDiagnosticCommand("wan; reboot")).toThrow(
+      "WAN 接口格式无效",
+    );
   });
 
   it("仅允许受控服务命令和固定备份路径", () => {

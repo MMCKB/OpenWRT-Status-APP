@@ -22,10 +22,6 @@ const serviceConfigPath = resolve(projectRoot, "app/service-config.tsx");
 const systemAdminPath = resolve(projectRoot, "app/system-admin.tsx");
 const firewallPath = resolve(projectRoot, "app/firewall.tsx");
 const settingsPath = resolve(projectRoot, "app/(tabs)/settings.tsx");
-const backGestureModulePath = resolve(
-  projectRoot,
-  "android/app/src/main/java/com/openwrtstatus/ssh/OpenWrtBackGestureModule.java",
-);
 const mainActivityPath = resolve(
   projectRoot,
   "android/app/src/main/java/com/app/openwrtstatusapp/MainActivity.kt",
@@ -41,9 +37,9 @@ describe("Android Release JavaScript bundle", () => {
     const gradleVersion = gradle.match(/versionName\s+"([0-9.]+)"/)?.[1];
     const gradleVersionCode = gradle.match(/versionCode\s+(\d+)/)?.[1];
 
-    expect(expoVersion).toBe("1.0.24");
+    expect(expoVersion).toBe("1.0.25");
     expect(expoVersion).toBe(gradleVersion);
-    expect(expoVersionCode).toBe("20");
+    expect(expoVersionCode).toBe("21");
     expect(expoVersionCode).toBe(gradleVersionCode);
   });
 
@@ -64,15 +60,7 @@ describe("Android Release JavaScript bundle", () => {
     );
     expect(workflow).toContain('grep -aF "PassWall2" >/dev/null');
     expect(workflow).toContain('grep -aF "visibility-off" >/dev/null');
-    expect(workflow).toContain('grep -aF "predictiveBackEnabled" >/dev/null');
     expect(workflow).not.toContain("grep -aqF");
-    expect(workflow).not.toContain(
-      '! unzip -p "$FINAL_APK" assets/index.android.bundle | grep -aF "predictiveBackEnabled"',
-    );
-    expect(workflow).toContain('grep -F "setPredictiveBackEnabled"');
-    expect(workflow).toContain(
-      "android/app/src/main/java/com/app/openwrtstatusapp/MainActivity.kt",
-    );
     expect(workflow).toContain("Restore stable Android release keystore");
     expect(workflow).toContain("ANDROID_RELEASE_KEYSTORE_B64");
     expect(workflow).toContain("android/app/openwrt-status-release.keystore");
@@ -84,7 +72,7 @@ describe("Android Release JavaScript bundle", () => {
     expect(gradle).toContain("ANDROID_RELEASE_KEYSTORE_PASSWORD");
   });
 
-  it("当前源码包含服务、管理权扩展、密码显示与可控制的预测性返回手势", () => {
+  it("当前源码包含服务、管理权扩展和密码显示，且不保留已取消的返回手势与定时重启功能", () => {
     const routerForm = readFileSync(routerFormPath, "utf8");
     const wirelessManager = readFileSync(wirelessManagerPath, "utf8");
     const serviceHealth = readFileSync(serviceHealthPath, "utf8");
@@ -92,8 +80,6 @@ describe("Android Release JavaScript bundle", () => {
     const serviceConfig = readFileSync(serviceConfigPath, "utf8");
     const systemAdmin = readFileSync(systemAdminPath, "utf8");
     const firewall = readFileSync(firewallPath, "utf8");
-    const settings = readFileSync(settingsPath, "utf8");
-    const backGestureModule = readFileSync(backGestureModulePath, "utf8");
     const mainActivity = readFileSync(mainActivityPath, "utf8");
     const routerProvider = readFileSync(routerProviderPath, "utf8");
 
@@ -112,7 +98,7 @@ describe("Android Release JavaScript bundle", () => {
     expect(serviceConfig).not.toContain("buildProxyServiceConfigUrl");
     expect(serviceConfig).toContain("完整服务设置");
     expect(wirelessManager).toContain("加密方式");
-    expect(systemAdmin).toContain("定时重启");
+    expect(systemAdmin).not.toContain("定时重启");
     expect(systemAdmin).toContain("计划任务");
     expect(systemAdmin).toContain("路由器密码");
     expect(systemAdmin).toContain("APK 仓库公钥");
@@ -120,23 +106,30 @@ describe("Android Release JavaScript bundle", () => {
     expect(systemAdmin).toContain("新增 SSH 实例");
     expect(systemAdmin).toContain("GatewayPorts");
     expect(systemAdmin).toContain("从文件导入");
+    expect(systemAdmin).toContain("LuCI 主题");
+    expect(systemAdmin).toContain("挂载已连接设备");
+    expect(systemAdmin).toContain("已挂载的文件系统");
+    expect(systemAdmin).toContain("自定义闪烁间隔");
+    expect(systemAdmin).not.toContain("颜色");
     expect(systemAdmin).toContain("buildFetchApkRepositoryKeyCommand");
     expect(systemAdmin).toContain("网络设备");
     expect(systemAdmin).toContain("全局网络设置");
     expect(systemAdmin).toContain("链路在线");
     expect(firewall).toContain("通信规则");
-    expect(settings).toContain("预测性返回手势");
-    expect(backGestureModule).toContain("OpenWrtBackGesture");
-    expect(backGestureModule).toContain("predictive-back-enabled");
-    expect(mainActivity).toContain("setPredictiveBackEnabled");
-    expect(mainActivity).toContain("OnBackInvokedCallback");
-    expect(mainActivity).toContain("PRIORITY_DEFAULT");
-    expect(mainActivity).toContain("onBackPressedDispatcher.onBackPressed()");
-    expect(mainActivity).toContain("override fun onResume()");
-    expect(mainActivity).toContain("override fun onDestroy()");
-    expect(routerProvider).toMatch(
-      /setPredictiveBackEnabled\(\s*savedSettings\.predictiveBackEnabled\s*,?\s*\)/,
+    expect(readFileSync(settingsPath, "utf8")).not.toContain("预测性返回手势");
+    expect(existsSync(resolve(projectRoot, "lib/native-back-gesture.ts"))).toBe(
+      false,
     );
+    expect(
+      existsSync(
+        resolve(
+          projectRoot,
+          "android/app/src/main/java/com/openwrtstatus/ssh/OpenWrtBackGestureModule.java",
+        ),
+      ),
+    ).toBe(false);
+    expect(mainActivity).not.toContain("setPredictiveBackEnabled");
+    expect(routerProvider).not.toContain("predictiveBackEnabled");
     expect(routerProvider).toContain("已有同名路由器，请使用不同的名称。");
   });
 });
