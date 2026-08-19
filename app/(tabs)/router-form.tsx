@@ -1,6 +1,7 @@
 import MaterialIcons from "@expo/vector-icons/MaterialIcons";
 import { useLocalSearchParams, useRouter } from "expo-router";
-import { useEffect, useMemo, useState } from "react";
+import { useFocusEffect } from "@react-navigation/native";
+import { useCallback, useMemo, useState } from "react";
 import {
   ActivityIndicator,
   KeyboardAvoidingView,
@@ -24,11 +25,13 @@ export default function RouterFormScreen() {
   const colors = useColors();
   const isDark = useColorScheme() === "dark";
   const params = useLocalSearchParams<{ id?: string }>();
+  const editId =
+    typeof params.id === "string" && params.id.trim() ? params.id : undefined;
   const { profiles, saveProfile, deleteProfile, testConnection } =
     useRouterStore();
   const existing = useMemo(
-    () => profiles.find((profile) => profile.id === params.id),
-    [params.id, profiles],
+    () => profiles.find((profile) => profile.id === editId),
+    [editId, profiles],
   );
   const [name, setName] = useState("");
   const [address, setAddress] = useState("");
@@ -44,27 +47,29 @@ export default function RouterFormScreen() {
   const [message, setMessage] = useState<string | null>(null);
   const [tested, setTested] = useState<"success" | "error" | null>(null);
 
-  useEffect(() => {
-    setPassword("");
-    setSshPassword("");
-    setIsPasswordVisible(false);
-    setIsSshPasswordVisible(false);
-    setMessage(null);
-    setTested(null);
-    if (existing) {
-      setName(existing.name);
-      setAddress(existing.baseUrl);
-      setUsername(existing.username);
-      setSshUsername(existing.sshUsername ?? existing.username);
-      setSshPort(String(existing.sshPort ?? 22));
-      return;
-    }
-    setName("");
-    setAddress("");
-    setUsername("root");
-    setSshUsername("root");
-    setSshPort("22");
-  }, [existing, params.id]);
+  useFocusEffect(
+    useCallback(() => {
+      setPassword("");
+      setSshPassword("");
+      setIsPasswordVisible(false);
+      setIsSshPasswordVisible(false);
+      setMessage(null);
+      setTested(null);
+      if (existing) {
+        setName(existing.name);
+        setAddress(existing.baseUrl);
+        setUsername(existing.username);
+        setSshUsername(existing.sshUsername ?? existing.username);
+        setSshPort(String(existing.sshPort ?? 22));
+        return;
+      }
+      setName("");
+      setAddress("");
+      setUsername("root");
+      setSshUsername("root");
+      setSshPort("22");
+    }, [editId, existing]),
+  );
 
   const draft = {
     name,

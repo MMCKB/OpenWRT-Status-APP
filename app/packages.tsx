@@ -8,6 +8,7 @@ import {
   Platform,
   Pressable,
   RefreshControl,
+  ScrollView,
   StyleSheet,
   Text,
   TextInput,
@@ -27,22 +28,26 @@ import {
 import {
   buildApkListInstalledCommand,
   buildApkListUpgradableCommand,
+  buildApkListAvailableCommand,
   buildApkUpgradeCommand,
   buildApkUpgradePackageCommand,
-  buildApkSearchCommand,
   buildApkInstallCommand,
   buildApkRemoveCommand,
   buildApkUpdateCommand,
+  buildApkRepositoriesSnapshotCommand,
+  buildApkSaveRepositoriesCommand,
   parseInstalledPackages,
   parseUpgradablePackages,
   parseAvailablePackages,
+  parseApkRepositories,
+  type ApkRepository,
   type ApkPackage,
 } from "@/lib/router-package-commands";
 import { useRouterStore } from "@/lib/router-provider";
 import { useThemedStyles } from "@/lib/use-themed-styles";
 
 type ConnectionState = "idle" | "connecting" | "connected" | "error";
-type TabFilter = "installed" | "updates" | "search";
+type TabFilter = "installed" | "updates" | "available";
 
 export default function PackagesScreen() {
   const styles = useThemedStyles(baseStyles);
@@ -66,7 +71,10 @@ export default function PackagesScreen() {
   );
   const [availablePackages, setAvailablePackages] = useState<ApkPackage[]>([]);
   const [searchTerm, setSearchTerm] = useState<string>("");
-  const [searchQuery, setSearchQuery] = useState<string>("");
+  const [repositories, setRepositories] = useState<ApkRepository[]>([]);
+  const [isRepositoriesModalVisible, setIsRepositoriesModalVisible] =
+    useState<boolean>(false);
+  const [newRepositoryUrl, setNewRepositoryUrl] = useState<string>("");
 
   const [isActionModalVisible, setIsActionModalVisible] =
     useState<boolean>(false);
@@ -132,21 +140,24 @@ export default function PackagesScreen() {
     setInstalledPackages([]);
     setUpgradablePackages([]);
     setAvailablePackages([]);
+    setRepositories([]);
   }
 
-  async function loadInstalledPackages() {
-    if (isLoading) return;
+  async function loadInstalledPackages(): Promise<ApkPackage[]> {
+    if (isLoading) return [];
     setIsLoading(true);
     try {
       const output = await runInAppSshCommand(buildApkListInstalledCommand());
       const parsed = parseInstalledPackages(output);
       setInstalledPackages(parsed);
       setNotice(`已加载 ${parsed.length} 个系统软件包。`);
+      return parsed;
     } catch (error) {
       Alert.alert(
         "加载失败",
         error instanceof Error ? error.message : "无法获取已安装软件包。",
       );
+      return [];
     } finally {
       setIsLoading(false);
     }
@@ -176,19 +187,43 @@ export default function PackagesScreen() {
     }
   }
 
+  async function loadAvailablePackages(
+    installedList = installedPackages,
+  ): Promise<ApkPackage[]> {
+    if (isLoading) return [];
+    setIsLoading(true);
+    try {
+      const output = await runInAppSshCommand(buildApkListAvailableCommand());
+      const parsed = parseAvailablePackages(
+        output,
+        new Set(installedList.map((item) => item.name)),
+      );
+      setAvailablePackages(parsed);
+      setNotice(`已载入仓库中的 ${parsed.length} 个软件包。`);
+      return parsed;
+    } catch (error) {
+      Alert.alert(
+        "读取仓库列表失败",
+        error instanceof Error ? error.message : "无法获取软件包仓库列表。",
+      );
+      return [];
+    } finally {
+      setIsLoading(false);
+    }
+  }
+
   async function updateRepository() {
     if (!isConnected || isBusy) return;
     setIsBusy(true);
     setNotice("正在更新 apk 软件源列表...");
     try {
       const output = await runInAppSshCommand(buildApkUpdateCommand());
-      await loadInstalledPackages();
+      const installed = await loadInstalledPackages();
       const updates = await loadUpgradablePackages();
-      setActiveTab("updates");
+      const available = await loadAvailablePackages(installed);
+      setActiveTab("available");
       setNotice(
-        updates.length
-          ? `软件源更新完成，发现 ${updates.length} 个可更新软件包。`
-          : "软件源更新完成，当前没有可更新的软件包。",
+        `软件源更新完成，已载入 ${available.length} 个仓库软件包${updates.length ? `，发现 ${updates.length} 个可更新软件包。` : "。"}`,
       );
       const cleanOutput = (output || "软件源已更新完成，无详细输出。").trim();
       const preview = updates
@@ -196,12 +231,9 @@ export default function PackagesScreen() {
         .map((pkg) => `• ${pkg.name}  ${pkg.version}`)
         .join("\n");
       setActionOutput(
-        `[软件源更新输出]\n${cleanOutput.length > 1200 ? cleanOutput.slice(0, 1200) + "\n...(输出过长已截断)" : cleanOutput}\n\n[可更新软件包：${updates.length}]${preview ? `\n${preview}${updates.length > 16 ? "\n…" : ""}` : "\n当前没有可更新软件包。"}`,
+        `[软件源更新输出]\n${cleanOutput.length > 1200 ? cleanOutput.slice(0, 1200) + "\n...(输出过长已截断)" : cleanOutput}\n\n[完整仓库列表：${available.length} 个软件包]\n[可更新软件包：${updates.length}]${preview ? `\n${preview}${updates.length > 16 ? "\n…" : ""}` : "\n当前没有可更新软件包。"}`,
       );
       setIsActionModalVisible(true);
-      if (activeTab === "search" && searchQuery) {
-        await executeSearch(searchQuery, true);
-      }
     } catch (error) {
       Alert.alert(
         "更新失败",
@@ -212,27 +244,80 @@ export default function PackagesScreen() {
     }
   }
 
-  async function executeSearch(query: string, ignoreBusy = false) {
-    const trimmed = query.trim();
-    if (!trimmed) {
-      setAvailablePackages([]);
-      return;
+  async function selectTab(tab: TabFilter) {
+    setActiveTab(tab);
+    if (tab === "available" && isConnected && !availablePackages.length) {
+      await loadAvailablePackages();
     }
-    if (!isConnected || (isBusy && !ignoreBusy)) return;
+  }
+
+  async function openRepositories() {
+    if (!isConnected || isLoading || isBusy) return;
+    setIsRepositoriesModalVisible(true);
     setIsLoading(true);
     try {
-      const output = await runInAppSshCommand(buildApkSearchCommand(trimmed));
-      const installedMap = new Set(installedPackages.map((p) => p.name));
-      const parsed = parseAvailablePackages(output, installedMap);
-      setAvailablePackages(parsed);
-      setNotice(`找到 ${parsed.length} 个相关软件包。`);
+      const output = await runInAppSshCommand(
+        buildApkRepositoriesSnapshotCommand(),
+      );
+      const parsed = parseApkRepositories(output);
+      setRepositories(parsed);
+      setNotice(`已读取 ${parsed.length} 个 APK 仓库配置。`);
     } catch (error) {
       Alert.alert(
-        "搜索失败",
-        error instanceof Error ? error.message : "无法查询软件包。",
+        "读取仓库配置失败",
+        error instanceof Error
+          ? error.message
+          : "无法读取 /etc/apk/repositories。",
       );
+      setIsRepositoriesModalVisible(false);
     } finally {
       setIsLoading(false);
+    }
+  }
+
+  function addRepository() {
+    const url = newRepositoryUrl.trim();
+    if (!/^https?:\/\/[^\s]+$/i.test(url)) {
+      Alert.alert(
+        "仓库地址无效",
+        "请输入以 http:// 或 https:// 开头的完整仓库地址。",
+      );
+      return;
+    }
+    if (repositories.some((repository) => repository.url === url)) {
+      Alert.alert("仓库地址重复", "该仓库已经在配置列表中。");
+      return;
+    }
+    setRepositories((current) => [
+      ...current,
+      { line: Date.now(), url, enabled: true },
+    ]);
+    setNewRepositoryUrl("");
+  }
+
+  async function saveRepositories() {
+    if (!isConnected || isBusy) return;
+    setIsBusy(true);
+    try {
+      const command = buildApkSaveRepositoriesCommand(repositories);
+      const output = await runInAppSshCommand(command);
+      const installed = await loadInstalledPackages();
+      const updates = await loadUpgradablePackages();
+      const available = await loadAvailablePackages(installed);
+      setIsRepositoriesModalVisible(false);
+      setActionOutput(
+        `[APK 仓库配置已保存]\n${(output || "仓库配置已写入并更新索引。").trim()}\n\n已重新载入 ${available.length} 个仓库软件包；当前可更新 ${updates.length} 个。`,
+      );
+      setIsActionModalVisible(true);
+      setActiveTab("available");
+      setNotice("APK 仓库配置已保存并更新软件包索引。");
+    } catch (error) {
+      Alert.alert(
+        "保存仓库配置失败",
+        error instanceof Error ? error.message : "无法保存 APK 仓库配置。",
+      );
+    } finally {
+      setIsBusy(false);
     }
   }
 
@@ -297,10 +382,10 @@ export default function PackagesScreen() {
         `执行命令: ${command}\n\n[执行结果]\n${output}\n\n${successMessage}`,
       );
       setNotice(successMessage);
-      await loadInstalledPackages();
+      const installed = await loadInstalledPackages();
       await loadUpgradablePackages();
-      if (activeTab === "search" && searchQuery) {
-        await executeSearch(searchQuery, true);
+      if (availablePackages.length) {
+        await loadAvailablePackages(installed);
       }
     } catch (error) {
       const msg = error instanceof Error ? error.message : "操作执行失败。";
@@ -321,7 +406,7 @@ export default function PackagesScreen() {
       ? installedPackages.filter(matchesLocalQuery)
       : activeTab === "updates"
         ? upgradablePackages.filter(matchesLocalQuery)
-        : availablePackages;
+        : availablePackages.filter(matchesLocalQuery);
 
   return (
     <KeyboardAvoidingView
@@ -414,7 +499,7 @@ export default function PackagesScreen() {
       <View style={styles.tabRow}>
         <Pressable
           accessibilityRole="button"
-          onPress={() => setActiveTab("installed")}
+          onPress={() => void selectTab("installed")}
           style={[
             styles.tabButton,
             activeTab === "installed" && styles.activeTabButton,
@@ -436,7 +521,7 @@ export default function PackagesScreen() {
         </Pressable>
         <Pressable
           accessibilityRole="button"
-          onPress={() => setActiveTab("updates")}
+          onPress={() => void selectTab("updates")}
           style={[
             styles.tabButton,
             activeTab === "updates" && styles.activeTabButton,
@@ -458,80 +543,69 @@ export default function PackagesScreen() {
         </Pressable>
         <Pressable
           accessibilityRole="button"
-          onPress={() => setActiveTab("search")}
+          onPress={() => void selectTab("available")}
           style={[
             styles.tabButton,
-            activeTab === "search" && styles.activeTabButton,
+            activeTab === "available" && styles.activeTabButton,
           ]}
         >
           <MaterialIcons
             name="search"
             size={17}
-            color={activeTab === "search" ? "#007E7A" : "#60758B"}
+            color={activeTab === "available" ? "#007E7A" : "#60758B"}
           />
           <Text
             style={[
               styles.tabButtonText,
-              activeTab === "search" && styles.activeTabButtonText,
+              activeTab === "available" && styles.activeTabButtonText,
             ]}
           >
-            仓库搜索
+            仓库浏览 ({availablePackages.length})
           </Text>
         </Pressable>
       </View>
 
-      {activeTab === "installed" || activeTab === "updates" ? (
-        <View style={styles.searchCard}>
+      <View style={styles.searchCard}>
+        <View style={styles.searchRow}>
           <TextInput
             accessibilityLabel={
               activeTab === "installed"
                 ? "筛选已安装软件包"
-                : "筛选可更新软件包"
+                : activeTab === "updates"
+                  ? "筛选可更新软件包"
+                  : "筛选仓库软件包"
             }
-            style={styles.searchInput}
+            style={styles.searchInputFlex}
             value={searchTerm}
             onChangeText={setSearchTerm}
             placeholder={
               activeTab === "installed"
                 ? "在已安装包列表中筛选..."
-                : "在可更新包列表中筛选..."
+                : activeTab === "updates"
+                  ? "在可更新包列表中筛选..."
+                  : "在完整仓库列表中筛选..."
             }
             placeholderTextColor="#8B9AA8"
             autoCapitalize="none"
             autoCorrect={false}
             clearButtonMode="while-editing"
           />
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel="配置 APK 仓库"
+            disabled={!isConnected || isBusy || isLoading}
+            onPress={() => void openRepositories()}
+            style={({ pressed }) => [
+              styles.repositoryButton,
+              (!isConnected || isBusy || isLoading) && styles.disabled,
+              pressed && styles.pressed,
+            ]}
+          >
+            <MaterialIcons name="settings" size={16} color="#007E7A" />
+            <Text style={styles.repositoryButtonText}>仓库</Text>
+          </Pressable>
         </View>
-      ) : (
-        <View style={styles.searchCard}>
-          <View style={styles.searchRow}>
-            <TextInput
-              accessibilityLabel="搜索仓库软件包"
-              style={[styles.searchInput, { flex: 1 }]}
-              value={searchQuery}
-              onChangeText={setSearchQuery}
-              placeholder="输入关键词搜索在线仓库 (如 luci, curl)..."
-              placeholderTextColor="#8B9AA8"
-              autoCapitalize="none"
-              autoCorrect={false}
-              returnKeyType="search"
-              onSubmitEditing={() => void executeSearch(searchQuery)}
-            />
-            <Pressable
-              accessibilityRole="button"
-              disabled={!isConnected || isBusy}
-              onPress={() => void executeSearch(searchQuery)}
-              style={({ pressed }) => [
-                styles.searchAction,
-                (!isConnected || isBusy) && styles.disabled,
-                pressed && styles.pressed,
-              ]}
-            >
-              <Text style={styles.searchActionText}>搜索</Text>
-            </Pressable>
-          </View>
-        </View>
-      )}
+      </View>
 
       <View style={styles.directorySection}>
         <View style={styles.listHeader}>
@@ -541,7 +615,7 @@ export default function PackagesScreen() {
                 ? "已安装软件包列表"
                 : activeTab === "updates"
                   ? "可更新软件包"
-                  : "仓库搜索结果"}
+                  : "完整仓库软件包"}
             </Text>
             <Text style={styles.listSubtitle}>
               {displayedPackages.length} 个结果
@@ -589,12 +663,21 @@ export default function PackagesScreen() {
                   ? loadInstalledPackages()
                   : activeTab === "updates"
                     ? loadUpgradablePackages()
-                    : executeSearch(searchQuery))
+                    : loadAvailablePackages())
               }
               enabled={isConnected && !isBusy}
               tintColor="#007E7A"
             />
           }
+          initialNumToRender={24}
+          maxToRenderPerBatch={32}
+          windowSize={10}
+          removeClippedSubviews={Platform.OS !== "web"}
+          getItemLayout={(_, index) => ({
+            length: 76,
+            offset: 76 * index,
+            index,
+          })}
           ListEmptyComponent={
             <View style={styles.emptyList}>
               <MaterialIcons name="extension" size={32} color="#91A5B3" />
@@ -604,14 +687,16 @@ export default function PackagesScreen() {
                     ? "没有找到匹配的软件包"
                     : activeTab === "updates"
                       ? "当前没有可更新的软件包"
-                      : "请输入关键词搜索仓库包"
+                      : "尚未读取仓库软件包"
                   : "连接 SSH 后管理软件包"}
               </Text>
               <Text style={styles.emptyListText}>
                 {isConnected
                   ? activeTab === "updates"
                     ? "先点击右上角更新源，再下拉刷新更新列表。"
-                    : "尝试更换关键词或更新源列表。"
+                    : activeTab === "available"
+                      ? "先点击右上角更新源，应用会读取完整仓库软件包列表。"
+                      : "尝试更新源列表或更换筛选关键词。"
                   : "连接路由器后，系统软件包将在此显示。"}
               </Text>
             </View>
@@ -715,6 +800,144 @@ export default function PackagesScreen() {
                 style={styles.confirmModal}
               >
                 <Text style={styles.confirmModalText}>关闭</Text>
+              </Pressable>
+            </View>
+          </View>
+        </View>
+      </Modal>
+
+      <Modal
+        transparent
+        animationType="fade"
+        visible={isRepositoriesModalVisible}
+        onRequestClose={() => setIsRepositoriesModalVisible(false)}
+      >
+        <View style={styles.modalBackdrop}>
+          <View style={styles.repositoriesModal}>
+            <View style={styles.repositoriesModalHeader}>
+              <View style={styles.repositoriesModalCopy}>
+                <Text style={styles.actionModalTitle}>APK 仓库配置</Text>
+                <Text style={styles.repositoriesHint}>
+                  保存会备份原配置、原子写入
+                  /etc/apk/repositories，并更新软件源。
+                </Text>
+              </View>
+              <Pressable
+                accessibilityRole="button"
+                accessibilityLabel="关闭仓库配置"
+                onPress={() => setIsRepositoriesModalVisible(false)}
+                style={styles.repositoriesClose}
+              >
+                <MaterialIcons name="close" size={20} color="#60758B" />
+              </Pressable>
+            </View>
+
+            <ScrollView
+              style={styles.repositoriesList}
+              contentContainerStyle={styles.repositoriesListContent}
+            >
+              {repositories.map((repository) => (
+                <View
+                  key={`${repository.line}-${repository.url}`}
+                  style={styles.repositoryEntry}
+                >
+                  <Pressable
+                    accessibilityRole="switch"
+                    accessibilityLabel={`${repository.enabled ? "禁用" : "启用"}仓库 ${repository.url}`}
+                    onPress={() =>
+                      setRepositories((current) =>
+                        current.map((item) =>
+                          item.line === repository.line
+                            ? { ...item, enabled: !item.enabled }
+                            : item,
+                        ),
+                      )
+                    }
+                    style={[
+                      styles.repositoryToggle,
+                      repository.enabled && styles.repositoryToggleOn,
+                    ]}
+                  >
+                    <View
+                      style={[
+                        styles.repositoryToggleThumb,
+                        repository.enabled && styles.repositoryToggleThumbOn,
+                      ]}
+                    />
+                  </Pressable>
+                  <Text
+                    style={[
+                      styles.repositoryUrl,
+                      !repository.enabled && styles.repositoryUrlDisabled,
+                    ]}
+                    selectable
+                  >
+                    {repository.url}
+                  </Text>
+                  <Pressable
+                    accessibilityRole="button"
+                    accessibilityLabel={`删除仓库 ${repository.url}`}
+                    onPress={() =>
+                      setRepositories((current) =>
+                        current.filter((item) => item.line !== repository.line),
+                      )
+                    }
+                    style={styles.repositoryDelete}
+                  >
+                    <MaterialIcons
+                      name="delete-outline"
+                      size={20}
+                      color="#B13939"
+                    />
+                  </Pressable>
+                </View>
+              ))}
+              {!repositories.length ? (
+                <Text style={styles.repositoriesEmpty}>未读取到仓库条目。</Text>
+              ) : null}
+            </ScrollView>
+
+            <View style={styles.addRepositoryRow}>
+              <TextInput
+                accessibilityLabel="新增 APK 仓库地址"
+                value={newRepositoryUrl}
+                onChangeText={setNewRepositoryUrl}
+                style={styles.addRepositoryInput}
+                placeholder="https://downloads.openwrt.org/..."
+                placeholderTextColor="#8B9AA8"
+                autoCapitalize="none"
+                autoCorrect={false}
+                keyboardType="url"
+                returnKeyType="done"
+                onSubmitEditing={addRepository}
+              />
+              <Pressable
+                accessibilityRole="button"
+                onPress={addRepository}
+                style={({ pressed }) => [
+                  styles.addRepositoryButton,
+                  pressed && styles.pressed,
+                ]}
+              >
+                <MaterialIcons name="add" size={19} color="#FFFFFF" />
+              </Pressable>
+            </View>
+            <View style={styles.modalActions}>
+              <Pressable
+                accessibilityRole="button"
+                disabled={isBusy || isLoading}
+                onPress={() => void saveRepositories()}
+                style={({ pressed }) => [
+                  styles.confirmModal,
+                  (isBusy || isLoading) && styles.disabled,
+                  pressed && styles.pressed,
+                ]}
+              >
+                {isBusy ? (
+                  <ActivityIndicator size="small" color="#FFFFFF" />
+                ) : (
+                  <Text style={styles.confirmModalText}>保存并更新</Text>
+                )}
               </Pressable>
             </View>
           </View>
@@ -842,6 +1065,30 @@ const baseStyles = StyleSheet.create({
     color: "#203B55",
     fontSize: 13,
   },
+  searchInputFlex: {
+    flex: 1,
+    minHeight: 40,
+    borderRadius: 9,
+    borderWidth: 1,
+    borderColor: "#D8E2E8",
+    paddingHorizontal: 12,
+    color: "#203B55",
+    fontSize: 13,
+  },
+  repositoryButton: {
+    minWidth: 72,
+    minHeight: 40,
+    paddingHorizontal: 10,
+    borderRadius: 9,
+    alignItems: "center",
+    justifyContent: "center",
+    flexDirection: "row",
+    gap: 4,
+    backgroundColor: "#E6F5F4",
+    borderWidth: 1,
+    borderColor: "#A7DCD9",
+  },
+  repositoryButtonText: { color: "#007E7A", fontSize: 12, fontWeight: "800" },
   searchAction: {
     minWidth: 62,
     minHeight: 40,
@@ -990,6 +1237,110 @@ const baseStyles = StyleSheet.create({
     backgroundColor: "#FFFFFF",
     borderRadius: 18,
     padding: 20,
+  },
+  repositoriesModal: {
+    width: "100%",
+    maxWidth: 470,
+    maxHeight: "84%",
+    backgroundColor: "#FFFFFF",
+    borderRadius: 18,
+    padding: 20,
+  },
+  repositoriesModalHeader: {
+    flexDirection: "row",
+    alignItems: "flex-start",
+    gap: 12,
+  },
+  repositoriesModalCopy: { flex: 1, minWidth: 0 },
+  repositoriesHint: {
+    color: "#60758B",
+    fontSize: 11,
+    lineHeight: 16,
+    marginTop: 5,
+  },
+  repositoriesClose: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "#EEF3F6",
+  },
+  repositoriesList: { maxHeight: 260, marginTop: 14 },
+  repositoriesListContent: { gap: 8, paddingBottom: 2 },
+  repositoryEntry: {
+    minHeight: 52,
+    paddingHorizontal: 10,
+    paddingVertical: 9,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 9,
+    borderWidth: 1,
+    borderColor: "#DDE7E9",
+    borderRadius: 10,
+    backgroundColor: "#F8FAFB",
+  },
+  repositoryToggle: {
+    width: 34,
+    height: 20,
+    borderRadius: 10,
+    padding: 2,
+    justifyContent: "center",
+    backgroundColor: "#C5D2D9",
+  },
+  repositoryToggleOn: { alignItems: "flex-end", backgroundColor: "#007E7A" },
+  repositoryToggleThumb: {
+    width: 16,
+    height: 16,
+    borderRadius: 8,
+    backgroundColor: "#FFFFFF",
+  },
+  repositoryToggleThumbOn: { backgroundColor: "#FFFFFF" },
+  repositoryUrl: {
+    flex: 1,
+    color: "#203B55",
+    fontSize: 11,
+    lineHeight: 16,
+    fontFamily: Platform.select({
+      ios: "Menlo",
+      android: "monospace",
+      default: "monospace",
+    }),
+  },
+  repositoryUrlDisabled: {
+    color: "#8B9AA8",
+    textDecorationLine: "line-through",
+  },
+  repositoryDelete: {
+    width: 28,
+    height: 28,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  repositoriesEmpty: {
+    color: "#718398",
+    fontSize: 12,
+    textAlign: "center",
+    paddingVertical: 24,
+  },
+  addRepositoryRow: { flexDirection: "row", gap: 8, marginTop: 14 },
+  addRepositoryInput: {
+    flex: 1,
+    minHeight: 42,
+    borderRadius: 9,
+    borderWidth: 1,
+    borderColor: "#D8E2E8",
+    paddingHorizontal: 12,
+    color: "#203B55",
+    fontSize: 12,
+  },
+  addRepositoryButton: {
+    width: 42,
+    height: 42,
+    borderRadius: 9,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "#007E7A",
   },
   actionModalTitle: { color: "#203B55", fontSize: 16, fontWeight: "800" },
   outputBox: {

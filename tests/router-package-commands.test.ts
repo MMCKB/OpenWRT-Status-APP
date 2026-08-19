@@ -3,14 +3,18 @@ import {
   buildApkUpdateCommand,
   buildApkListInstalledCommand,
   buildApkListUpgradableCommand,
+  buildApkListAvailableCommand,
   buildApkUpgradeCommand,
   buildApkUpgradePackageCommand,
   buildApkSearchCommand,
   buildApkInstallCommand,
   buildApkRemoveCommand,
+  buildApkRepositoriesSnapshotCommand,
+  buildApkSaveRepositoriesCommand,
   parseInstalledPackages,
   parseUpgradablePackages,
   parseAvailablePackages,
+  parseApkRepositories,
 } from "../lib/router-package-commands";
 
 describe("router-package-commands (apk)", () => {
@@ -18,6 +22,7 @@ describe("router-package-commands (apk)", () => {
     expect(buildApkUpdateCommand()).toBe("apk update");
     expect(buildApkListInstalledCommand()).toBe("apk info -v");
     expect(buildApkListUpgradableCommand()).toBe("apk list -u");
+    expect(buildApkListAvailableCommand()).toBe('apk search -v "*" || apk search "*"');
     expect(buildApkUpgradeCommand()).toBe("apk upgrade");
     expect(buildApkUpgradePackageCommand("luci-base")).toBe('apk upgrade "luci-base"');
     expect(buildApkSearchCommand("luci")).toBe('apk search -v "*luci*" || apk search "*luci*"');
@@ -60,5 +65,54 @@ describe("router-package-commands (apk)", () => {
     expect(pkgs.length).toBe(2);
     expect(pkgs.find((p) => p.name === "curl")?.installed).toBe(false);
     expect(pkgs.find((p) => p.name === "nano")?.installed).toBe(true);
+  });
+
+  it("should build a safe APK repositories snapshot and save command", () => {
+    expect(buildApkRepositoriesSnapshotCommand()).toContain('file=/etc/apk/repositories');
+    expect(buildApkRepositoriesSnapshotCommand()).toContain('REPO|%d|%d|%s');
+
+    const command = buildApkSaveRepositoriesCommand([
+      { url: "https://downloads.openwrt.org/releases/25.12/packages/aarch64_cortex-a53/base", enabled: true },
+      { url: "https://downloads.openwrt.org/releases/25.12/packages/aarch64_cortex-a53/luci", enabled: false },
+    ]);
+    expect(command).toContain("umask 077");
+    expect(command).toContain("cp \"$target\" \"$target.openwrt-status.bak\"");
+    expect(command).toContain("mv \"$temp\" \"$target\" && apk update");
+    expect(command).toContain("'# https://downloads.openwrt.org/releases/25.12/packages/aarch64_cortex-a53/luci'");
+  });
+
+  it("should reject unsafe, duplicate, or disabled-only repository configurations", () => {
+    expect(() => buildApkSaveRepositoriesCommand([])).toThrow("至少保留一个软件包仓库");
+    expect(() =>
+      buildApkSaveRepositoriesCommand([{ url: "ftp://mirror.example/repo", enabled: true }]),
+    ).toThrow("仓库地址必须");
+    expect(() =>
+      buildApkSaveRepositoriesCommand([{ url: "https://mirror.example/$(touch-pwned)", enabled: true }]),
+    ).toThrow("仓库地址必须");
+    expect(() =>
+      buildApkSaveRepositoriesCommand([
+        { url: "https://mirror.example/repo", enabled: true },
+        { url: "https://mirror.example/repo", enabled: true },
+      ]),
+    ).toThrow("不能重复");
+    expect(() =>
+      buildApkSaveRepositoriesCommand([{ url: "https://mirror.example/repo", enabled: false }]),
+    ).toThrow("至少启用一个");
+  });
+
+  it("should parse enabled and disabled APK repository lines", () => {
+    const repositories = parseApkRepositories(`
+      unrelated output
+      REPO|2|1|https://downloads.openwrt.org/releases/25.12/targets/x86/64/packages
+      REPO|4|0|https://mirror.example/openwrt/packages
+    `);
+    expect(repositories).toEqual([
+      {
+        line: 2,
+        enabled: true,
+        url: "https://downloads.openwrt.org/releases/25.12/targets/x86/64/packages",
+      },
+      { line: 4, enabled: false, url: "https://mirror.example/openwrt/packages" },
+    ]);
   });
 });
