@@ -144,11 +144,14 @@ jobs:
           APK_BADGING="$($AAPT dump badging "$FINAL_APK")"
           printf '%s\n' "$APK_BADGING" | grep -F "versionCode='$VERSION_CODE'"
           printf '%s\n' "$APK_BADGING" | grep -F "versionName='$VERSION_NAME'"
-          # Verify that the release embeds the current service-management and
-          # password-visibility code, rather than an old JavaScript bundle.
+          # Verify that the release embeds the current service-management,
+          # password-visibility, and Android 13+ back-gesture setting code,
+          # rather than an old JavaScript bundle.
           unzip -p "$FINAL_APK" assets/index.android.bundle | grep -aF "PassWall2"
           unzip -p "$FINAL_APK" assets/index.android.bundle | grep -aF "visibility-off"
-          ! unzip -p "$FINAL_APK" assets/index.android.bundle | grep -aF "预测性返回手势"
+          unzip -p "$FINAL_APK" assets/index.android.bundle | grep -aF "预测性返回手势"
+          grep -F "setPredictiveBackEnabled" \
+            app/src/main/java/com/app/openwrtstatusapp/MainActivity.kt
           sha256sum "$FINAL_APK" | tee "${FINAL_APK}.sha256"
           rm -f "$ALIGNED_APK"
 
