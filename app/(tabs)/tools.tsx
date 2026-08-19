@@ -114,6 +114,12 @@ const tools = [
     target: "/maintenance-tools",
   },
   {
+    title: "系统管理",
+    description: "管理定时重启、启动项、LED、挂载点、SSH、接口和计划任务。",
+    icon: "admin-panel-settings",
+    target: "/system-admin",
+  },
+  {
     title: "快捷操作",
     description: "一键重连 WAN，并快速进入常用路由器管理功能。",
     icon: "bolt",

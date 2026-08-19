@@ -37,6 +37,27 @@ export interface PluginConfigSnapshot {
   content: string;
 }
 
+export interface PluginSettingDefinition {
+  key: string;
+  label: string;
+  kind: "text" | "password" | "switch" | "number";
+  placeholder?: string;
+}
+
+export interface PluginSettingsSection {
+  section: string;
+  type: string;
+  title: string;
+  values: Record<string, string>;
+}
+
+export interface PluginSettingsSnapshot {
+  id: ProxyServiceId;
+  label: string;
+  exists: boolean;
+  sections: PluginSettingsSection[];
+}
+
 export interface DiskUsage {
   mount: string;
   totalKb: number | null;
@@ -80,6 +101,27 @@ export interface PortForwardRule {
   enabled: boolean;
 }
 
+export interface FirewallForwarding {
+  section: string;
+  sourceZone: string;
+  destinationZone: string;
+  enabled: boolean;
+}
+
+export interface FirewallTrafficRule {
+  section: string;
+  name: string;
+  sourceZone: string;
+  destinationZone: string;
+  protocol: string;
+  sourceIp: string;
+  destinationIp: string;
+  sourcePort: string;
+  destinationPort: string;
+  target: "ACCEPT" | "REJECT" | "DROP";
+  enabled: boolean;
+}
+
 export interface UpnpState {
   installed: boolean;
   running: boolean;
@@ -88,6 +130,8 @@ export interface UpnpState {
 
 export interface FirewallSnapshot {
   zones: FirewallZone[];
+  forwardings: FirewallForwarding[];
+  trafficRules: FirewallTrafficRule[];
   portForwards: PortForwardRule[];
   upnp: UpnpState;
 }
@@ -100,6 +144,18 @@ export interface PortForwardDraft {
   sourcePort: string;
   destinationPort: string;
   protocol: PortProtocol;
+}
+
+export interface FirewallTrafficRuleDraft {
+  name: string;
+  sourceZone: string;
+  destinationZone: string;
+  protocol: PortProtocol;
+  sourceIp: string;
+  destinationIp: string;
+  sourcePort: string;
+  destinationPort: string;
+  target: "ACCEPT" | "REJECT" | "DROP";
 }
 
 const PROXY_SERVICES = [
@@ -155,6 +211,109 @@ const PROXY_SERVICES = [
   },
 ] as const;
 
+const PLUGIN_SETTING_DEFINITIONS: Record<
+  ProxyServiceId,
+  readonly PluginSettingDefinition[]
+> = {
+  openclash: [
+    { key: "enabled", label: "启用服务", kind: "switch" },
+    {
+      key: "config",
+      label: "配置订阅或配置文件",
+      kind: "text",
+      placeholder: "例如 config.yaml",
+    },
+    {
+      key: "en_mode",
+      label: "运行模式",
+      kind: "text",
+      placeholder: "redir-host / fake-ip",
+    },
+    {
+      key: "dns_mode",
+      label: "DNS 模式",
+      kind: "text",
+      placeholder: "redir-host / fake-ip",
+    },
+    { key: "log_level", label: "日志等级", kind: "text", placeholder: "info" },
+  ],
+  adguardhome: [
+    { key: "enabled", label: "启用服务", kind: "switch" },
+    { key: "port", label: "管理端口", kind: "number", placeholder: "3000" },
+    {
+      key: "redirect",
+      label: "DNS 重定向模式",
+      kind: "text",
+      placeholder: "none",
+    },
+  ],
+  passwall: [
+    { key: "enabled", label: "启用服务", kind: "switch" },
+    {
+      key: "tcp_proxy_mode",
+      label: "TCP 代理模式",
+      kind: "text",
+      placeholder: "global / gfwlist",
+    },
+    {
+      key: "udp_proxy_mode",
+      label: "UDP 代理模式",
+      kind: "text",
+      placeholder: "disable / global",
+    },
+    { key: "dns_shunt", label: "DNS 分流", kind: "switch" },
+  ],
+  passwall2: [
+    { key: "enabled", label: "启用服务", kind: "switch" },
+    {
+      key: "tcp_proxy_mode",
+      label: "TCP 代理模式",
+      kind: "text",
+      placeholder: "global / gfwlist",
+    },
+    {
+      key: "udp_proxy_mode",
+      label: "UDP 代理模式",
+      kind: "text",
+      placeholder: "disable / global",
+    },
+    { key: "dns_shunt", label: "DNS 分流", kind: "switch" },
+  ],
+  ddns: [
+    { key: "enabled", label: "启用此 DDNS 服务", kind: "switch" },
+    {
+      key: "service_name",
+      label: "服务商",
+      kind: "text",
+      placeholder: "cloudflare.com-v4",
+    },
+    { key: "domain", label: "域名", kind: "text", placeholder: "example.com" },
+    { key: "username", label: "用户名或 API 标识", kind: "text" },
+    { key: "password", label: "密码或 API Token", kind: "password" },
+    { key: "interface", label: "检测接口", kind: "text", placeholder: "wan" },
+    {
+      key: "ip_source",
+      label: "IP 获取方式",
+      kind: "text",
+      placeholder: "network / web",
+    },
+    { key: "ip_url", label: "公网 IP 查询地址", kind: "text" },
+    { key: "lookup_host", label: "解析检查主机", kind: "text" },
+    {
+      key: "check_interval",
+      label: "检查间隔（分钟）",
+      kind: "number",
+      placeholder: "10",
+    },
+    {
+      key: "force_interval",
+      label: "强制更新间隔（小时）",
+      kind: "number",
+      placeholder: "72",
+    },
+  ],
+};
+
 const LOG_BASE_COMMANDS: Record<RouterLogCategory, string> = {
   system: "logread",
   kernel: "dmesg",
@@ -182,7 +341,7 @@ function requireFirewallSection(value: string) {
   const normalized = value.trim();
   if (
     /^[A-Za-z0-9_-]+$/.test(normalized) ||
-    /^@redirect\[\d+\]$/.test(normalized)
+    /^@(redirect|forwarding|rule)\[\d+\]$/.test(normalized)
   )
     return normalized;
   throw new Error("端口转发规则格式无效。");
@@ -231,6 +390,101 @@ export function getProxyServiceDefinition(id: ProxyServiceId) {
     initName: service.initName,
     configPath: service.configPath,
   };
+}
+
+export function getPluginSettingDefinitions(id: ProxyServiceId) {
+  return PLUGIN_SETTING_DEFINITIONS[id];
+}
+
+function requireUciSection(value: string) {
+  const normalized = value.trim();
+  if (!/^[A-Za-z0-9_-]+$/.test(normalized)) {
+    throw new Error("配置段名称格式无效。");
+  }
+  return normalized;
+}
+
+function pluginUciPackage(id: ProxyServiceId) {
+  return serviceDefinition(id).configPath.split("/").pop()!;
+}
+
+/** 读取固定服务的 UCI 节和白名单字段，供移动端图形化表单使用。 */
+export function buildPluginSettingsSnapshotCommand(id: ProxyServiceId) {
+  const service = serviceDefinition(id);
+  const pkg = pluginUciPackage(id);
+  const keys = PLUGIN_SETTING_DEFINITIONS[id].map((item) => item.key).join(" ");
+  const prefix = `__PLUGIN_SETTINGS__|${id}`;
+  return [
+    `[ -x /etc/init.d/${service.initName} ] || { printf '${prefix}|missing\\n'; exit 0; }`,
+    `if [ ! -r ${shellQuote(service.configPath)} ]; then printf '${prefix}|missing\\n'; exit 0; fi`,
+    `printf '${prefix}|present\\n'`,
+    `uci -q show ${shellQuote(pkg)} 2>/dev/null | while IFS= read -r line; do`,
+    `case "$line" in`,
+    `${pkg}.*.*=*) section=$(printf '%s' "$line" | cut -d. -f2); option=$(printf '%s' "$line" | cut -d. -f3 | cut -d= -f1); case " ${keys} " in *" $option "*) value=$(printf '%s' "$line" | cut -d= -f2-); printf 'VALUE|%s|%s|%s\\n' "$section" "$option" "$value" ;; esac ;;`,
+    `${pkg}.*=*) section=$(printf '%s' "$line" | cut -d. -f2 | cut -d= -f1); type=$(printf '%s' "$line" | cut -d= -f2-); printf 'SECTION|%s|%s\\n' "$section" "$type" ;;`,
+    `esac; done`,
+  ].join("; ");
+}
+
+export function parsePluginSettingsSnapshot(
+  id: ProxyServiceId,
+  output: string,
+): PluginSettingsSnapshot {
+  const service = serviceDefinition(id);
+  const marker = `__PLUGIN_SETTINGS__|${id}|`;
+  const normalized = output.replace(/\r\n/g, "\n");
+  const markerIndex = normalized.indexOf(marker);
+  if (markerIndex < 0) throw new Error("服务设置返回格式无效。");
+  const lines = normalized.slice(markerIndex).split("\n");
+  const exists = lines[0].trim() === `${marker}present`;
+  if (!exists && lines[0].trim() !== `${marker}missing`)
+    throw new Error("服务设置返回格式无效。");
+  const sections = new Map<string, PluginSettingsSection>();
+  for (const line of lines.slice(1)) {
+    const sectionMatch = line.match(
+      /^SECTION\|([A-Za-z0-9_-]+)\|([A-Za-z0-9_-]+)$/,
+    );
+    if (sectionMatch) {
+      const [, section, type] = sectionMatch;
+      sections.set(section, { section, type, title: section, values: {} });
+      continue;
+    }
+    const valueMatch = line.match(
+      /^VALUE\|([A-Za-z0-9_-]+)\|([A-Za-z0-9_]+)\|(.*)$/,
+    );
+    if (!valueMatch) continue;
+    const [, section, key, value] = valueMatch;
+    const current = sections.get(section);
+    if (current) current.values[key] = value;
+  }
+  return { id, label: service.label, exists, sections: [...sections.values()] };
+}
+
+/** 仅允许保存为该服务预定义的常用字段，用户输入不会作为 Shell 代码拼接。 */
+export function buildPluginSettingsApplyCommand(
+  id: ProxyServiceId,
+  section: string,
+  values: Record<string, string>,
+) {
+  const service = serviceDefinition(id);
+  const pkg = pluginUciPackage(id);
+  const safeSection = requireUciSection(section);
+  const allowed = new Set(
+    PLUGIN_SETTING_DEFINITIONS[id].map((item) => item.key),
+  );
+  const assignments = Object.entries(values)
+    .filter(([key]) => allowed.has(key))
+    .map(([key, rawValue]) => {
+      const value = rawValue.trim();
+      if (value.length > 512 || value.includes("\0") || /[\r\n]/.test(value))
+        throw new Error(`${key} 的值格式无效。`);
+      return value
+        ? `uci set ${shellQuote(`${pkg}.${safeSection}.${key}=${value}`)}`
+        : `uci -q delete ${shellQuote(`${pkg}.${safeSection}.${key}`)}`;
+    });
+  if (!assignments.length) throw new Error("没有可保存的设置项。");
+  const backupPath = `${service.configPath}.openwrt-status.bak`;
+  return `[ -x /etc/init.d/${service.initName} ] || { echo '${service.label} 未安装。'; exit 2; }; if [ -f ${shellQuote(service.configPath)} ]; then cp ${shellQuote(service.configPath)} ${shellQuote(backupPath)} || { echo '配置备份失败。'; exit 1; }; fi; ${assignments.join("; ")}; uci commit ${shellQuote(pkg)} && /etc/init.d/${service.initName} restart`;
 }
 
 export function buildProxyServiceSnapshotCommand() {
@@ -529,6 +783,8 @@ function firstValue(
 export function parseFirewallSnapshot(output: string): FirewallSnapshot {
   const sections = readFirewallSections(output);
   const zones: FirewallZone[] = [];
+  const forwardings: FirewallForwarding[] = [];
+  const trafficRules: FirewallTrafficRule[] = [];
   const portForwards: PortForwardRule[] = [];
   for (const [section, value] of sections) {
     if (value.type === "zone") {
@@ -554,12 +810,43 @@ export function parseFirewallSnapshot(output: string): FirewallSnapshot {
         enabled: firstValue(value, "enabled", "1") !== "0",
       });
     }
+    if (value.type === "forwarding") {
+      forwardings.push({
+        section,
+        sourceZone: firstValue(value, "src"),
+        destinationZone: firstValue(value, "dest"),
+        enabled: firstValue(value, "enabled", "1") !== "0",
+      });
+    }
+    if (value.type === "rule") {
+      const target = firstValue(value, "target", "ACCEPT").toUpperCase();
+      if (!["ACCEPT", "REJECT", "DROP"].includes(target)) continue;
+      trafficRules.push({
+        section,
+        name: firstValue(value, "name", section),
+        sourceZone: firstValue(value, "src", "任意"),
+        destinationZone: firstValue(value, "dest", "任意"),
+        protocol: firstValue(value, "proto", "任意"),
+        sourceIp: firstValue(value, "src_ip", ""),
+        destinationIp: firstValue(value, "dest_ip", ""),
+        sourcePort: firstValue(value, "src_port", ""),
+        destinationPort: firstValue(value, "dest_port", ""),
+        target: target as FirewallTrafficRule["target"],
+        enabled: firstValue(value, "enabled", "1") !== "0",
+      });
+    }
   }
   const upnpMatch = output.match(
     /^UPNP\|(installed|missing)\|(running|stopped)\|([^\r\n|]+)$/m,
   );
   return {
     zones: zones.sort((a, b) => a.name.localeCompare(b.name)),
+    forwardings: forwardings.sort((a, b) =>
+      `${a.sourceZone}:${a.destinationZone}`.localeCompare(
+        `${b.sourceZone}:${b.destinationZone}`,
+      ),
+    ),
+    trafficRules: trafficRules.sort((a, b) => a.name.localeCompare(b.name)),
     portForwards: portForwards.sort((a, b) => a.name.localeCompare(b.name)),
     upnp: {
       installed: upnpMatch?.[1] === "installed",
@@ -567,6 +854,91 @@ export function parseFirewallSnapshot(output: string): FirewallSnapshot {
       enabled: upnpMatch?.[3] === "1",
     },
   };
+}
+
+export function buildFirewallForwardingToggleCommand(
+  section: string,
+  enabled: boolean,
+) {
+  const safeSection = requireFirewallSection(section);
+  return `uci set firewall.${safeSection}.enabled='${enabled ? "1" : "0"}'; uci commit firewall; /etc/init.d/firewall reload`;
+}
+
+export function buildFirewallRuleToggleCommand(
+  section: string,
+  enabled: boolean,
+) {
+  const safeSection = requireFirewallSection(section);
+  return `uci set firewall.${safeSection}.enabled='${enabled ? "1" : "0"}'; uci commit firewall; /etc/init.d/firewall reload`;
+}
+
+export function buildFirewallRuleDeleteCommand(section: string) {
+  const safeSection = requireFirewallSection(section);
+  return `uci -q delete firewall.${safeSection}; uci commit firewall; /etc/init.d/firewall reload`;
+}
+
+export function buildFirewallRuleCreateCommand(
+  draft: FirewallTrafficRuleDraft,
+) {
+  const name = draft.name.trim();
+  if (!name || name.length > 48 || /[\r\n]/.test(name))
+    throw new Error("规则名称应为 1–48 个字符，且不能包含换行。");
+  const sourceZone = draft.sourceZone.trim()
+    ? requireIdentifier(draft.sourceZone, "来源区域")
+    : "";
+  const destinationZone = draft.destinationZone.trim()
+    ? requireIdentifier(draft.destinationZone, "目标区域")
+    : "";
+  if (!["tcp", "udp", "tcp udp"].includes(draft.protocol))
+    throw new Error("通信协议无效。");
+  if (!["ACCEPT", "REJECT", "DROP"].includes(draft.target))
+    throw new Error("通信规则目标无效。");
+  const optionalPort = (value: string, label: string) =>
+    value.trim() ? requirePortSpec(value, label) : "";
+  const sourcePort = optionalPort(draft.sourcePort, "来源端口");
+  const destinationPort = optionalPort(draft.destinationPort, "目标端口");
+  const optionalIp = (value: string, label: string) => {
+    const normalized = value.trim();
+    if (!normalized) return "";
+    if (!/^(?:\d{1,3}\.){3}\d{1,3}(?:\/\d{1,2})?$/.test(normalized))
+      throw new Error(`${label}必须为 IPv4 或 CIDR。`);
+    const [ip, mask] = normalized.split("/");
+    requireIpv4(ip);
+    if (mask !== undefined && (Number(mask) < 0 || Number(mask) > 32))
+      throw new Error(`${label}CIDR 范围应为 0–32。`);
+    return normalized;
+  };
+  const sourceIp = optionalIp(draft.sourceIp, "来源地址");
+  const destinationIp = optionalIp(draft.destinationIp, "目标地址");
+  const section = `openwrt_app_rule_${Date.now().toString(36)}`;
+  const values = [
+    `uci set firewall.${section}='rule'`,
+    `uci set firewall.${section}.name=${shellQuote(name)}`,
+    `uci set firewall.${section}.proto=${shellQuote(draft.protocol)}`,
+    `uci set firewall.${section}.target=${shellQuote(draft.target)}`,
+    `uci set firewall.${section}.enabled='1'`,
+    sourceZone
+      ? `uci set firewall.${section}.src=${shellQuote(sourceZone)}`
+      : `uci -q delete firewall.${section}.src`,
+    destinationZone
+      ? `uci set firewall.${section}.dest=${shellQuote(destinationZone)}`
+      : `uci -q delete firewall.${section}.dest`,
+    sourceIp
+      ? `uci set firewall.${section}.src_ip=${shellQuote(sourceIp)}`
+      : `uci -q delete firewall.${section}.src_ip`,
+    destinationIp
+      ? `uci set firewall.${section}.dest_ip=${shellQuote(destinationIp)}`
+      : `uci -q delete firewall.${section}.dest_ip`,
+    sourcePort
+      ? `uci set firewall.${section}.src_port=${shellQuote(sourcePort)}`
+      : `uci -q delete firewall.${section}.src_port`,
+    destinationPort
+      ? `uci set firewall.${section}.dest_port=${shellQuote(destinationPort)}`
+      : `uci -q delete firewall.${section}.dest_port`,
+    "uci commit firewall",
+    "/etc/init.d/firewall reload",
+  ];
+  return values.join("; ");
 }
 
 export function buildPortForwardToggleCommand(

@@ -172,6 +172,7 @@ function RootNavigator() {
       <Stack.Screen name="performance-benchmark" />
       <Stack.Screen name="firmware-release" />
       <Stack.Screen name="maintenance-tools" />
+      <Stack.Screen name="system-admin" />
       <Stack.Screen name="quick-actions" />
       <Stack.Screen name="services-health" />
       <Stack.Screen name="service-config" />

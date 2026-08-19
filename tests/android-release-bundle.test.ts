@@ -18,6 +18,8 @@ const wirelessManagerPath = resolve(projectRoot, "app/wireless-manager.tsx");
 const serviceHealthPath = resolve(projectRoot, "app/services-health.tsx");
 const servicesTabPath = resolve(projectRoot, "app/(tabs)/services.tsx");
 const serviceConfigPath = resolve(projectRoot, "app/service-config.tsx");
+const systemAdminPath = resolve(projectRoot, "app/system-admin.tsx");
+const firewallPath = resolve(projectRoot, "app/firewall.tsx");
 
 describe("Android Release JavaScript bundle", () => {
   it("仅将 debug 视为可调试变体，确保 release 从当前源码重新打包", () => {
@@ -45,6 +47,8 @@ describe("Android Release JavaScript bundle", () => {
     const serviceHealth = readFileSync(serviceHealthPath, "utf8");
     const servicesTab = readFileSync(servicesTabPath, "utf8");
     const serviceConfig = readFileSync(serviceConfigPath, "utf8");
+    const systemAdmin = readFileSync(systemAdminPath, "utf8");
+    const firewall = readFileSync(firewallPath, "utf8");
 
     expect(routerForm).toContain("isPasswordVisible");
     expect(routerForm).toContain("isSshPasswordVisible");
@@ -56,15 +60,21 @@ describe("Android Release JavaScript bundle", () => {
       'export { default } from "../services-health"',
     );
     expect(serviceHealth).toContain('title="服务与健康"');
-    expect(serviceConfig).toContain("buildPluginConfigSnapshotCommand");
-    expect(serviceConfig).toContain("buildPluginConfigApplyCommand");
+    expect(serviceConfig).toContain("buildPluginSettingsSnapshotCommand");
+    expect(serviceConfig).toContain("buildPluginSettingsApplyCommand");
     expect(serviceConfig).not.toContain("buildProxyServiceConfigUrl");
+    expect(wirelessManager).toContain("加密方式");
+    expect(systemAdmin).toContain("定时重启");
+    expect(systemAdmin).toContain("计划任务");
+    expect(firewall).toContain("通信规则");
     expect(
       routerForm +
         wirelessManager +
         serviceHealth +
         servicesTab +
-        serviceConfig,
+        serviceConfig +
+        systemAdmin +
+        firewall,
     ).not.toContain("预测性返回手势");
   });
 });

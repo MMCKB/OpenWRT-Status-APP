@@ -3,9 +3,15 @@ import { describe, expect, it } from "vitest";
 import {
   buildBatchConfigBackupCommand,
   buildBatchRouterDiagnosticCommand,
+  buildFirewallForwardingToggleCommand,
+  buildFirewallRuleCreateCommand,
+  buildFirewallRuleDeleteCommand,
+  buildFirewallRuleToggleCommand,
   buildPluginConfigApplyCommand,
   buildPluginConfigSnapshotCommand,
   buildPluginLogCommand,
+  buildPluginSettingsApplyCommand,
+  buildPluginSettingsSnapshotCommand,
   buildPortForwardCreateCommand,
   buildPortForwardDeleteCommand,
   buildPortForwardToggleCommand,
@@ -14,6 +20,7 @@ import {
   buildProxyServiceSnapshotCommand,
   buildRouterLogCommand,
   parsePluginConfigSnapshot,
+  parsePluginSettingsSnapshot,
   parseFirewallSnapshot,
   parseHealthSnapshot,
   parseProxyServiceStates,
@@ -171,6 +178,49 @@ describe("高级 OpenWrt 服务与网络管理", () => {
     ).toThrow("不支持的服务");
   });
 
+  it("解析并受控保存服务图形化 UCI 设置", () => {
+    expect(buildPluginSettingsSnapshotCommand("ddns")).toContain(
+      "uci -q show 'ddns'",
+    );
+    expect(
+      parsePluginSettingsSnapshot(
+        "ddns",
+        "__PLUGIN_SETTINGS__|ddns|present\nSECTION|cloudflare|service\nVALUE|cloudflare|enabled|'1'\nVALUE|cloudflare|domain|'example.com'\nVALUE|cloudflare|password|'token-value'\n",
+      ),
+    ).toMatchObject({
+      exists: true,
+      sections: [
+        {
+          section: "cloudflare",
+          type: "service",
+          values: { enabled: "'1'", domain: "'example.com'" },
+        },
+      ],
+    });
+    const command = buildPluginSettingsApplyCommand("ddns", "cloudflare", {
+      enabled: "1",
+      domain: "example.com",
+      ignored_field: "should-not-be-written",
+    });
+    expect(command).toContain(
+      "cp '/etc/config/ddns' '/etc/config/ddns.openwrt-status.bak'",
+    );
+    expect(command).toContain("uci set 'ddns.cloudflare.enabled=1'");
+    expect(command).toContain("uci set 'ddns.cloudflare.domain=example.com'");
+    expect(command).not.toContain("ignored_field");
+    expect(command).toContain("/etc/init.d/ddns restart");
+    expect(() =>
+      buildPluginSettingsApplyCommand("ddns", "cloudflare; reboot", {
+        enabled: "1",
+      }),
+    ).toThrow("配置段名称格式无效");
+    expect(() =>
+      buildPluginSettingsApplyCommand("ddns", "cloudflare", {
+        domain: "bad\nreboot",
+      }),
+    ).toThrow("domain 的值格式无效");
+  });
+
   it("解析匿名 UCI 区段，并仅允许安全格式的端口转发操作", () => {
     const snapshot = parseFirewallSnapshot(
       "__FIREWALL__\nfirewall.@zone[0]=zone\nfirewall.@zone[0].name='lan'\nfirewall.@zone[0].network='lan'\nfirewall.@zone[0].input='ACCEPT'\nfirewall.@zone[0].output='ACCEPT'\nfirewall.@zone[0].forward='REJECT'\nfirewall.@redirect[0]=redirect\nfirewall.@redirect[0].name='NAS'\nfirewall.@redirect[0].src='wan'\nfirewall.@redirect[0].dest='lan'\nfirewall.@redirect[0].dest_ip='192.168.1.20'\nfirewall.@redirect[0].src_dport='443'\nfirewall.@redirect[0].dest_port='443'\nfirewall.@redirect[0].proto='tcp'\nfirewall.@redirect[0].enabled='1'\n__UPNP__\nUPNP|installed|running|1",
@@ -223,6 +273,62 @@ describe("高级 OpenWrt 服务与网络管理", () => {
         sourcePort: "443",
         destinationPort: "443",
         protocol: "tcp",
+      }),
+    ).toThrow("来源区域格式无效");
+  });
+
+  it("解析并受控管理区域转发与通信规则", () => {
+    const snapshot = parseFirewallSnapshot(
+      "__FIREWALL__\nfirewall.@forwarding[0]=forwarding\nfirewall.@forwarding[0].src='lan'\nfirewall.@forwarding[0].dest='wan'\nfirewall.@forwarding[0].enabled='1'\nfirewall.@rule[0]=rule\nfirewall.@rule[0].name='Allow DNS'\nfirewall.@rule[0].src='wan'\nfirewall.@rule[0].proto='udp'\nfirewall.@rule[0].dest_port='53'\nfirewall.@rule[0].target='ACCEPT'\nfirewall.@rule[0].enabled='1'\n__UPNP__\nUPNP|missing|stopped|0",
+    );
+    expect(snapshot.forwardings).toEqual([
+      {
+        section: "@forwarding[0]",
+        sourceZone: "lan",
+        destinationZone: "wan",
+        enabled: true,
+      },
+    ]);
+    expect(snapshot.trafficRules[0]).toMatchObject({
+      section: "@rule[0]",
+      name: "Allow DNS",
+      destinationPort: "53",
+      target: "ACCEPT",
+    });
+    expect(
+      buildFirewallForwardingToggleCommand("@forwarding[0]", false),
+    ).toContain("firewall.@forwarding[0].enabled='0'");
+    expect(buildFirewallRuleToggleCommand("@rule[0]", false)).toContain(
+      "firewall.@rule[0].enabled='0'",
+    );
+    expect(buildFirewallRuleDeleteCommand("@rule[0]")).toContain(
+      "uci -q delete firewall.@rule[0]",
+    );
+    const command = buildFirewallRuleCreateCommand({
+      name: "Allow DNS",
+      sourceZone: "wan",
+      destinationZone: "",
+      protocol: "udp",
+      sourceIp: "",
+      destinationIp: "192.168.1.2",
+      sourcePort: "",
+      destinationPort: "53",
+      target: "ACCEPT",
+    });
+    expect(command).toContain("target='ACCEPT'");
+    expect(command).toContain("dest_ip='192.168.1.2'");
+    expect(command).toContain("dest_port='53'");
+    expect(() =>
+      buildFirewallRuleCreateCommand({
+        name: "bad",
+        sourceZone: "wan; reboot",
+        destinationZone: "",
+        protocol: "tcp",
+        sourceIp: "",
+        destinationIp: "",
+        sourcePort: "",
+        destinationPort: "80",
+        target: "ACCEPT",
       }),
     ).toThrow("来源区域格式无效");
   });
