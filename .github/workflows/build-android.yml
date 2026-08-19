@@ -147,9 +147,11 @@ jobs:
           # Verify that the release embeds the current service-management,
           # password-visibility, and Android 13+ back-gesture setting code,
           # rather than an old JavaScript bundle.
-          unzip -p "$FINAL_APK" assets/index.android.bundle | grep -aqF "PassWall2"
-          unzip -p "$FINAL_APK" assets/index.android.bundle | grep -aqF "visibility-off"
-          unzip -p "$FINAL_APK" assets/index.android.bundle | grep -aqF "预测性返回手势"
+          # Do not use grep -q here: with pipefail it closes early and makes
+          # unzip fail with SIGPIPE even when the marker is present.
+          unzip -p "$FINAL_APK" assets/index.android.bundle | grep -aF "PassWall2" >/dev/null
+          unzip -p "$FINAL_APK" assets/index.android.bundle | grep -aF "visibility-off" >/dev/null
+          unzip -p "$FINAL_APK" assets/index.android.bundle | grep -aF "预测性返回手势" >/dev/null
           grep -F "setPredictiveBackEnabled" \
             android/app/src/main/java/com/app/openwrtstatusapp/MainActivity.kt
           sha256sum "$FINAL_APK" | tee "${FINAL_APK}.sha256"
