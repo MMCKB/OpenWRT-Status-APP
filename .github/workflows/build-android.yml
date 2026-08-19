@@ -151,7 +151,7 @@ jobs:
           # unzip fail with SIGPIPE even when the marker is present.
           unzip -p "$FINAL_APK" assets/index.android.bundle | grep -aF "PassWall2" >/dev/null
           unzip -p "$FINAL_APK" assets/index.android.bundle | grep -aF "visibility-off" >/dev/null
-          unzip -p "$FINAL_APK" assets/index.android.bundle | grep -aF "预测性返回手势" >/dev/null
+          unzip -p "$FINAL_APK" assets/index.android.bundle | grep -aF "predictiveBackEnabled" >/dev/null
           grep -F "setPredictiveBackEnabled" \
             android/app/src/main/java/com/app/openwrtstatusapp/MainActivity.kt
           sha256sum "$FINAL_APK" | tee "${FINAL_APK}.sha256"
