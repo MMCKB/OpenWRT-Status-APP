@@ -57,6 +57,7 @@ describe("Android Release JavaScript bundle", () => {
 
   it("不保留会覆盖新源码的预构建 bundle，并在 CI 中拒绝这类文件", () => {
     const workflow = readFileSync(workflowPath, "utf8");
+    const gradle = readFileSync(gradlePath, "utf8");
     expect(existsSync(obsoleteBundlePath)).toBe(false);
     expect(workflow).toContain(
       "test ! -e android/app/src/main/assets/index.android.bundle",
@@ -78,6 +79,9 @@ describe("Android Release JavaScript bundle", () => {
     expect(workflow).toContain('--ks-key-alias "$ANDROID_RELEASE_KEY_ALIAS"');
     expect(workflow).not.toContain("Generate temporary CI debug keystore");
     expect(workflow).not.toContain("android/app/debug.keystore");
+    expect(gradle).toContain("signingConfig signingConfigs.release");
+    expect(gradle).toContain("openwrt-status-release.keystore");
+    expect(gradle).toContain("ANDROID_RELEASE_KEYSTORE_PASSWORD");
   });
 
   it("当前源码包含服务、管理权扩展、密码显示与可控制的预测性返回手势", () => {
