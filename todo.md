@@ -87,10 +87,6 @@
 - [x] Kotlin Compose 迁移：移除 Expo、React Native、TypeScript、Node.js、Metro 与对应构建运行时依赖
 - [x] Kotlin Compose 迁移：补齐 Kotlin 单元测试、静态检查、Debug/Release 构建与四 ABI GitHub 发布流程
 - [x] 撤销 v2.0.0 Kotlin Compose Release、删除对应标签，并恢复 main 至 v1.0.27 代码状态
-- [x] 分析 pasted_content.txt 中的需求并执行其中明确的项目变更
-- [x] 在 Dev 分支实现 R2 原生加密迁移桥：导出路由器、凭证、固件链接和流量历史至 migration-v1
-- [x] 在 Dev 分支建立纯 Kotlin Compose 工程并复刻原版 Dashboard 与七项导航
-- [x] 在 Dev 分支迁移 LuCI、SSH/SFTP、网络、服务、系统与工具功能
-- [x] 在 K1 首次启动导入 R2 加密迁移仓，并覆盖验证完整恢复与中断恢复
-- [x] 在 Dev 分支完成四 ABI 构建、升级协议测试与 MIGRATION_STATUS.md；真实设备截图回归因当前环境无 adb/模拟器而记录为受限项
-- [x] 为 Dev 分支签名构建上传可下载的四 ABI APK 产物，并核验 Actions 页面可见
+- [x] 将 main 分支升级至 Expo SDK 57，并审计、对齐受影响的 React Native、Expo 模块及原生构建依赖
+- [x] 修复 Expo Router SDK 57 的导航兼容与 Android Fabric 栈转场启动崩溃，并验证 v1.0.29 四 ABI 稳定签名 APK
+- [x] 移除被 Expo Router 当作路由加载的历史 Kotlin/Gradle app/build 测试报告，新增发布门禁并验证 v1.0.30 四 ABI 稳定签名 APK
