@@ -86,4 +86,4 @@
 - [x] Kotlin Compose 迁移：实现网络诊断、软件包、服务、系统管理、无线、防火墙、挂载与 LuCI 主题功能
 - [x] Kotlin Compose 迁移：移除 Expo、React Native、TypeScript、Node.js、Metro 与对应构建运行时依赖
 - [x] Kotlin Compose 迁移：补齐 Kotlin 单元测试、静态检查、Debug/Release 构建与四 ABI GitHub 发布流程
-- [ ] 撤销 v2.0.0 Kotlin Compose Release、删除对应标签，并恢复 main 至 v1.0.27 代码状态
+- [x] 撤销 v2.0.0 Kotlin Compose Release、删除对应标签，并恢复 main 至 v1.0.27 代码状态
