@@ -1,9 +1,0 @@
-<?xml version="1.0" encoding="utf-8"?>
-<shortcuts xmlns:android="http://schemas.android.com/apk/res/android">
-  <shortcut android:shortcutId="openwrt_quick_actions" android:enabled="true" android:icon="@mipmap/ic_launcher" android:shortcutShortLabel="@string/openwrt_shortcut_quick_short" android:shortcutLongLabel="@string/openwrt_shortcut_quick_long">
-    <intent android:action="android.intent.action.VIEW" android:data="manusopenwrtstatusapp:///quick-actions" />
-  </shortcut>
-  <shortcut android:shortcutId="openwrt_diagnostics" android:enabled="true" android:icon="@mipmap/ic_launcher" android:shortcutShortLabel="@string/openwrt_shortcut_diagnostics_short" android:shortcutLongLabel="@string/openwrt_shortcut_diagnostics_long">
-    <intent android:action="android.intent.action.VIEW" android:data="manusopenwrtstatusapp:///diagnostics" />
-  </shortcut>
-</shortcuts>

@@ -89,7 +89,7 @@
 - [x] 撤销 v2.0.0 Kotlin Compose Release、删除对应标签，并恢复 main 至 v1.0.27 代码状态
 - [ ] 分析 pasted_content.txt 中的需求并执行其中明确的项目变更
 - [x] 在 Dev 分支实现 R2 原生加密迁移桥：导出路由器、凭证、固件链接和流量历史至 migration-v1
-- [ ] 在 Dev 分支建立纯 Kotlin Compose 工程并复刻原版 Dashboard 与七项导航
-- [ ] 在 Dev 分支迁移 LuCI、SSH/SFTP、网络、服务、系统与工具功能
-- [ ] 在 K1 首次启动导入 R2 加密迁移仓，并覆盖验证完整恢复与中断恢复
+- [x] 在 Dev 分支建立纯 Kotlin Compose 工程并复刻原版 Dashboard 与七项导航
+- [x] 在 Dev 分支迁移 LuCI、SSH/SFTP、网络、服务、系统与工具功能
+- [x] 在 K1 首次启动导入 R2 加密迁移仓，并覆盖验证完整恢复与中断恢复
 - [ ] 在 Dev 分支完成四 ABI 构建、升级协议测试、截图回归与 MIGRATION_STATUS.md

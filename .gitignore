@@ -45,14 +45,15 @@ app-example
 /ios
 
 # Android local configuration, build caches, native intermediates, and signing material
-/android/.gradle/
-/android/build/
-/android/app/build/
-/android/.cxx/
-/android/app/.cxx/
-/android/local.properties
-/android/app/debug.keystore
-/android/app/release.keystore
+/.gradle/
+/.kotlin/
+/build/
+/app/build/
+/.cxx/
+/app/.cxx/
+/local.properties
+/app/debug.keystore
+/app/release.keystore
 
 # IDE
 .vscode/
