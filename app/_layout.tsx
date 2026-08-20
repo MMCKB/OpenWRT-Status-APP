@@ -27,6 +27,7 @@ import {
 import { SplashLoader } from "@/components/splash-loader";
 import { AppDialogProvider } from "@/components/app-dialog";
 import { RouterProvider } from "@/lib/router-provider";
+import { R2MigrationProvider } from "@/lib/r2-migration";
 
 const DEFAULT_WEB_INSETS: EdgeInsets = { top: 0, right: 0, bottom: 0, left: 0 };
 const DEFAULT_WEB_FRAME: Rect = { x: 0, y: 0, width: 0, height: 0 };
@@ -98,20 +99,22 @@ export default function RootLayout() {
         <GestureHandlerRootView style={{ flex: 1 }}>
           <trpc.Provider client={trpcClient} queryClient={queryClient}>
             <QueryClientProvider client={queryClient}>
-              <RouterProvider>
-                <AppDialogProvider>
-                  <SafeAreaView
-                    style={{ flex: 1, backgroundColor: colors.background }}
-                    edges={["top", "left", "right"]}
-                  >
-                    <RootNavigator />
-                    <StatusBar
-                      style={colorScheme === "dark" ? "light" : "dark"}
-                      backgroundColor={colors.background}
-                    />
-                  </SafeAreaView>
-                </AppDialogProvider>
-              </RouterProvider>
+              <R2MigrationProvider>
+                <RouterProvider>
+                  <AppDialogProvider>
+                    <SafeAreaView
+                      style={{ flex: 1, backgroundColor: colors.background }}
+                      edges={["top", "left", "right"]}
+                    >
+                      <RootNavigator />
+                      <StatusBar
+                        style={colorScheme === "dark" ? "light" : "dark"}
+                        backgroundColor={colors.background}
+                      />
+                    </SafeAreaView>
+                  </AppDialogProvider>
+                </RouterProvider>
+              </R2MigrationProvider>
             </QueryClientProvider>
           </trpc.Provider>
         </GestureHandlerRootView>

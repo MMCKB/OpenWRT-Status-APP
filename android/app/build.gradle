@@ -163,6 +163,7 @@ android {
 
 dependencies {
     implementation("com.github.mwiede:jsch:0.2.22")
+    implementation("androidx.security:security-crypto:1.1.0-alpha06")
     // The version of react-native is set by the React Native Gradle Plugin
     implementation("com.facebook.react:react-android")
 

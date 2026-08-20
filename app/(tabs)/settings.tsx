@@ -4,6 +4,7 @@ import { Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
 
 import { SectionCard, sharedStyles } from "@/components/status-ui";
 import { useColors } from "@/hooks/use-colors";
+import { useR2Migration } from "@/lib/r2-migration";
 import { useRouterStore } from "@/lib/router-provider";
 import { useThemeContext, type ThemePreference } from "@/lib/theme-provider";
 import {
@@ -49,6 +50,7 @@ export default function SettingsScreen() {
     useThemeContext();
   const colors = useColors();
   const router = useRouter();
+  const migration = useR2Migration();
   const softPrimary = colorScheme === "dark" ? "#1C485C" : "#E6F5F4";
   const noteSurface = colorScheme === "dark" ? "#193A52" : "#EEF3F6";
   const trafficCandidates = getTrafficInterfaceCandidates(
@@ -331,6 +333,36 @@ export default function SettingsScreen() {
             softPrimary={softPrimary}
             divider
           />
+        </SectionCard>
+        <SectionCard title="升级迁移">
+          <InfoRow
+            icon={migration.status === "ready" ? "verified-user" : "security"}
+            title={
+              migration.status === "ready"
+                ? "加密迁移备份已就绪"
+                : "覆盖升级前的本地备份"
+            }
+            description={migration.detail}
+            colors={colors}
+            softPrimary={softPrimary}
+          />
+          <Pressable
+            accessibilityRole="button"
+            disabled={migration.status === "checking"}
+            onPress={() => void migration.retry()}
+            style={({ pressed }) => [
+              sharedStyles.secondaryButton,
+              {
+                margin: 14,
+                opacity: migration.status === "checking" ? 0.6 : 1,
+              },
+              pressed && styles.pressed,
+            ]}
+          >
+            <Text style={sharedStyles.secondaryButtonText}>
+              重新检查迁移备份
+            </Text>
+          </Pressable>
         </SectionCard>
         <SectionCard title="关于">
           <MaintenanceRow
