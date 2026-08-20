@@ -50,6 +50,17 @@ export default function PerformanceBenchmarkScreen() {
     result?.storageTotalKb && result.storageUsedKb !== null
       ? result.storageUsedKb / result.storageTotalKb
       : null;
+  const loadUsage =
+    result?.loadAverage !== null &&
+    result?.loadAverage !== undefined &&
+    result.cpuCores !== null &&
+    result.cpuCores > 0
+      ? result.loadAverage / result.cpuCores
+      : null;
+  const memoryUsage =
+    result?.memoryTotalKb && result.memoryAvailableKb !== null
+      ? 1 - result.memoryAvailableKb / result.memoryTotalKb
+      : null;
 
   return (
     <ManagementShell
@@ -110,6 +121,14 @@ export default function PerformanceBenchmarkScreen() {
                       ? "warning"
                       : "success"
                   }
+                  progress={loadUsage}
+                  progressLabel={
+                    loadUsage !== null && loadUsage >= 0.75
+                      ? loadUsage >= 1
+                        ? "警告：负载接近或超过核心数"
+                        : "注意：负载较高"
+                      : undefined
+                  }
                 />
               </View>
             </View>
@@ -132,6 +151,14 @@ export default function PerformanceBenchmarkScreen() {
                       ? "warning"
                       : "normal"
                   }
+                  progress={memoryUsage}
+                  progressLabel={
+                    memoryUsage !== null && memoryUsage >= 0.75
+                      ? memoryUsage >= 0.9
+                        ? "危险：可用内存不足"
+                        : "警告：可用内存偏低"
+                      : undefined
+                  }
                 />
                 <MetricTile
                   icon="storage"
@@ -147,6 +174,14 @@ export default function PerformanceBenchmarkScreen() {
                       : storageUsage !== null && storageUsage > 0.75
                         ? "warning"
                         : "success"
+                  }
+                  progress={storageUsage}
+                  progressLabel={
+                    storageUsage !== null && storageUsage >= 0.75
+                      ? storageUsage >= 0.9
+                        ? "危险：Overlay 存储不足"
+                        : "警告：Overlay 存储偏低"
+                      : undefined
                   }
                 />
               </View>

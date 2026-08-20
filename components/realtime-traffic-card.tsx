@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { StyleSheet, Text, View } from "react-native";
+import { StyleSheet, Text, type StyleProp, type TextStyle, View } from "react-native";
 import MaterialIcons from "@expo/vector-icons/MaterialIcons";
+import Animated, { Easing, useAnimatedStyle, useSharedValue, withSequence, withTiming } from "react-native-reanimated";
 
 import { useColors } from "@/hooks/use-colors";
 import { useColorScheme } from "@/hooks/use-color-scheme";
@@ -17,6 +18,29 @@ import type { InterfaceStatus } from "@/shared/router-types";
 type RateMap = Record<string, TrafficRate | null>;
 type HistoryMap = Record<string, TrafficRate[]>;
 
+function AnimatedTrafficValue({ value, style }: { value: string; style: StyleProp<TextStyle> }) {
+  const previous = useRef(value);
+  const opacity = useSharedValue(1);
+  const translateY = useSharedValue(0);
+  useEffect(() => {
+    if (previous.current === value) return;
+    previous.current = value;
+    opacity.value = withSequence(withTiming(0.48, { duration: 70 }), withTiming(1, { duration: 150, easing: Easing.out(Easing.quad) }));
+    translateY.value = withSequence(withTiming(-2, { duration: 70 }), withTiming(0, { duration: 150, easing: Easing.out(Easing.quad) }));
+  }, [opacity, translateY, value]);
+  const animatedStyle = useAnimatedStyle(() => ({ opacity: opacity.value, transform: [{ translateY: translateY.value }] }));
+  return <Animated.Text style={[style, animatedStyle]}>{value}</Animated.Text>;
+}
+
+function AnimatedThroughputBar({ height, color }: { height: number; color: string }) {
+  const scaleY = useSharedValue(0.12);
+  useEffect(() => {
+    scaleY.value = withTiming(Math.max(0.12, height / 28), { duration: 200, easing: Easing.out(Easing.cubic) });
+  }, [height, scaleY]);
+  const animatedStyle = useAnimatedStyle(() => ({ transform: [{ scaleY: scaleY.value }] }));
+  return <Animated.View style={[styles.bar, { height: 28, backgroundColor: color }, animatedStyle]} />;
+}
+
 function ThroughputSparkline({ history, field, color, emptyColor, label }: { history: TrafficRate[]; field: "rxBytesPerSecond" | "txBytesPerSecond"; color: string; emptyColor: string; label: string }) {
   const values = history.map((item) => item[field]);
   const highest = Math.max(...values, 1);
@@ -24,7 +48,7 @@ function ThroughputSparkline({ history, field, color, emptyColor, label }: { his
   return (
     <View style={styles.sparkline} accessibilityLabel={`${label}最近${field === "rxBytesPerSecond" ? "下载" : "上传"}流量变化`}>
       {bars.length
-        ? bars.map((value, index) => <View key={`${label}-${field}-${index}`} style={[styles.bar, { height: Math.max(3, (value / highest) * 28), backgroundColor: color }]} />)
+        ? bars.map((value, index) => <AnimatedThroughputBar key={`${label}-${field}-${index}`} height={Math.max(3, (value / highest) * 28)} color={color} />)
         : <View style={[styles.emptyLine, { backgroundColor: emptyColor }]} />}
     </View>
   );
@@ -48,8 +72,8 @@ function WanTrafficPanel({ snapshot, rate, history, refreshing, compact }: { sna
           </View>
         </View>
         <View style={styles.compactRateGroup}>
-          <View style={styles.compactRate}><MaterialIcons name="north" size={16} color="#8A7DF1" /><Text style={[styles.compactValue, { color: colors.foreground }]}>{formatTrafficRate(rate?.txBytesPerSecond ?? null)}</Text></View>
-          <View style={styles.compactRate}><MaterialIcons name="south" size={16} color="#20A6B4" /><Text style={[styles.compactValue, { color: colors.foreground }]}>{formatTrafficRate(rate?.rxBytesPerSecond ?? null)}</Text></View>
+          <View style={styles.compactRate}><MaterialIcons name="north" size={16} color="#8A7DF1" /><AnimatedTrafficValue value={formatTrafficRate(rate?.txBytesPerSecond ?? null)} style={[styles.compactValue, { color: colors.foreground }]} /></View>
+          <View style={styles.compactRate}><MaterialIcons name="south" size={16} color="#20A6B4" /><AnimatedTrafficValue value={formatTrafficRate(rate?.rxBytesPerSecond ?? null)} style={[styles.compactValue, { color: colors.foreground }]} /></View>
         </View>
       </View> : <View style={styles.interfaceHeader}>
         <View style={styles.interfaceIdentity}>
@@ -68,14 +92,14 @@ function WanTrafficPanel({ snapshot, rate, history, refreshing, compact }: { sna
         <View style={styles.metric}>
           <View style={[styles.iconBox, { backgroundColor: downloadSoft }]}><MaterialIcons name="south" size={18} color="#168A98" /></View>
           <Text style={[styles.metricLabel, { color: colors.muted }]}>下载</Text>
-          <Text style={[styles.metricValue, { color: colors.foreground }]}>{formatTrafficRate(rate?.rxBytesPerSecond ?? null)}</Text>
+          <AnimatedTrafficValue value={formatTrafficRate(rate?.rxBytesPerSecond ?? null)} style={[styles.metricValue, { color: colors.foreground }]} />
           <ThroughputSparkline label={snapshot.label} history={history} field="rxBytesPerSecond" color="#20A6B4" emptyColor={trackColor} />
         </View>
         <View style={[styles.divider, { backgroundColor: colors.border }]} />
         <View style={styles.metric}>
           <View style={[styles.iconBox, { backgroundColor: uploadSoft }]}><MaterialIcons name="north" size={18} color="#796DE3" /></View>
           <Text style={[styles.metricLabel, { color: colors.muted }]}>上传</Text>
-          <Text style={[styles.metricValue, { color: colors.foreground }]}>{formatTrafficRate(rate?.txBytesPerSecond ?? null)}</Text>
+          <AnimatedTrafficValue value={formatTrafficRate(rate?.txBytesPerSecond ?? null)} style={[styles.metricValue, { color: colors.foreground }]} />
           <ThroughputSparkline label={snapshot.label} history={history} field="txBytesPerSecond" color="#8A7DF1" emptyColor={trackColor} />
         </View>
       </View> : null}

@@ -4,6 +4,12 @@ import * as FileSystem from "expo-file-system/legacy";
 import * as Sharing from "expo-sharing";
 import { useRouter } from "expo-router";
 import { useState } from "react";
+import Animated, {
+  Easing,
+  FadeInDown,
+  FadeOutUp,
+  LinearTransition,
+} from "react-native-reanimated";
 import {
   ActivityIndicator,
   FlatList,
@@ -660,7 +666,12 @@ export default function FilesScreen() {
               : selected?.path === item.path;
             const isDirectory = item.kind === "directory";
             return (
-              <Pressable
+              <Animated.View
+                entering={FadeInDown.duration(170).easing(Easing.out(Easing.cubic))}
+                exiting={FadeOutUp.duration(130).easing(Easing.in(Easing.quad))}
+                layout={LinearTransition.duration(180)}
+              >
+                <Pressable
                 accessibilityRole="button"
                 accessibilityLabel={`${isMultiSelecting ? "选择" : isDirectory ? "打开文件夹" : "选择文件"} ${item.name}`}
                 onPress={() =>
@@ -729,7 +740,8 @@ export default function FilesScreen() {
                     color={itemSelected ? "#007E7A" : "#718398"}
                   />
                 )}
-              </Pressable>
+                </Pressable>
+              </Animated.View>
             );
           }}
         />
