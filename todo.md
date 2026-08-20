@@ -93,4 +93,4 @@
 - [x] 在 Dev 分支迁移 LuCI、SSH/SFTP、网络、服务、系统与工具功能
 - [x] 在 K1 首次启动导入 R2 加密迁移仓，并覆盖验证完整恢复与中断恢复
 - [x] 在 Dev 分支完成四 ABI 构建、升级协议测试与 MIGRATION_STATUS.md；真实设备截图回归因当前环境无 adb/模拟器而记录为受限项
-- [ ] 为 Dev 分支签名构建上传可下载的四 ABI APK 产物，并核验 Actions 页面可见
+- [x] 为 Dev 分支签名构建上传可下载的四 ABI APK 产物，并核验 Actions 页面可见
