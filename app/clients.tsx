@@ -11,6 +11,7 @@ import {
 import { ManagementShell, ToolNotice } from "@/components/management-shell";
 import { EmptyState, SectionCard, StatusPill } from "@/components/status-ui";
 import { useColors } from "@/hooks/use-colors";
+import { useColorScheme } from "@/hooks/use-color-scheme";
 import {
   buildBlockClientCommand,
   buildClientSnapshotCommand,
@@ -24,6 +25,8 @@ import { AppDialog as Alert } from "@/components/app-dialog";
 
 export default function ClientsScreen() {
   const colors = useColors();
+  const colorScheme = useColorScheme();
+  const isDark = colorScheme === "dark";
   const { execute, isRunning, error, hasRouter, isSupported } = useManagedSsh();
   const [clients, setClients] = useState<ConnectedClient[]>([]);
   const [blocked, setBlocked] = useState<Set<string>>(new Set());
@@ -127,17 +130,27 @@ export default function ClientsScreen() {
                   styles.deviceIcon,
                   {
                     backgroundColor: client.online
-                      ? colors.background === "#102A43"
-                        ? "#164B3B"
+                      ? isDark
+                        ? "#103225"
                         : "#E8F7F1"
-                      : colors.background,
+                      : isDark
+                        ? "#172532"
+                        : colors.background,
                   },
                 ]}
               >
                 <MaterialIcons
                   name={client.online ? "phone-android" : "devices-other"}
                   size={20}
-                  color={client.online ? colors.success : colors.muted}
+                  color={
+                    client.online
+                      ? isDark
+                        ? "#2E946C"
+                        : colors.success
+                      : isDark
+                        ? "#5F7A8C"
+                        : colors.muted
+                  }
                 />
               </View>
               <View style={styles.clientInfo}>

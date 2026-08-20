@@ -20,12 +20,22 @@ const serviceHealthPath = resolve(projectRoot, "app/services-health.tsx");
 const servicesTabPath = resolve(projectRoot, "app/(tabs)/services.tsx");
 const serviceConfigPath = resolve(projectRoot, "app/service-config.tsx");
 const systemAdminPath = resolve(projectRoot, "app/system-admin.tsx");
+const luciThemePath = resolve(projectRoot, "app/luci-theme.tsx");
 const firewallPath = resolve(projectRoot, "app/firewall.tsx");
 const settingsPath = resolve(projectRoot, "app/(tabs)/settings.tsx");
 const mainActivityPath = resolve(
   projectRoot,
   "android/app/src/main/java/com/app/openwrtstatusapp/MainActivity.kt",
 );
+const sshPackagePath = resolve(
+  projectRoot,
+  "android/app/src/main/java/com/openwrtstatus/ssh/OpenWrtSshPackage.java",
+);
+const natModulePath = resolve(
+  projectRoot,
+  "android/app/src/main/java/com/openwrtstatus/ssh/OpenWrtNatModule.java",
+);
+const nativeNatPath = resolve(projectRoot, "lib/native-nat.ts");
 const routerProviderPath = resolve(projectRoot, "lib/router-provider.tsx");
 const packagesPath = resolve(projectRoot, "app/packages.tsx");
 const diagnosticsPath = resolve(projectRoot, "app/diagnostics.tsx");
@@ -43,9 +53,9 @@ describe("Android Release JavaScript bundle", () => {
     const gradleVersion = gradle.match(/versionName\s+"([0-9.]+)"/)?.[1];
     const gradleVersionCode = gradle.match(/versionCode\s+(\d+)/)?.[1];
 
-    expect(expoVersion).toBe("1.0.26");
+    expect(expoVersion).toBe("1.0.27");
     expect(expoVersion).toBe(gradleVersion);
-    expect(expoVersionCode).toBe("22");
+    expect(expoVersionCode).toBe("23");
     expect(expoVersionCode).toBe(gradleVersionCode);
   });
 
@@ -85,8 +95,12 @@ describe("Android Release JavaScript bundle", () => {
     const servicesTab = readFileSync(servicesTabPath, "utf8");
     const serviceConfig = readFileSync(serviceConfigPath, "utf8");
     const systemAdmin = readFileSync(systemAdminPath, "utf8");
+    const luciTheme = readFileSync(luciThemePath, "utf8");
     const firewall = readFileSync(firewallPath, "utf8");
     const mainActivity = readFileSync(mainActivityPath, "utf8");
+    const sshPackage = readFileSync(sshPackagePath, "utf8");
+    const natModule = readFileSync(natModulePath, "utf8");
+    const nativeNat = readFileSync(nativeNatPath, "utf8");
     const routerProvider = readFileSync(routerProviderPath, "utf8");
 
     expect(routerForm).toContain("isPasswordVisible");
@@ -112,7 +126,9 @@ describe("Android Release JavaScript bundle", () => {
     expect(systemAdmin).toContain("新增 SSH 实例");
     expect(systemAdmin).toContain("GatewayPorts");
     expect(systemAdmin).toContain("从文件导入");
-    expect(systemAdmin).toContain("LuCI 主题");
+    expect(systemAdmin).not.toContain("LuCI 主题");
+    expect(luciTheme).toContain("LuCI 主题");
+    expect(luciTheme).toContain("buildLuciThemesSnapshotCommand");
     expect(systemAdmin).toContain("挂载已连接设备");
     expect(systemAdmin).toContain("已挂载的文件系统");
     expect(systemAdmin).toContain("自定义闪烁间隔");
@@ -136,6 +152,11 @@ describe("Android Release JavaScript bundle", () => {
     ).toBe(false);
     expect(mainActivity).not.toContain("setPredictiveBackEnabled");
     expect(routerProvider).not.toContain("predictiveBackEnabled");
+    expect(sshPackage).toContain("new OpenWrtNatModule(reactContext)");
+    expect(natModule).toContain('return "OpenWrtNat"');
+    expect(natModule).toContain("stun.l.google.com");
+    expect(nativeNat).toContain("detectPhoneNat");
+    expect(nativeNat).not.toContain("native-ssh");
     expect(routerProvider).toContain("已有同名路由器，请使用不同的名称。");
   });
 

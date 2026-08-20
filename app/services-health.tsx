@@ -4,7 +4,9 @@ import { useRouter } from "expo-router";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   ActivityIndicator,
+  Modal,
   Pressable,
+  ScrollView,
   StyleSheet,
   Text,
   View,
@@ -50,6 +52,10 @@ export default function ServicesHealthScreen() {
   const [isLoading, setIsLoading] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
   const [output, setOutput] = useState<string | null>(null);
+  const [logOutput, setLogOutput] = useState<{
+    title: string;
+    content: string;
+  } | null>(null);
 
   const refresh = useCallback(async () => {
     if (!hasRouter || !isSupported) return;
@@ -137,9 +143,10 @@ export default function ServicesHealthScreen() {
       const serviceOutput = await execute(
         buildPluginLogCommand(service.id, 100),
       );
-      setOutput(
-        `日志：${service.label}\n\n${serviceOutput.trim() || "最近 100 行内未找到可显示的日志。"}`,
-      );
+      setLogOutput({
+        title: `${service.label} 日志`,
+        content: serviceOutput.trim() || "最近 100 行内未找到可显示的日志。",
+      });
     } catch (reason) {
       setNotice(
         reason instanceof Error
@@ -319,6 +326,50 @@ export default function ServicesHealthScreen() {
           />
         )}
       </SectionCard>
+      <Modal
+        animationType="slide"
+        transparent
+        visible={logOutput !== null}
+        onRequestClose={() => setLogOutput(null)}
+      >
+        <View style={styles.logOverlay}>
+          <View
+            style={[styles.logSheet, { backgroundColor: colors.background }]}
+          >
+            <View
+              style={[styles.logHeader, { borderBottomColor: colors.border }]}
+            >
+              <Text style={[styles.logTitle, { color: colors.foreground }]}>
+                {logOutput?.title ?? "服务日志"}
+              </Text>
+              <Pressable
+                accessibilityRole="button"
+                accessibilityLabel="关闭日志"
+                onPress={() => setLogOutput(null)}
+                style={({ pressed }) => [
+                  styles.logClose,
+                  { backgroundColor: colors.surface },
+                  pressed && styles.pressed,
+                ]}
+              >
+                <Text
+                  style={[styles.logCloseText, { color: colors.foreground }]}
+                >
+                  关闭
+                </Text>
+              </Pressable>
+            </View>
+            <ScrollView contentContainerStyle={styles.logScroll}>
+              <Text
+                selectable
+                style={[styles.logText, { color: colors.foreground }]}
+              >
+                {logOutput?.content ?? ""}
+              </Text>
+            </ScrollView>
+          </View>
+        </View>
+      </Modal>
       {output ? (
         <View style={styles.outputSection}>
           <Text style={[styles.outputTitle, { color: colors.foreground }]}>
@@ -544,6 +595,38 @@ const styles = StyleSheet.create({
   outputTitle: { fontSize: 17, fontWeight: "900" },
   output: { padding: 12, borderRadius: 12 },
   outputText: { fontFamily: "monospace", fontSize: 12, lineHeight: 18 },
+  logOverlay: {
+    flex: 1,
+    justifyContent: "flex-end",
+    backgroundColor: "rgba(0, 0, 0, 0.45)",
+  },
+  logSheet: {
+    maxHeight: "82%",
+    minHeight: "46%",
+    borderTopLeftRadius: 24,
+    borderTopRightRadius: 24,
+    overflow: "hidden",
+  },
+  logHeader: {
+    minHeight: 64,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: 12,
+    paddingHorizontal: 20,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+  },
+  logTitle: { flex: 1, fontSize: 17, fontWeight: "800" },
+  logClose: {
+    minHeight: 34,
+    borderRadius: 17,
+    alignItems: "center",
+    justifyContent: "center",
+    paddingHorizontal: 14,
+  },
+  logCloseText: { fontSize: 13, fontWeight: "800" },
+  logScroll: { padding: 18, paddingBottom: 32 },
+  logText: { fontFamily: "monospace", fontSize: 12, lineHeight: 18 },
   pressed: { opacity: 0.72 },
   disabled: { opacity: 0.46 },
 });

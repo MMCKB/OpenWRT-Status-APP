@@ -33,7 +33,6 @@ import {
   buildDeleteLedCommand,
   buildDeleteMountCommand,
   buildGenerateMountConfigCommand,
-  buildLuciThemesSnapshotCommand,
   buildLedSnapshotCommand,
   buildMountConnectedDevicesCommand,
   buildMountSnapshotCommand,
@@ -51,7 +50,6 @@ import {
   buildSaveNetworkGlobalCommand,
   buildSaveSshInstanceCommand,
   buildSaveUhttpdCommand,
-  buildSetLuciThemeCommand,
   buildSshAccessSnapshotCommand,
   buildSshInstanceActionCommand,
   buildSshAuthorizedKeysSnapshotCommand,
@@ -60,7 +58,6 @@ import {
   parseApkRepositoryKeys,
   parseLedCapabilities,
   parseLedSettings,
-  parseLuciThemes,
   parseMountedFileSystems,
   parseMountPoints,
   parseNetworkInterfaceOptions,
@@ -78,7 +75,6 @@ import {
   type DropbearInstance,
   type LedSetting,
   type LedCapabilities,
-  type LuciTheme,
   type MountPoint,
   type MountedFileSystem,
   type NewLedSettings,
@@ -167,7 +163,6 @@ export default function SystemAdminScreen() {
   const [apkKeyUrl, setApkKeyUrl] = useState("");
   const [apkKeyUrlDialogVisible, setApkKeyUrlDialogVisible] = useState(false);
   const [uhttpd, setUhttpd] = useState(emptyUhttpd);
-  const [luciThemes, setLuciThemes] = useState<LuciTheme[]>([]);
   const [interfaces, setInterfaces] = useState<NetworkInterfaceSettings[]>([]);
   const [interfaceStatuses, setInterfaceStatuses] = useState<
     NetworkInterfaceStatus[]
@@ -194,7 +189,6 @@ export default function SystemAdminScreen() {
         sshKeysRaw,
         apkKeysRaw,
         uhttpdRaw,
-        luciThemesRaw,
         networkRaw,
         interfaceStatusRaw,
         networkDeviceRaw,
@@ -209,7 +203,6 @@ export default function SystemAdminScreen() {
         execute(buildSshAuthorizedKeysSnapshotCommand()),
         execute(buildApkRepositoryKeysSnapshotCommand()),
         execute(buildUhttpdSnapshotCommand()),
-        execute(buildLuciThemesSnapshotCommand()),
         execute(buildNetworkInterfaceSnapshotCommand()),
         execute(buildNetworkInterfaceStatusCommand()),
         execute(buildNetworkDeviceSnapshotCommand()),
@@ -226,7 +219,6 @@ export default function SystemAdminScreen() {
       setSshKeys(parseSshAuthorizedKeys(sshKeysRaw));
       setApkKeys(parseApkRepositoryKeys(apkKeysRaw));
       setUhttpd(parseUhttpdSettings(uhttpdRaw));
-      setLuciThemes(parseLuciThemes(luciThemesRaw));
       setInterfaces(parseNetworkInterfaceSettings(networkRaw));
       setInterfaceStatuses(parseNetworkInterfaceStatus(interfaceStatusRaw));
       setNetworkDevices(parseNetworkDeviceSettings(networkDeviceRaw));
@@ -604,7 +596,7 @@ export default function SystemAdminScreen() {
                 <View
                   key={`${item.target}-${item.device}`}
                   style={[
-                    styles.deviceRow,
+                    styles.mountDeviceRow,
                     {
                       backgroundColor: colors.background,
                       borderColor: colors.border,
@@ -636,7 +628,7 @@ export default function SystemAdminScreen() {
                 <View
                   key={item.device}
                   style={[
-                    styles.deviceRow,
+                    styles.mountDeviceRow,
                     {
                       backgroundColor: colors.background,
                       borderColor: colors.border,
@@ -936,73 +928,6 @@ export default function SystemAdminScreen() {
                         }
                       />
                     </>
-                  )}
-                </View>
-                <View
-                  style={[styles.subsection, { borderTopColor: colors.border }]}
-                >
-                  <Text
-                    style={[
-                      styles.subsectionTitle,
-                      { color: colors.foreground },
-                    ]}
-                  >
-                    LuCI 主题
-                  </Text>
-                  <Text style={[styles.help, { color: colors.muted }]}>
-                    显示路由器中实际安装的主题。切换后请在浏览器刷新 LuCI
-                    管理页面。
-                  </Text>
-                  {luciThemes.length ? (
-                    luciThemes.map((theme) => (
-                      <Pressable
-                        key={theme.name}
-                        disabled={disabled || theme.active}
-                        onPress={() =>
-                          confirm(
-                            "切换 LuCI 主题",
-                            `将 LuCI 主题切换为“${theme.name}”。`,
-                            () => buildSetLuciThemeCommand(theme.name),
-                            "LuCI 主题已切换。",
-                          )
-                        }
-                        style={({ pressed }) => [
-                          styles.themeRow,
-                          {
-                            backgroundColor: theme.active
-                              ? colors.primary + "18"
-                              : colors.background,
-                            borderColor: theme.active
-                              ? colors.primary
-                              : colors.border,
-                            opacity: pressed && !theme.active ? 0.72 : 1,
-                          },
-                        ]}
-                      >
-                        <View style={styles.rowCopy}>
-                          <Text
-                            style={[
-                              styles.rowTitle,
-                              { color: colors.foreground },
-                            ]}
-                          >
-                            {theme.name}
-                          </Text>
-                          <Text style={[styles.help, { color: colors.muted }]}>
-                            {theme.active ? "当前使用" : "点按切换"}
-                          </Text>
-                        </View>
-                        <MaterialIcons
-                          name={theme.active ? "check-circle" : "chevron-right"}
-                          size={theme.active ? 20 : 22}
-                          color={theme.active ? colors.primary : colors.muted}
-                        />
-                      </Pressable>
-                    ))
-                  ) : (
-                    <Text style={[styles.help, { color: colors.muted }]}>
-                      未发现可切换的 LuCI 主题目录。
-                    </Text>
                   )}
                 </View>
               </>
@@ -1338,6 +1263,31 @@ function PrimaryButton({
   );
 }
 
+function ModalCloseButton({
+  colors,
+  onPress,
+}: {
+  colors: ReturnType<typeof useColors>;
+  onPress: () => void;
+}) {
+  return (
+    <Pressable
+      accessibilityRole="button"
+      accessibilityLabel="关闭编辑弹窗"
+      onPress={onPress}
+      style={({ pressed }) => [
+        styles.closeButton,
+        { backgroundColor: colors.background, borderColor: colors.border },
+        pressed && styles.pressed,
+      ]}
+    >
+      <Text style={[styles.closeButtonText, { color: colors.foreground }]}>
+        关闭
+      </Text>
+    </Pressable>
+  );
+}
+
 function NewLedForm({
   disabled,
   colors,
@@ -1357,21 +1307,73 @@ function NewLedForm({
   const [delayOff, setDelayOff] = useState("500");
   const [netdevDevice, setNetdevDevice] = useState("");
   const [netdevMode, setNetdevMode] = useState("link");
+  const [initialDraft, setInitialDraft] = useState<NewLedSettings>({
+    name: "",
+    sysfs: "",
+    trigger: "none",
+    delayOn: "500",
+    delayOff: "500",
+    netdevDevice: "",
+    netdevMode: "link",
+  });
   const activeDevices = capabilities.devices;
   const activeTriggers = capabilities.triggers.filter(
     (value) => LED_TRIGGER_LABELS[value],
   );
+  const getDraft = (): NewLedSettings => ({
+    name: name.trim(),
+    sysfs,
+    trigger,
+    delayOn: trigger === "timer" ? delayOn : "",
+    delayOff: trigger === "timer" ? delayOff : "",
+    netdevDevice: trigger === "netdev" ? netdevDevice : "",
+    netdevMode: trigger === "netdev" ? netdevMode : "",
+  });
   const reset = () => {
-    setSysfs(activeDevices[0] ?? "");
-    setName(activeDevices[0] ?? "");
-    setTrigger("none");
+    const nextDraft: NewLedSettings = {
+      name: activeDevices[0] ?? "",
+      sysfs: activeDevices[0] ?? "",
+      trigger: "none",
+      delayOn: "",
+      delayOff: "",
+      netdevDevice: "",
+      netdevMode: "",
+    };
+    setName(nextDraft.name);
+    setSysfs(nextDraft.sysfs);
+    setTrigger(nextDraft.trigger);
     setDelayOn("500");
     setDelayOff("500");
     setNetdevDevice(capabilities.networkDevices[0] ?? "");
     setNetdevMode("link");
+    setInitialDraft(nextDraft);
+  };
+  const closeEditor = () => setEditing(false);
+  const isChanged = () =>
+    JSON.stringify(getDraft()) !== JSON.stringify(initialDraft);
+  const save = () => {
+    const nextDraft = getDraft();
+    if (JSON.stringify(nextDraft) !== JSON.stringify(initialDraft))
+      onCreate(nextDraft);
+    closeEditor();
+  };
+  const requestClose = () => {
+    if (!isChanged()) {
+      closeEditor();
+      return;
+    }
+    Alert.alert(
+      "保存新增 LED 配置？",
+      "已填写或修改 LED 配置。关闭前是否保存到路由器？",
+      [
+        { text: "继续编辑", style: "cancel" },
+        { text: "放弃修改", style: "destructive", onPress: closeEditor },
+        { text: "保存", onPress: save },
+      ],
+    );
   };
   return (
-    <View style={[styles.subsection, { borderTopColor: colors.border }]}>
+    <View style={styles.bottomAddAction}>
       <PrimaryButton
         label="添加 LED"
         disabled={disabled || !activeDevices.length}
@@ -1385,7 +1387,7 @@ function NewLedForm({
         visible={editing}
         transparent
         animationType="slide"
-        onRequestClose={() => setEditing(false)}
+        onRequestClose={requestClose}
       >
         <View style={styles.modalBackdrop}>
           <View
@@ -1398,12 +1400,7 @@ function NewLedForm({
               <Text style={[styles.modalTitle, { color: colors.foreground }]}>
                 添加 LED 配置
               </Text>
-              <SmallButton
-                label="关闭"
-                disabled={false}
-                color={colors.error}
-                onPress={() => setEditing(false)}
-              />
+              <ModalCloseButton colors={colors} onPress={requestClose} />
             </View>
             <ScrollView
               contentContainerStyle={styles.modalContent}
@@ -1420,7 +1417,7 @@ function NewLedForm({
                 colors={colors}
               />
               <Text style={[styles.fieldLabel, { color: colors.foreground }]}>
-                LED 设备
+                LED 名称
               </Text>
               <ChoiceChips
                 values={activeDevices}
@@ -1466,18 +1463,7 @@ function NewLedForm({
                   (trigger === "netdev" && !netdevDevice)
                 }
                 color={colors.primary}
-                onPress={() => {
-                  onCreate({
-                    name: name.trim(),
-                    sysfs,
-                    trigger,
-                    delayOn: trigger === "timer" ? delayOn : "",
-                    delayOff: trigger === "timer" ? delayOff : "",
-                    netdevDevice: trigger === "netdev" ? netdevDevice : "",
-                    netdevMode: trigger === "netdev" ? netdevMode : "",
-                  });
-                  setEditing(false);
-                }}
+                onPress={save}
               />
             </ScrollView>
           </View>
@@ -1713,6 +1699,33 @@ function DropbearInstanceRow({
     gatewayPorts: draft.gatewayPorts,
     enabled: draft.enabled,
   };
+  const closeEditor = () => setEditing(false);
+  const isChanged = () => JSON.stringify(draft) !== JSON.stringify(instance);
+  const requestClose = () => {
+    if (!isChanged()) {
+      closeEditor();
+      return;
+    }
+    Alert.alert(
+      "保存 SSH 实例？",
+      "已修改 SSH 实例。关闭前是否保存到路由器？",
+      [
+        { text: "继续编辑", style: "cancel" },
+        { text: "放弃修改", style: "destructive", onPress: closeEditor },
+        {
+          text: "保存",
+          onPress: () => {
+            onSave(draft);
+            closeEditor();
+          },
+        },
+      ],
+    );
+  };
+  const save = () => {
+    if (isChanged()) onSave(draft);
+    closeEditor();
+  };
   return (
     <View
       style={[
@@ -1747,7 +1760,7 @@ function DropbearInstanceRow({
         visible={editing}
         animationType="slide"
         transparent
-        onRequestClose={() => setEditing(false)}
+        onRequestClose={requestClose}
       >
         <View style={styles.modalBackdrop}>
           <View
@@ -1765,12 +1778,7 @@ function DropbearInstanceRow({
                   {instance.section}
                 </Text>
               </View>
-              <SmallButton
-                label="关闭"
-                disabled={false}
-                color={colors.border}
-                onPress={() => setEditing(false)}
-              />
+              <ModalCloseButton colors={colors} onPress={requestClose} />
             </View>
             <ScrollView
               contentContainerStyle={styles.modalContent}
@@ -1787,10 +1795,7 @@ function DropbearInstanceRow({
                 label="保存 SSH 实例"
                 disabled={disabled}
                 color={colors.primary}
-                onPress={() => {
-                  onSave(draft);
-                  setEditing(false);
-                }}
+                onPress={save}
               />
             </ScrollView>
           </View>
@@ -1844,10 +1849,8 @@ function NewDropbearInstance({
                   保存后 Dropbear 会短暂重启。
                 </Text>
               </View>
-              <SmallButton
-                label="关闭"
-                disabled={false}
-                color={colors.border}
+              <ModalCloseButton
+                colors={colors}
                 onPress={() => setEditing(false)}
               />
             </View>
@@ -1914,14 +1917,44 @@ function LedRow({
     capabilities.triggers.includes(value),
   );
   const triggerLabel = LED_TRIGGER_LABELS[led.trigger] ?? led.trigger;
+  const closeEditor = () => setEditing(false);
+  const isChanged = () => JSON.stringify(draft) !== JSON.stringify(led);
+  const save = () => {
+    if (isChanged()) {
+      onSave({
+        section: draft.section,
+        name: draft.name,
+        sysfs: draft.sysfs,
+        trigger: draft.trigger,
+        delayOn: draft.trigger === "timer" ? draft.delayOn : "",
+        delayOff: draft.trigger === "timer" ? draft.delayOff : "",
+        netdevDevice: draft.trigger === "netdev" ? draft.netdevDevice : "",
+        netdevMode: draft.trigger === "netdev" ? draft.netdevMode : "",
+      });
+    }
+    closeEditor();
+  };
+  const requestClose = () => {
+    if (!isChanged()) {
+      closeEditor();
+      return;
+    }
+    Alert.alert(
+      "保存 LED 配置？",
+      "已修改 LED 配置。关闭前是否保存到路由器？",
+      [
+        { text: "继续编辑", style: "cancel" },
+        { text: "放弃修改", style: "destructive", onPress: closeEditor },
+        { text: "保存", onPress: save },
+      ],
+    );
+  };
   return (
     <View
       style={[
-        styles.interfaceCard,
-        { backgroundColor: colors.background, borderColor: colors.border },
-        divider && {
-          marginTop: 10,
-        },
+        styles.frameLessRow,
+        { borderBottomColor: colors.border },
+        divider && { marginTop: 2 },
       ]}
     >
       <Pressable
@@ -1971,7 +2004,7 @@ function LedRow({
         visible={editing}
         transparent
         animationType="slide"
-        onRequestClose={() => setEditing(false)}
+        onRequestClose={requestClose}
       >
         <View style={styles.modalBackdrop}>
           <View
@@ -1984,26 +2017,31 @@ function LedRow({
               <Text style={[styles.modalTitle, { color: colors.foreground }]}>
                 编辑 LED 配置
               </Text>
-              <SmallButton
-                label="关闭"
-                disabled={false}
-                color={colors.border}
-                onPress={() => setEditing(false)}
-              />
+              <ModalCloseButton colors={colors} onPress={requestClose} />
             </View>
             <ScrollView
               contentContainerStyle={styles.modalContent}
               keyboardShouldPersistTaps="handled"
             >
               <Text style={[styles.fieldLabel, { color: colors.foreground }]}>
-                名称与 LED 名称
+                配置名称
+              </Text>
+              <TextField
+                label=""
+                value={draft.name}
+                onChangeText={(name) =>
+                  setDraft((value) => ({ ...value, name }))
+                }
+                placeholder="例如：状态灯"
+                colors={colors}
+              />
+              <Text style={[styles.fieldLabel, { color: colors.foreground }]}>
+                LED 名称
               </Text>
               <ChoiceChips
                 values={capabilities.devices}
                 selected={draft.sysfs}
-                onSelect={(sysfs) =>
-                  setDraft((value) => ({ ...value, sysfs, name: sysfs }))
-                }
+                onSelect={(sysfs) => setDraft((value) => ({ ...value, sysfs }))}
                 colors={colors}
               />
               <Text style={[styles.fieldLabel, { color: colors.foreground }]}>
@@ -2049,21 +2087,7 @@ function LedRow({
                 label="保存"
                 disabled={disabled || !draft.name || !draft.sysfs}
                 color={colors.primary}
-                onPress={() => {
-                  onSave({
-                    section: draft.section,
-                    name: draft.name,
-                    sysfs: draft.sysfs,
-                    trigger: draft.trigger,
-                    delayOn: draft.trigger === "timer" ? draft.delayOn : "",
-                    delayOff: draft.trigger === "timer" ? draft.delayOff : "",
-                    netdevDevice:
-                      draft.trigger === "netdev" ? draft.netdevDevice : "",
-                    netdevMode:
-                      draft.trigger === "netdev" ? draft.netdevMode : "",
-                  });
-                  setEditing(false);
-                }}
+                onPress={save}
               />
             </ScrollView>
           </View>
@@ -2190,12 +2214,29 @@ function MountPointCard({
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState(mount);
   useEffect(() => setDraft(mount), [mount]);
+  const closeEditor = () => setEditing(false);
+  const isChanged = () => JSON.stringify(draft) !== JSON.stringify(mount);
+  const save = () => {
+    if (isChanged()) onSave(draft);
+    closeEditor();
+  };
+  const requestClose = () => {
+    if (!isChanged()) {
+      closeEditor();
+      return;
+    }
+    Alert.alert("保存挂载点？", "已修改挂载点。关闭前是否保存到路由器？", [
+      { text: "继续编辑", style: "cancel" },
+      { text: "放弃修改", style: "destructive", onPress: closeEditor },
+      { text: "保存", onPress: save },
+    ]);
+  };
   return (
     <View
       style={[
-        styles.interfaceCard,
-        { backgroundColor: colors.background, borderColor: colors.border },
-        divider && { marginTop: 10 },
+        styles.frameLessRow,
+        { borderBottomColor: colors.border },
+        divider && { marginTop: 2 },
       ]}
     >
       <View style={styles.interfaceHeader}>
@@ -2237,7 +2278,7 @@ function MountPointCard({
         visible={editing}
         transparent
         animationType="slide"
-        onRequestClose={() => setEditing(false)}
+        onRequestClose={requestClose}
       >
         <View style={styles.modalBackdrop}>
           <View
@@ -2250,12 +2291,7 @@ function MountPointCard({
               <Text style={[styles.modalTitle, { color: colors.foreground }]}>
                 编辑挂载点
               </Text>
-              <SmallButton
-                label="关闭"
-                disabled={false}
-                color={colors.border}
-                onPress={() => setEditing(false)}
-              />
+              <ModalCloseButton colors={colors} onPress={requestClose} />
             </View>
             <ScrollView
               contentContainerStyle={styles.modalContent}
@@ -2276,11 +2312,7 @@ function MountPointCard({
                   disabled || !draft.target.trim() || !draft.device.trim()
                 }
                 color={colors.primary}
-                onPress={() => {
-                  if (JSON.stringify(draft) !== JSON.stringify(mount))
-                    onSave(draft);
-                  setEditing(false);
-                }}
+                onPress={save}
               />
             </ScrollView>
           </View>
@@ -2312,6 +2344,25 @@ function NewMountPointForm({
   };
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState(empty);
+  const [initialDraft, setInitialDraft] = useState(empty);
+  const closeEditor = () => setEditing(false);
+  const isChanged = () =>
+    JSON.stringify(draft) !== JSON.stringify(initialDraft);
+  const save = () => {
+    if (isChanged()) onCreate(draft);
+    closeEditor();
+  };
+  const requestClose = () => {
+    if (!isChanged()) {
+      closeEditor();
+      return;
+    }
+    Alert.alert("创建挂载点？", "已填写挂载点配置。关闭前是否保存到路由器？", [
+      { text: "继续编辑", style: "cancel" },
+      { text: "放弃修改", style: "destructive", onPress: closeEditor },
+      { text: "保存", onPress: save },
+    ]);
+  };
   return (
     <>
       <SmallButton
@@ -2320,16 +2371,16 @@ function NewMountPointForm({
         color={colors.primary}
         onPress={() => {
           const source = mountedFileSystems[0];
-          setDraft(
-            source
-              ? {
-                  ...empty,
-                  target: source.target,
-                  device: source.device,
-                  fstype: source.fstype,
-                }
-              : empty,
-          );
+          const nextDraft = source
+            ? {
+                ...empty,
+                target: source.target,
+                device: source.device,
+                fstype: source.fstype,
+              }
+            : empty;
+          setDraft(nextDraft);
+          setInitialDraft(nextDraft);
           setEditing(true);
         }}
       />
@@ -2337,7 +2388,7 @@ function NewMountPointForm({
         visible={editing}
         transparent
         animationType="slide"
-        onRequestClose={() => setEditing(false)}
+        onRequestClose={requestClose}
       >
         <View style={styles.modalBackdrop}>
           <View
@@ -2350,12 +2401,7 @@ function NewMountPointForm({
               <Text style={[styles.modalTitle, { color: colors.foreground }]}>
                 新增挂载点
               </Text>
-              <SmallButton
-                label="关闭"
-                disabled={false}
-                color={colors.border}
-                onPress={() => setEditing(false)}
-              />
+              <ModalCloseButton colors={colors} onPress={requestClose} />
             </View>
             <ScrollView
               contentContainerStyle={styles.modalContent}
@@ -2374,10 +2420,7 @@ function NewMountPointForm({
                   disabled || !draft.target.trim() || !draft.device.trim()
                 }
                 color={colors.primary}
-                onPress={() => {
-                  onCreate(draft);
-                  setEditing(false);
-                }}
+                onPress={save}
               />
             </ScrollView>
           </View>
@@ -2415,6 +2458,27 @@ function NetworkInterfaceCard({
     key: keyof NetworkInterfaceSettings,
     value: string | boolean,
   ) => setDraft((current) => ({ ...current, [key]: value }));
+  const closeEditor = () => setEditing(false);
+  const isChanged = () => JSON.stringify(draft) !== JSON.stringify(item);
+  const save = () => {
+    if (isChanged()) onSave(draft);
+    closeEditor();
+  };
+  const requestClose = () => {
+    if (!isChanged()) {
+      closeEditor();
+      return;
+    }
+    Alert.alert(
+      "保存网络接口？",
+      `已修改 ${item.section} 接口。关闭前是否保存到路由器？`,
+      [
+        { text: "继续编辑", style: "cancel" },
+        { text: "放弃修改", style: "destructive", onPress: closeEditor },
+        { text: "保存", onPress: save },
+      ],
+    );
+  };
   return (
     <View
       style={[
@@ -2492,7 +2556,7 @@ function NetworkInterfaceCard({
         visible={editing}
         animationType="slide"
         transparent
-        onRequestClose={() => setEditing(false)}
+        onRequestClose={requestClose}
       >
         <View style={styles.modalBackdrop}>
           <View
@@ -2510,20 +2574,7 @@ function NetworkInterfaceCard({
                   保存后网络会短暂重载。
                 </Text>
               </View>
-              <Pressable
-                onPress={() => setEditing(false)}
-                style={({ pressed }) => [
-                  styles.closeButton,
-                  { borderColor: colors.border },
-                  pressed && styles.pressed,
-                ]}
-              >
-                <Text
-                  style={[styles.closeButtonText, { color: colors.foreground }]}
-                >
-                  关闭
-                </Text>
-              </Pressable>
+              <ModalCloseButton colors={colors} onPress={requestClose} />
             </View>
             <ScrollView
               contentContainerStyle={styles.modalContent}
@@ -2743,10 +2794,7 @@ function NetworkInterfaceCard({
                 label={`保存 ${item.section}`}
                 disabled={disabled}
                 color={colors.primary}
-                onPress={() => {
-                  onSave(draft);
-                  setEditing(false);
-                }}
+                onPress={save}
               />
             </ScrollView>
           </View>
@@ -2771,6 +2819,27 @@ function NetworkDeviceRow({
   const [editing, setEditing] = useState(false);
   const update = (key: keyof NetworkDeviceSettings, value: string | boolean) =>
     setDraft((current) => ({ ...current, [key]: value }));
+  const closeEditor = () => setEditing(false);
+  const isChanged = () => JSON.stringify(draft) !== JSON.stringify(item);
+  const save = () => {
+    if (isChanged()) onSave(draft);
+    closeEditor();
+  };
+  const requestClose = () => {
+    if (!isChanged()) {
+      closeEditor();
+      return;
+    }
+    Alert.alert(
+      "保存网络设备？",
+      `已修改 ${item.name || item.section}。关闭前是否保存到路由器？`,
+      [
+        { text: "继续编辑", style: "cancel" },
+        { text: "放弃修改", style: "destructive", onPress: closeEditor },
+        { text: "保存", onPress: save },
+      ],
+    );
+  };
   return (
     <View
       style={[
@@ -2801,7 +2870,7 @@ function NetworkDeviceRow({
         visible={editing}
         animationType="slide"
         transparent
-        onRequestClose={() => setEditing(false)}
+        onRequestClose={requestClose}
       >
         <View style={styles.modalBackdrop}>
           <View
@@ -2814,20 +2883,7 @@ function NetworkDeviceRow({
               <Text style={[styles.modalTitle, { color: colors.foreground }]}>
                 编辑网络设备
               </Text>
-              <Pressable
-                onPress={() => setEditing(false)}
-                style={({ pressed }) => [
-                  styles.closeButton,
-                  { borderColor: colors.border },
-                  pressed && styles.pressed,
-                ]}
-              >
-                <Text
-                  style={[styles.closeButtonText, { color: colors.foreground }]}
-                >
-                  关闭
-                </Text>
-              </Pressable>
+              <ModalCloseButton colors={colors} onPress={requestClose} />
             </View>
             <ScrollView
               contentContainerStyle={styles.modalContent}
@@ -2870,10 +2926,7 @@ function NetworkDeviceRow({
                 label="保存网络设备"
                 disabled={disabled}
                 color={colors.primary}
-                onPress={() => {
-                  onSave(draft);
-                  setEditing(false);
-                }}
+                onPress={save}
               />
             </ScrollView>
           </View>
@@ -3041,6 +3094,17 @@ const styles = StyleSheet.create({
     gap: 12,
     marginTop: 4,
   },
+  bottomAddAction: { paddingTop: 16, paddingBottom: 4 },
+  frameLessRow: {
+    paddingVertical: 14,
+    gap: 12,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+  },
+  mountDeviceRow: {
+    paddingVertical: 12,
+    gap: 6,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+  },
   subsectionTitle: { fontSize: 15, fontWeight: "800" },
   interfaceCard: { borderWidth: 1, borderRadius: 14, padding: 14, gap: 12 },
   themeRow: {
@@ -3103,8 +3167,8 @@ const styles = StyleSheet.create({
   closeButton: {
     minHeight: 34,
     justifyContent: "center",
-    paddingHorizontal: 11,
-    borderRadius: 9,
+    paddingHorizontal: 14,
+    borderRadius: 999,
     borderWidth: 1,
   },
   closeButtonText: { fontSize: 12, fontWeight: "800" },

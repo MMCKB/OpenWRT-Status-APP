@@ -9,12 +9,12 @@ import {
   buildDnsLatencyCommand,
   buildDockerContainerCommand,
   buildDockerContainerLogsCommand,
-  buildNatDiagnosticCommand,
   buildPerformanceBenchmarkCommand,
   buildRestoreCommand,
   buildServiceCommand,
   buildWanDiagnosticCommand,
   buildWakeOnLanCommand,
+  buildWolDevicesSnapshotCommand,
   buildWirelessChannelApplyCommand,
   buildWifiDeleteCommand,
   buildWifiSettingsSaveCommand,
@@ -26,6 +26,7 @@ import {
   parsePerformanceBenchmark,
   parseBlockedClientMacs,
   parseConnectedClients,
+  parseWolDevices,
   parseServiceStates,
   parseWirelessOptimizationSnapshot,
   parseWeakSignalClients,
@@ -206,6 +207,26 @@ describe("OpenWrt 管理命令与解析", () => {
     );
   });
 
+  it("仅列出 LuCI 已保存的网络唤醒目标，并只以 DHCP 信息补齐名称和 IPv4", () => {
+    const targets = parseWolDevices(
+      "__WOL_CONFIG__\nwol.nas='host'\nwol.nas.name='家庭 NAS'\nwol.nas.mac='aa:bb:cc:dd:ee:ff'\nwol.desktop='host'\nwol.desktop.mac='11:22:33:44:55:66'\n__WOL_DHCP__\n12345 aa:bb:cc:dd:ee:ff 192.168.1.20 ignored-name *\n12345 77:88:99:aa:bb:cc 192.168.1.30 online-only *\n__WOL_STATIC__\ndhcp.desktop='host'\ndhcp.desktop.name='书房电脑'\ndhcp.desktop.mac='11:22:33:44:55:66'\ndhcp.desktop.ip='192.168.1.40'",
+    );
+    expect(targets).toEqual([
+      {
+        mac: "11:22:33:44:55:66",
+        hostname: "书房电脑",
+        ipv4: "192.168.1.40",
+      },
+      {
+        mac: "AA:BB:CC:DD:EE:FF",
+        hostname: "家庭 NAS",
+        ipv4: "192.168.1.20",
+      },
+    ]);
+    expect(buildWolDevicesSnapshotCommand()).toContain("uci -q show wol");
+    expect(buildWolDevicesSnapshotCommand()).not.toContain("ip neigh");
+  });
+
   it("删除指定无线段并在访客网络时清理关联配置", () => {
     expect(buildWifiDeleteCommand("home")).toBe(
       "uci -q delete wireless.home; uci commit wireless; wifi reload",
@@ -284,22 +305,15 @@ describe("OpenWrt 管理命令与解析", () => {
     ).toThrow("WAN 接口格式无效");
   });
 
-  it("支持经指定 WAN 发起 IPv4/IPv6 DNS 延迟测试和仅 NAT 类型检测", () => {
+  it("支持经指定 WAN 发起 IPv4/IPv6 DNS 延迟测试", () => {
     expect(
       buildDnsLatencyCommand("wan", "1.1.1.1", "ipv4", "openwrt.org"),
     ).toContain("nslookup -4 openwrt.org 1.1.1.1");
     expect(
       buildDnsLatencyCommand("wan6", "2606:4700:4700::1111", "ipv6"),
     ).toContain("nslookup -6 openwrt.org 2606:4700:4700::1111");
-    expect(buildNatDiagnosticCommand("wan")).toContain("stunclient");
-    expect(buildNatDiagnosticCommand("wan")).toContain("NAT 类型与公网映射");
-    expect(buildNatDiagnosticCommand("wan")).not.toContain("IPv6 连通性");
-    expect(buildNatDiagnosticCommand("wan")).not.toContain("ping -I");
     expect(() => buildDnsLatencyCommand("wan", "dns; reboot", "ipv4")).toThrow(
       "DNS 服务器仅支持 IPv4 或 IPv6 地址",
-    );
-    expect(() => buildNatDiagnosticCommand("wan; reboot")).toThrow(
-      "WAN 接口格式无效",
     );
   });
 

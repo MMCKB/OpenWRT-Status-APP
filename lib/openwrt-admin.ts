@@ -8,6 +8,13 @@ export interface ConnectedClient {
   online: boolean;
 }
 
+/** LuCI 网络唤醒页保存到 /etc/config/wol 的持久化目标。 */
+export interface WolDevice {
+  mac: string;
+  hostname: string | null;
+  ipv4: string | null;
+}
+
 export interface DhcpLease {
   source: "dynamic" | "static";
   section: string | null;
@@ -120,6 +127,13 @@ export interface PerformanceBenchmark {
   storageTotalKb: number | null;
   storageUsedKb: number | null;
   storageAvailableKb: number | null;
+}
+
+export interface RouterHardwareDetails {
+  cpuModel: string | null;
+  cpuCores: number | null;
+  kernelVersion: string | null;
+  wifiTemperaturesC: number[];
 }
 
 export interface FirmwareDeviceInfo {
@@ -412,6 +426,84 @@ export function buildUnblockClientCommand(mac: string) {
 export function buildWakeOnLanCommand(mac: string) {
   const normalized = requireMac(mac);
   return `WOL_IFACE="$(ubus call network.interface.lan status 2>/dev/null | jsonfilter -e '@.l3_device' 2>/dev/null || true)"; if [ -z "$WOL_IFACE" ]; then WOL_IFACE="$(ip -o link show up 2>/dev/null | awk -F': ' '$2 !~ /^(lo|ifb|imq)/ {sub(/@.*/, "", $2); print $2; exit}')"; fi; case "$WOL_IFACE" in ''|*[!A-Za-z0-9_.:-]*) echo '__WOL_INTERFACE_UNAVAILABLE__ 未找到可用的 LAN 网卡。'; exit 1;; esac; if command -v etherwake >/dev/null 2>&1; then etherwake -i "$WOL_IFACE" -b ${normalized}; elif command -v wol >/dev/null 2>&1; then wol -i "$WOL_IFACE" ${normalized}; elif command -v wakeonlan >/dev/null 2>&1; then wakeonlan ${normalized}; else echo '__WOL_UNAVAILABLE__ 未检测到网络唤醒工具。请在路由器安装 etherwake、wol 或 wakeonlan 后重试。'; exit 127; fi`;
+}
+
+/**
+ * 以 LuCI 持久化的 wol 配置作为唯一目标来源；DHCP 信息只用于补齐主机名和 IPv4，
+ * 不会把未配置到 wol 的在线设备带入唤醒列表。
+ */
+export function buildWolDevicesSnapshotCommand() {
+  return "printf '__WOL_CONFIG__\\n'; uci -q show wol 2>/dev/null; printf '__WOL_DHCP__\\n'; cat /tmp/dhcp.leases 2>/dev/null; printf '__WOL_STATIC__\\n'; uci -q show dhcp 2>/dev/null";
+}
+
+export function parseWolDevices(output: string): WolDevice[] {
+  const sections = new Map<string, UciValues>();
+  let inWolConfig = false;
+  for (const rawLine of output.split(/\r?\n/)) {
+    const line = rawLine.trim();
+    if (line === "__WOL_CONFIG__") {
+      inWolConfig = true;
+      continue;
+    }
+    if (line === "__WOL_DHCP__") {
+      inWolConfig = false;
+      continue;
+    }
+    if (!inWolConfig) continue;
+    const match = line.match(
+      /^wol\.((?:@)?[A-Za-z0-9_-]+(?:\[\d+\])?)(?:\.([A-Za-z0-9_]+))?=(.*)$/,
+    );
+    if (!match) continue;
+    const [, section, property, rawValue] = match;
+    const current = sections.get(section) ?? {
+      type: "",
+      values: new Map<string, string[]>(),
+    };
+    if (!property) current.type = cleanQuoted(rawValue);
+    else
+      current.values.set(property, [
+        ...(current.values.get(property) ?? []),
+        cleanQuoted(rawValue),
+      ]);
+    sections.set(section, current);
+  }
+
+  const leases = parseDhcpLeaseSnapshot(
+    output
+      .replace("__WOL_DHCP__", "__DHCP_LEASES__")
+      .replace("__WOL_STATIC__", "__DHCP_STATIC__"),
+  );
+  const leaseByMac = new Map(
+    [...leases.static, ...leases.dynamic].map((lease) => [lease.mac, lease]),
+  );
+  const targets = new Map<string, WolDevice>();
+  for (const [section, values] of sections) {
+    const mac = ["mac", "macaddr", "address"]
+      .map((key) => values.values.get(key)?.[0])
+      .find((value): value is string => Boolean(value));
+    if (!mac || !/^([0-9A-Fa-f]{2}:){5}[0-9A-Fa-f]{2}$/.test(mac)) continue;
+    const normalizedMac = requireMac(mac);
+    const lease = leaseByMac.get(normalizedMac);
+    const configuredName = ["name", "hostname", "host", "description"]
+      .map((key) => values.values.get(key)?.[0])
+      .find((value): value is string => Boolean(normalizeLeaseHostname(value)));
+    const configuredIpv4 = ["ip", "ipaddr"]
+      .map((key) => values.values.get(key)?.[0])
+      .find((value): value is string =>
+        Boolean(value && /^(?:\d{1,3}\.){3}\d{1,3}$/.test(value)),
+      );
+    targets.set(normalizedMac, {
+      mac: normalizedMac,
+      hostname:
+        normalizeLeaseHostname(configuredName) ??
+        lease?.hostname ??
+        (section.startsWith("@") ? null : section),
+      ipv4: configuredIpv4 ?? lease?.ipv4 ?? null,
+    });
+  }
+  return [...targets.values()].sort((a, b) =>
+    (a.hostname ?? a.mac).localeCompare(b.hostname ?? b.mac),
+  );
 }
 
 export function parseWifiConfigs(output: string): WifiConfigEntry[] {
@@ -886,11 +978,6 @@ export function buildDnsLatencyCommand(
   return `echo 'OPENWRT_DNS|${label}|${server}|${query}'; start=$(date +%s%3N 2>/dev/null || date +%s000); nslookup ${familyFlag} ${query} ${server} >/tmp/openwrt-app-dns.$$ 2>&1; code=$?; end=$(date +%s%3N 2>/dev/null || date +%s000); cat /tmp/openwrt-app-dns.$$; rm -f /tmp/openwrt-app-dns.$$; echo "OPENWRT_DNS_RESULT|exit=$code|elapsed_ms=$((end-start))|wan=${wan}"`;
 }
 
-export function buildNatDiagnosticCommand(interfaceName: string) {
-  const wan = requireIdentifier(interfaceName, "WAN 接口");
-  return `echo 'OPENWRT_NAT|wan=${wan}'; echo '--- NAT 类型与公网映射 ---'; if command -v stunclient >/dev/null 2>&1; then stunclient -i ${wan} stun.l.google.com 19302 2>&1 || stunclient stun.l.google.com 19302 2>&1; else echo '未安装 stunclient：可安装 stunclient 获取 NAT 类型和 STUN 公网映射。'; fi`;
-}
-
 export function buildWanReconnectCommand(interfaceName: string) {
   const wan = requireIdentifier(interfaceName, "WAN 接口");
   return `ifdown ${wan}; sleep 2; ifup ${wan}; ifstatus ${wan}`;
@@ -1054,6 +1141,55 @@ export function parsePerformanceBenchmark(
     storageUsedKb,
     storageAvailableKb,
   };
+}
+
+/** 读取路由器内核与硬件信息；Wi‑Fi 温度仅在驱动公开对应 sysfs 节点时返回。 */
+export function buildRouterHardwareDetailsCommand() {
+  return `printf '__DETAIL_CPU__\\n'; awk -F: '/^(model name|system type|machine|Processor)[[:space:]]*:/{gsub(/^[[:space:]]+/, "", $2); printf "CPU|%s|", $2; found=1; exit} END{if(!found) printf "CPU|未知 CPU|"}' /proc/cpuinfo; awk '/^processor[[:space:]]*:/ {count++} END{if(count<1) count=1; printf "%s\\n", count}' /proc/cpuinfo; printf '__DETAIL_KERNEL__\\n'; uname -r 2>/dev/null; printf '__DETAIL_WIFI_TEMPERATURES__\\n'; for path in /sys/class/ieee80211/phy*/device/hwmon/hwmon*/temp*_input /sys/class/ieee80211/phy*/device/temp*_input /sys/class/ieee80211/phy*/device/temperature /sys/class/ieee80211/phy*/temperature; do [ -r "$path" ] && printf 'WIFI_TEMP|%s\\n' "$(cat "$path" 2>/dev/null)"; done`;
+}
+
+export function parseRouterHardwareDetails(
+  output: string,
+): RouterHardwareDetails {
+  let cpuModel: string | null = null;
+  let cpuCores: number | null = null;
+  let kernelVersion: string | null = null;
+  const wifiTemperaturesC: number[] = [];
+  let section = "";
+  for (const rawLine of output.split(/\r?\n/)) {
+    const line = rawLine.trim();
+    if (line === "__DETAIL_CPU__") {
+      section = "cpu";
+      continue;
+    }
+    if (line === "__DETAIL_KERNEL__") {
+      section = "kernel";
+      continue;
+    }
+    if (line === "__DETAIL_WIFI_TEMPERATURES__") {
+      section = "wifi";
+      continue;
+    }
+    if (!line) continue;
+    if (section === "cpu") {
+      const match = line.match(/^CPU\|(.+)\|(\d+)$/);
+      if (match) {
+        cpuModel = match[1].trim() || null;
+        cpuCores = nullableNumber(match[2]);
+      }
+    } else if (section === "kernel") {
+      kernelVersion = line || null;
+    } else if (section === "wifi") {
+      const match = line.match(/^WIFI_TEMP\|(-?\d+(?:\.\d+)?)$/);
+      if (!match) continue;
+      const raw = Number(match[1]);
+      const celsius = Math.abs(raw) > 200 ? raw / 1000 : raw;
+      if (Number.isFinite(celsius) && celsius > -50 && celsius < 150) {
+        wifiTemperaturesC.push(celsius);
+      }
+    }
+  }
+  return { cpuModel, cpuCores, kernelVersion, wifiTemperaturesC };
 }
 
 export function buildFirmwareDeviceInfoCommand() {

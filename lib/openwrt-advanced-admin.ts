@@ -164,7 +164,13 @@ const PROXY_SERVICES = [
     label: "OpenClash",
     initName: "openclash",
     processHint: "clash",
-    logFile: null,
+    logFiles: [
+      "/tmp/openclash.log",
+      "/tmp/openclash_start.log",
+      "/tmp/openclash_debug.log",
+      "/tmp/run/openclash.log",
+      "/tmp/log/openclash.log",
+    ],
     logPattern: "openclash|clash|mihomo",
     luciPath: "admin/services/openclash",
     configPath: "/etc/config/openclash",
@@ -174,7 +180,7 @@ const PROXY_SERVICES = [
     label: "AdGuard Home",
     initName: "AdGuardHome",
     processHint: "AdGuardHome",
-    logFile: null,
+    logFiles: [],
     logPattern: "AdGuardHome|adguard",
     luciPath: "admin/services/adguardhome",
     configPath: "/etc/config/AdGuardHome",
@@ -184,7 +190,7 @@ const PROXY_SERVICES = [
     label: "PassWall",
     initName: "passwall",
     processHint: "passwall",
-    logFile: "/tmp/log/passwall.log",
+    logFiles: ["/tmp/log/passwall.log"],
     logPattern: "passwall",
     luciPath: "admin/services/passwall",
     configPath: "/etc/config/passwall",
@@ -194,7 +200,7 @@ const PROXY_SERVICES = [
     label: "PassWall2",
     initName: "passwall2",
     processHint: "passwall2",
-    logFile: "/tmp/log/passwall2.log",
+    logFiles: ["/tmp/log/passwall2.log"],
     logPattern: "passwall2",
     luciPath: "admin/services/passwall2",
     configPath: "/etc/config/passwall2",
@@ -204,7 +210,7 @@ const PROXY_SERVICES = [
     label: "DDNS",
     initName: "ddns",
     processHint: "ddns",
-    logFile: null,
+    logFiles: ["/tmp/ddns.log", "/tmp/log/ddns.log"],
     logPattern: "ddns",
     luciPath: "admin/services/ddns",
     configPath: "/etc/config/ddns",
@@ -558,10 +564,13 @@ export function buildPluginLogCommand(id: ProxyServiceId, limit = 100) {
   const service = serviceDefinition(id);
   const safeLimit = safeLogLimit(limit);
   const systemLog = `(logread) 2>&1 | grep -Ei ${shellQuote(service.logPattern)} | tail -n ${safeLimit}`;
-  const readLog = service.logFile
-    ? `if [ -r ${shellQuote(service.logFile)} ]; then tail -n ${safeLimit} ${shellQuote(service.logFile)}; else ${systemLog}; fi`
-    : systemLog;
-  return `__service_log=$(${readLog}); if [ -n "$__service_log" ]; then printf '%s\n' "$__service_log"; else printf '${service.label} 暂未找到可读取的日志。请先启动服务、执行一次更新或稍后重试。\n'; fi`;
+  const fileLogs = service.logFiles
+    .map(
+      (path) =>
+        `if [ -r ${shellQuote(path)} ]; then printf '%s\n' ${shellQuote(`--- ${path} ---`)}; tail -n ${safeLimit} ${shellQuote(path)}; __found=1; fi`,
+    )
+    .join("; ");
+  return `__service_log=$({ __found=0; ${fileLogs}; if [ "$__found" -eq 0 ]; then ${systemLog}; fi; } 2>&1); if [ -n "$__service_log" ]; then printf '%s\n' "$__service_log"; else printf '${service.label} 暂未找到可读取的日志。请先启动服务、执行一次更新或稍后重试。\n'; fi`;
 }
 
 /** 仅读取内置服务明确允许的 UCI 配置文件，并用固定标记封装返回内容。 */

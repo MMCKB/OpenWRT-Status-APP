@@ -120,6 +120,13 @@ const tools = [
     target: "/system-admin",
   },
   {
+    title: "LuCI 主题",
+    description:
+      "读取已安装的 LuCI 主题，并在应用内安全切换路由器网页管理界面外观。",
+    icon: "palette",
+    target: "/luci-theme",
+  },
+  {
     title: "快捷操作",
     description: "一键重连 WAN，并快速进入常用路由器管理功能。",
     icon: "bolt",

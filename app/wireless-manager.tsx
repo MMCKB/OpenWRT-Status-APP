@@ -3,7 +3,9 @@ import QRCode from "react-native-qrcode-svg";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   ActivityIndicator,
+  Modal,
   Pressable,
+  ScrollView,
   StyleSheet,
   Switch,
   Text,
@@ -41,6 +43,19 @@ function signalLabel(signalDbm: number | null) {
   return `${signalDbm} dBm · 较弱`;
 }
 
+function hasWirelessSettingsChanged(
+  draft: WifiConfigEntry,
+  initial: WifiConfigEntry,
+) {
+  return (
+    draft.encryption !== initial.encryption ||
+    draft.key !== initial.key ||
+    draft.network !== initial.network ||
+    draft.hidden !== initial.hidden ||
+    draft.isolate !== initial.isolate
+  );
+}
+
 export default function WirelessManagerScreen() {
   const colors = useColors();
   const { execute, error, hasRouter, isRunning, isSupported } = useManagedSsh();
@@ -51,7 +66,9 @@ export default function WirelessManagerScreen() {
   const [draftNetworks, setDraftNetworks] = useState<
     Record<string, WifiConfigEntry>
   >({});
-  const [expandedNetwork, setExpandedNetwork] = useState<string | null>(null);
+  const [editingNetwork, setEditingNetwork] = useState<WifiConfigEntry | null>(
+    null,
+  );
   const [visibleNetworkKeys, setVisibleNetworkKeys] = useState<
     Record<string, boolean>
   >({});
@@ -166,22 +183,17 @@ export default function WirelessManagerScreen() {
   const saveWirelessSettings = useCallback(
     (network: WifiConfigEntry) => {
       const draft = draftNetworks[network.section] ?? network;
+      if (!hasWirelessSettingsChanged(draft, network)) {
+        setEditingNetwork(null);
+        return;
+      }
       try {
-        Alert.alert(
-          "保存无线设置",
-          `将更新“${network.ssid}”的加密、密码、隐藏和隔离设置，并重新加载 Wi‑Fi。`,
-          [
-            { text: "取消", style: "cancel" },
-            {
-              text: "确认保存",
-              onPress: () => {
-                void execute(buildWifiSettingsSaveCommand(draft))
-                  .then(refresh)
-                  .catch(() => undefined);
-              },
-            },
-          ],
-        );
+        void execute(buildWifiSettingsSaveCommand(draft))
+          .then(async () => {
+            setEditingNetwork(null);
+            await refresh();
+          })
+          .catch(() => undefined);
       } catch (reason) {
         Alert.alert(
           "无法保存无线设置",
@@ -190,6 +202,34 @@ export default function WirelessManagerScreen() {
       }
     },
     [draftNetworks, execute, refresh],
+  );
+
+  const requestCloseWirelessSettings = useCallback(
+    (network: WifiConfigEntry | null) => {
+      if (!network) {
+        setEditingNetwork(null);
+        return;
+      }
+      const draft = draftNetworks[network.section] ?? network;
+      if (!hasWirelessSettingsChanged(draft, network)) {
+        setEditingNetwork(null);
+        return;
+      }
+      Alert.alert(
+        "保存无线设置？",
+        "已修改无线设置。关闭前是否保存到路由器？",
+        [
+          { text: "继续编辑", style: "cancel" },
+          {
+            text: "放弃修改",
+            style: "destructive",
+            onPress: () => setEditingNetwork(null),
+          },
+          { text: "保存", onPress: () => saveWirelessSettings(network) },
+        ],
+      );
+    },
+    [draftNetworks, saveWirelessSettings],
   );
 
   const deleteNetwork = useCallback(
@@ -367,13 +407,13 @@ export default function WirelessManagerScreen() {
                     <View style={styles.actionGroup}>
                       <Pressable
                         accessibilityRole="button"
-                        onPress={() =>
-                          setExpandedNetwork((current) =>
-                            current === network.section
-                              ? null
-                              : network.section,
-                          )
-                        }
+                        onPress={() => {
+                          setDraftNetworks((current) => ({
+                            ...current,
+                            [network.section]: network,
+                          }));
+                          setEditingNetwork(network);
+                        }}
                         style={({ pressed }) => [
                           styles.advancedButton,
                           { borderColor: colors.primary },
@@ -419,35 +459,6 @@ export default function WirelessManagerScreen() {
                       </Pressable>
                     </View>
                   </View>
-                  {expandedNetwork === network.section ? (
-                    <WirelessSettingsForm
-                      network={draftNetworks[network.section] ?? network}
-                      isPasswordVisible={
-                        visibleNetworkKeys[network.section] ?? false
-                      }
-                      colors={colors}
-                      disabled={disabled}
-                      networkBindings={availableNetworkBindings}
-                      onChange={(key, value) =>
-                        setDraftNetworks((current) => ({
-                          ...current,
-                          [network.section]: {
-                            ...(current[network.section] ?? network),
-                            [key]: value,
-                          },
-                        }))
-                      }
-                      onTogglePassword={() =>
-                        setVisibleNetworkKeys((current) => ({
-                          ...current,
-                          [network.section]: !(
-                            current[network.section] ?? false
-                          ),
-                        }))
-                      }
-                      onSave={() => saveWirelessSettings(network)}
-                    />
-                  ) : null}
                 </View>
               ))
             ) : (
@@ -621,6 +632,53 @@ export default function WirelessManagerScreen() {
           <Text style={[styles.error, { color: colors.error }]}>{error}</Text>
         </ToolNotice>
       ) : null}
+      <Modal
+        visible={Boolean(editingNetwork)}
+        transparent
+        animationType="slide"
+        onRequestClose={() => requestCloseWirelessSettings(editingNetwork)}
+      >
+        <View style={styles.modalBackdrop}>
+          <View
+            style={[styles.modalSheet, { backgroundColor: colors.surface }]}
+          >
+            {editingNetwork ? (
+              <ScrollView contentContainerStyle={styles.modalScroll}>
+                <WirelessSettingsForm
+                  network={
+                    draftNetworks[editingNetwork.section] ?? editingNetwork
+                  }
+                  isPasswordVisible={
+                    visibleNetworkKeys[editingNetwork.section] ?? false
+                  }
+                  colors={colors}
+                  disabled={disabled}
+                  networkBindings={availableNetworkBindings}
+                  onClose={() => requestCloseWirelessSettings(editingNetwork)}
+                  onChange={(key, value) =>
+                    setDraftNetworks((current) => ({
+                      ...current,
+                      [editingNetwork.section]: {
+                        ...(current[editingNetwork.section] ?? editingNetwork),
+                        [key]: value,
+                      },
+                    }))
+                  }
+                  onTogglePassword={() =>
+                    setVisibleNetworkKeys((current) => ({
+                      ...current,
+                      [editingNetwork.section]: !(
+                        current[editingNetwork.section] ?? false
+                      ),
+                    }))
+                  }
+                  onSave={() => saveWirelessSettings(editingNetwork)}
+                />
+              </ScrollView>
+            ) : null}
+          </View>
+        </View>
+      </Modal>
     </ManagementShell>
   );
 }
@@ -633,6 +691,7 @@ function WirelessSettingsForm({
   networkBindings,
   onChange,
   onTogglePassword,
+  onClose,
   onSave,
 }: {
   network: WifiConfigEntry;
@@ -645,6 +704,7 @@ function WirelessSettingsForm({
     value: string | boolean,
   ) => void;
   onTogglePassword: () => void;
+  onClose: () => void;
   onSave: () => void;
 }) {
   return (
@@ -654,9 +714,26 @@ function WirelessSettingsForm({
         { backgroundColor: colors.background, borderColor: colors.border },
       ]}
     >
-      <Text style={[styles.advancedTitle, { color: colors.foreground }]}>
-        编辑无线设置
-      </Text>
+      <View style={styles.modalHeader}>
+        <Text style={[styles.advancedTitle, { color: colors.foreground }]}>
+          编辑无线设置
+        </Text>
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel="关闭无线设置编辑"
+          onPress={onClose}
+          style={({ pressed }) => [
+            styles.closePill,
+            { backgroundColor: colors.background },
+            pressed && styles.pressed,
+          ]}
+        >
+          <MaterialIcons name="close" size={17} color={colors.foreground} />
+          <Text style={[styles.closePillText, { color: colors.foreground }]}>
+            关闭
+          </Text>
+        </Pressable>
+      </View>
       <Text style={[styles.helper, { color: colors.muted }]}>
         可选择常用 WPA2/WPA3 加密、SSID 隐藏、客户端隔离和绑定网络接口。
       </Text>
@@ -866,8 +943,35 @@ const styles = StyleSheet.create({
     gap: 4,
   },
   deleteText: { fontSize: 12, fontWeight: "800" },
-  advancedForm: { borderWidth: 1, borderRadius: 12, padding: 12, gap: 9 },
+  advancedForm: { padding: 16, gap: 9 },
   advancedTitle: { fontSize: 14, fontWeight: "800" },
+  modalBackdrop: {
+    flex: 1,
+    backgroundColor: "rgba(0, 0, 0, 0.52)",
+    justifyContent: "flex-end",
+  },
+  modalSheet: {
+    maxHeight: "90%",
+    borderTopLeftRadius: 24,
+    borderTopRightRadius: 24,
+    overflow: "hidden",
+  },
+  modalScroll: { paddingBottom: 24 },
+  modalHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: 12,
+  },
+  closePill: {
+    minHeight: 34,
+    borderRadius: 17,
+    paddingHorizontal: 11,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4,
+  },
+  closePillText: { fontSize: 12, fontWeight: "800" },
   choiceGrid: { flexDirection: "row", flexWrap: "wrap", gap: 8 },
   choicePill: {
     minHeight: 34,

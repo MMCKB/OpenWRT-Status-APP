@@ -83,8 +83,15 @@ describe("router-package-commands (apk)", () => {
   });
 
   it("should build a safe APK repositories snapshot and save command", () => {
+    expect(APK_CUSTOM_FEEDS_SOURCE).toBe(
+      "/etc/apk/repositories.d/customfeeds.list",
+    );
+    expect(APK_DIST_FEEDS_SOURCE).toBe("/etc/apk/repositories.d/distfeed");
     expect(buildApkRepositoriesSnapshotCommand()).toContain(
       `${APK_CUSTOM_FEEDS_SOURCE} ${APK_DIST_FEEDS_SOURCE}`,
+    );
+    expect(buildApkRepositoriesSnapshotCommand()).not.toContain(
+      "/etc/apk/repositories.d/*.list",
     );
     expect(buildApkRepositoriesSnapshotCommand()).toContain("REPO|%s|%d|%d|%s");
 
@@ -132,6 +139,15 @@ describe("router-package-commands (apk)", () => {
         { url: "https://mirror.example/repo", enabled: false },
       ]),
     ).toThrow("至少启用一个");
+    expect(() =>
+      buildApkSaveRepositoriesCommand([
+        {
+          url: "https://mirror.example/repo",
+          enabled: true,
+          source: "/etc/apk/repositories.d/unmanaged.list",
+        },
+      ]),
+    ).toThrow("配置文件路径无效");
   });
 
   it("should parse enabled and disabled APK repository lines", () => {
