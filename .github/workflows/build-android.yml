@@ -1,0 +1,218 @@
+name: Build and release Android APKs
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+# The build jobs only need repository reads.  The release job alone receives
+# write access so the platform-provided token can create tags and Releases.
+permissions:
+  contents: read
+
+concurrency:
+  group: android-release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  build:
+    name: Build ${{ matrix.abi }} APK
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        abi:
+          - arm64-v8a
+          - armeabi-v7a
+          - x86
+          - x86_64
+    env:
+      ANDROID_NDK_VERSION: 27.1.12297006
+      ANDROID_BUILD_TOOLS: 36.0.0
+      GRADLE_OPTS: -Dorg.gradle.daemon=false -Dorg.gradle.jvmargs=-Xmx4g
+
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+
+      - name: Set up pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 9.12.0
+          run_install: false
+
+      - name: Set up Node.js 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Set up JDK 21
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 21
+          cache: gradle
+
+      - name: Set up Android SDK components
+        uses: android-actions/setup-android@v3
+
+      - name: Install Android NDK and build tools
+        run: |
+          yes | sdkmanager --licenses
+          sdkmanager "ndk;${ANDROID_NDK_VERSION}" "build-tools;${ANDROID_BUILD_TOOLS}"
+
+      - name: Install JavaScript dependencies
+        run: |
+          corepack enable
+          pnpm install --frozen-lockfile
+
+      - name: Restore stable Android release keystore
+        env:
+          ANDROID_RELEASE_KEYSTORE_B64: ${{ secrets.ANDROID_RELEASE_KEYSTORE_B64 }}
+          ANDROID_RELEASE_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_RELEASE_KEYSTORE_PASSWORD }}
+          ANDROID_RELEASE_KEY_ALIAS: ${{ secrets.ANDROID_RELEASE_KEY_ALIAS }}
+        run: |
+          set -euo pipefail
+          test -n "$ANDROID_RELEASE_KEYSTORE_B64"
+          test -n "$ANDROID_RELEASE_KEYSTORE_PASSWORD"
+          test -n "$ANDROID_RELEASE_KEY_ALIAS"
+          printf '%s' "$ANDROID_RELEASE_KEYSTORE_B64" | base64 --decode > android/app/openwrt-status-release.keystore
+          chmod 600 android/app/openwrt-status-release.keystore
+          keytool -list \
+            -keystore android/app/openwrt-status-release.keystore \
+            -storepass "$ANDROID_RELEASE_KEYSTORE_PASSWORD" \
+            -alias "$ANDROID_RELEASE_KEY_ALIAS" >/dev/null
+
+      - name: Verify source quality
+        run: |
+          # A tracked bundle here would take precedence when release bundling is
+          # skipped accidentally and would reproduce an obsolete application UI.
+          test ! -e android/app/src/main/assets/index.android.bundle
+          pnpm check
+          pnpm test
+
+      - name: Build, align, sign, and verify ${{ matrix.abi }} APK
+        env:
+          ABI: ${{ matrix.abi }}
+          ANDROID_RELEASE_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_RELEASE_KEYSTORE_PASSWORD }}
+          ANDROID_RELEASE_KEY_PASSWORD: ${{ secrets.ANDROID_RELEASE_KEY_PASSWORD }}
+          ANDROID_RELEASE_KEY_ALIAS: ${{ secrets.ANDROID_RELEASE_KEY_ALIAS }}
+        run: |
+          set -euo pipefail
+
+          VERSION_NAME="$(sed -nE 's/^[[:space:]]*versionName[[:space:]]+"([^"]+)".*/\1/p' android/app/build.gradle | head -n 1)"
+          VERSION_CODE="$(sed -nE 's/^[[:space:]]*versionCode[[:space:]]+([0-9]+).*/\1/p' android/app/build.gradle | head -n 1)"
+          EXPO_VERSION="$(sed -nE 's/^[[:space:]]*version:[[:space:]]*"([^"]+)".*/\1/p' app.config.ts | head -n 1)"
+
+          test -n "$VERSION_NAME"
+          test -n "$VERSION_CODE"
+          test "$VERSION_NAME" = "$EXPO_VERSION"
+
+          cd android
+          chmod +x gradlew
+          ./gradlew :app:assembleRelease \
+            -PreactNativeArchitectures="$ABI" \
+            --no-daemon \
+            --max-workers=1
+          cd ..
+
+          RAW_APK="android/app/build/outputs/apk/release/app-release.apk"
+          ALIGNED_APK="release-artifacts/openwrt-status-v${VERSION_NAME}-${ABI}-aligned-unsigned.apk"
+          FINAL_APK="release-artifacts/openwrt-status-v${VERSION_NAME}-${ABI}-16kb-signed.apk"
+          ZIPALIGN="$ANDROID_HOME/build-tools/${ANDROID_BUILD_TOOLS}/zipalign"
+          APKSIGNER="$ANDROID_HOME/build-tools/${ANDROID_BUILD_TOOLS}/apksigner"
+          AAPT="$ANDROID_HOME/build-tools/${ANDROID_BUILD_TOOLS}/aapt"
+
+          test -f "$RAW_APK"
+          mkdir -p release-artifacts
+          "$ZIPALIGN" -P 16 -f -v 4 "$RAW_APK" "$ALIGNED_APK"
+          "$APKSIGNER" sign \
+            --ks android/app/openwrt-status-release.keystore \
+            --ks-key-alias "$ANDROID_RELEASE_KEY_ALIAS" \
+            --ks-pass "pass:$ANDROID_RELEASE_KEYSTORE_PASSWORD" \
+            --key-pass "pass:$ANDROID_RELEASE_KEY_PASSWORD" \
+            --v1-signing-enabled true \
+            --v2-signing-enabled true \
+            --v3-signing-enabled true \
+            --v4-signing-enabled false \
+            --out "$FINAL_APK" \
+            "$ALIGNED_APK"
+          "$APKSIGNER" verify --verbose --print-certs "$FINAL_APK"
+
+          APK_BADGING="$($AAPT dump badging "$FINAL_APK")"
+          printf '%s\n' "$APK_BADGING" | grep -F "versionCode='$VERSION_CODE'"
+          printf '%s\n' "$APK_BADGING" | grep -F "versionName='$VERSION_NAME'"
+          # Verify that the release embeds the current service-management and
+          # password-visibility code rather than an old JavaScript bundle.
+          # rather than an old JavaScript bundle.
+          # Do not use grep -q here: with pipefail it closes early and makes
+          # unzip fail with SIGPIPE even when the marker is present.
+          unzip -p "$FINAL_APK" assets/index.android.bundle | grep -aF "PassWall2" >/dev/null
+          unzip -p "$FINAL_APK" assets/index.android.bundle | grep -aF "visibility-off" >/dev/null
+          sha256sum "$FINAL_APK" | tee "${FINAL_APK}.sha256"
+          rm -f "$ALIGNED_APK"
+
+      - name: Upload verified ${{ matrix.abi }} artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: openwrt-status-${{ matrix.abi }}
+          path: release-artifacts/*
+          if-no-files-found: error
+          retention-days: 14
+
+      - name: Remove restored release signing key
+        if: always()
+        run: rm -f android/app/openwrt-status-release.keystore
+
+  release:
+    name: Publish GitHub Release
+    runs-on: ubuntu-latest
+    needs: build
+    permissions:
+      contents: write
+    env:
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+    steps:
+      - name: Check out release commit
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Download all verified APKs
+        uses: actions/download-artifact@v4
+        with:
+          path: release-artifacts
+          merge-multiple: true
+
+      - name: Create or update the versioned GitHub Release
+        run: |
+          set -euo pipefail
+
+          VERSION_NAME="$(sed -nE 's/^[[:space:]]*versionName[[:space:]]+"([^"]+)".*/\1/p' android/app/build.gradle | head -n 1)"
+          EXPO_VERSION="$(sed -nE 's/^[[:space:]]*version:[[:space:]]*"([^"]+)".*/\1/p' app.config.ts | head -n 1)"
+          test -n "$VERSION_NAME"
+          test "$VERSION_NAME" = "$EXPO_VERSION"
+
+          TAG="v${VERSION_NAME}"
+          CURRENT_COMMIT="$(git rev-parse HEAD)"
+
+          if git ls-remote --exit-code --tags origin "refs/tags/${TAG}" >/dev/null 2>&1; then
+            TAG_COMMIT="$(git ls-remote --refs origin "refs/tags/${TAG}" | awk '{print $1}')"
+            if [ "$TAG_COMMIT" != "$CURRENT_COMMIT" ]; then
+              git tag -f "$TAG" "$CURRENT_COMMIT"
+              git push origin "refs/tags/${TAG}" --force
+            fi
+            gh release view "$TAG" >/dev/null 2>&1 || \
+              gh release create "$TAG" --target "$CURRENT_COMMIT" --title "OpenWrt Status ${TAG}" --generate-notes
+          else
+            gh release create "$TAG" --target "$CURRENT_COMMIT" --title "OpenWrt Status ${TAG}" --generate-notes
+          fi
+
+          gh release upload "$TAG" \
+            release-artifacts/*-16kb-signed.apk \
+            release-artifacts/*-16kb-signed.apk.sha256 \
+            --clobber
+          gh release view "$TAG" --json url,tagName,assets

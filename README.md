@@ -1,9 +1,9 @@
 # OpenWrt 路由器状态
 
-> **面向 OpenWrt 的 Android 本地网络管理工具，现已迁移为纯 Kotlin + Jetpack Compose。**
+> **面向 OpenWrt 的 Android 本地网络管理工具**
 
 [![GitHub Release](https://img.shields.io/github/v/release/MMCKB/OpenWRT-Status-APP?display_name=tag&style=for-the-badge&logo=android&logoColor=white&label=Release)](https://github.com/MMCKB/OpenWRT-Status-APP/releases)
-[![Android 构建](https://img.shields.io/github/actions/workflow/status/MMCKB/OpenWRT-Status-APP/android-apk-release.yml?style=for-the-badge&logo=githubactions&logoColor=white&label=Android%20Build)](https://github.com/MMCKB/OpenWRT-Status-APP/actions/workflows/android-apk-release.yml)
+[![Android 构建](https://img.shields.io/github/actions/workflow/status/MMCKB/OpenWRT-Status-APP/build-android.yml/Build%20and%20release%20Android%20APKs?branch=main&style=for-the-badge&logo=githubactions&logoColor=white&label=Android%20Build)](https://github.com/MMCKB/OpenWRT-Status-APP/actions/workflows/build-android.yml)
 [![GitHub Star](https://img.shields.io/github/stars/MMCKB/OpenWRT-Status-APP?style=for-the-badge&logo=github&label=Stars)](https://github.com/MMCKB/OpenWRT-Status-APP/stargazers)
 [![GitHub 下载量](https://img.shields.io/github/downloads/MMCKB/OpenWRT-Status-APP/total?style=for-the-badge&logo=github&label=Downloads)](https://github.com/MMCKB/OpenWRT-Status-APP/releases)
 [![许可证：MIT](https://img.shields.io/badge/License-MIT-0B6BCB?style=for-the-badge)](LICENSE)
@@ -11,93 +11,66 @@
 
 [下载最新 APK](https://github.com/MMCKB/OpenWRT-Status-APP/releases/latest) · [查看自动构建](https://github.com/MMCKB/OpenWRT-Status-APP/actions) · [为项目点 Star](https://github.com/MMCKB/OpenWRT-Status-APP/stargazers)
 
-**OpenWrt 路由器状态**用于在可信网络中连接和维护 OpenWrt 路由器。2.0.0 起，客户端已完全采用 **Kotlin 2.0.21、Jetpack Compose Material 3、Android Gradle Plugin 8.8.2** 实现；项目不再包含或依赖 React Native、Expo、TypeScript、Node.js、Metro 或 pnpm 运行时。
+**OpenWrt 路由器状态**是一款面向 Android 的本地网络管理工具，用于连接 OpenWrt 路由器并查看状态、执行受控维护操作。应用基于 Expo SDK 54、React Native 0.81 和 Android 原生 SSH 模块构建，保留 React Native 新架构，并面向 OpenWrt 25.12 的 `apk` 包管理方式适配。
 
-> 本项目只应由拥有路由器管理权限的用户使用。SSH 命令、文件改写、软件包变更、防火墙、服务重载、系统升级与批量操作均可能导致网络中断；请先备份配置并核对每项操作的影响。
-
+> 本项目供具备路由器管理权限的用户在可信网络中使用。SSH、固件升级、防火墙、Docker 和批量操作可能影响网络可用性；执行前请确认已备份配置并了解所执行命令的影响。
+> 本项目绝大部分都由AI制作
 ## 功能概览
 
-| 分类 | 已迁移能力 |
-| --- | --- |
-| 路由器与状态 | 多路由器资料管理；LuCI/ubus HTTP 状态读取；系统、内核、CPU、内存、存储、接口 IPv4/IPv6、无线与网络设备状态。 |
-| 网络管理 | 接口、无线网络、已连接设备、DHCP 与静态租约、防火墙、Wake-on-LAN、弱信号设备与无线优化配置入口。 |
-| SSH 与文件 | JSch SSH/SFTP 共享会话、应用内终端、目录浏览、文本读写、上传下载、复制、移动、删除与权限修改。 |
-| 服务与软件包 | OpenClash、PassWall、PassWall2、AdGuard Home、DDNS、Docker、计划任务与启动项的状态、启停、日志和配置快照编辑；OpenWrt 25.12 `apk` 软件包管理。 |
-| 工具与维护 | 手机本地 UDP/STUN NAT 检测、DNS 延迟测试、性能采样、LuCI 主题、系统动作、固件工具、日志中心、批量操作、应用设置和关于页面。 |
-| 数据与体验 | DataStore 保存非敏感偏好，EncryptedSharedPreferences 保存路由器密码；浅色、深色和跟随系统主题；Material 3 Compose 弹窗和页面导航。 |
-
-## 纯 Android 技术栈
-
-| 领域 | 选型 |
-| --- | --- |
-| 用户界面 | Kotlin + Jetpack Compose + Material 3 + Compose Navigation |
-| 状态与生命周期 | AndroidX Lifecycle ViewModel、Kotlin Coroutines / Flow |
-| 本地数据 | DataStore Preferences、EncryptedSharedPreferences |
-| 路由器通信 | LuCI ubus HTTP、JSch SSH/SFTP、Android UDP Socket / STUN |
-| 构建与测试 | Gradle 8.14.3、AGP 8.8.2、JDK 17、JUnit 4、Android Lint |
-| 发布 | GitHub Actions、稳定 Release keystore、四 ABI APK |
+| 分类         | 已实现能力                                                                                                    |
+| ------------ | ------------------------------------------------------------------------------------------------------------- |
+| 路由器与状态 | 多路由器管理、LuCI/ubus 认证、系统资源、IPv4/IPv6 接口、无线状态、连接设备和路由器健康报告。                  |
+| 实时网络     | 每秒级可选刷新、多 WAN/LAN 独立上下行速率曲线、完整图表与紧凑数据两种显示方式、诊断与 WAN 重连。              |
+| SSH 与文件   | 应用内嵌 SSH 终端、密码/keyboard-interactive 认证、文件浏览、上传下载、复制移动、重命名、文本编辑和权限修改。 |
+| OpenWrt 管理 | OpenWrt 25.12 `apk` 软件包管理、固件上传升级、配置备份恢复、DHCP 与静态租约、无线 SSID 与信道优化。           |
+| 服务与安全   | OpenClash、AdGuard Home、Docker 容器、日志中心、防火墙区域、端口转发、UPnP、设备拉黑和 Wake-on-LAN。          |
+| 诊断与更新   | 弱信号设备分析、性能基准与自定义域名 Ping、GitHub Release 固件检查、下载和二次确认更新。                      |
+| 使用体验     | 简体中文界面、浅色/深色/跟随系统主题、应用内主题弹窗、安全区适配和 Android 返回导航。                         |
 
 ## 安装 APK
 
-请前往 [Releases](https://github.com/MMCKB/OpenWRT-Status-APP/releases) 下载与设备 ABI 对应的 APK。应用最低支持 **Android 7.0（API 24）**。使用同一稳定发布证书签名的后续版本可直接覆盖安装；若设备上的同包名应用由其他证书签名，Android 会拒绝覆盖，此时需要先备份资料并卸载旧包。
+请前往 [Releases](https://github.com/MMCKB/OpenWRT-Status-APP/releases) 下载与设备 ABI 对应的 APK。每个成功的 `main` 分支构建都会以应用版本号创建或更新同名标签，例如版本 `1.0.16` 对应标签 `v1.0.16`。Release 同时包含 APK 的 SHA-256 校验文件。
 
-| APK 后缀 | 适用设备 |
-| --- | --- |
-| `arm64-v8a` | 大多数近年的 Android 手机、平板和 ARM64 模拟器。 |
-| `armeabi-v7a` | 较旧的 32 位 ARM Android 设备。 |
-| `x86` | 32 位 x86 Android 模拟器或特定设备。 |
-| `x86_64` | 64 位 x86 Android 模拟器。 |
+| APK 后缀      | 适用设备                                           |
+| ------------- | -------------------------------------------------- |
+| `arm64-v8a`   | 绝大多数近年的 Android 手机、平板和 ARM64 模拟器。 |
+| `armeabi-v7a` | 较旧的 32 位 ARM Android 设备。                    |
+| `x86`         | 32 位 x86 Android 模拟器或特定设备。               |
+| `x86_64`      | 64 位 x86 Android 模拟器或特定设备。               |
+
+应用的最低 Android 版本为 **Android 7.0（API 24）**。首次安装时，Android 可能要求用户允许浏览器或文件管理器安装未知来源应用。若设备已安装由**不同签名证书**签名的同包名版本，需先卸载旧版本；同一发布签名的版本可以直接覆盖升级。
 
 ## 从源码构建
 
-本项目仅需要 **JDK 17**、Android SDK（API 35 / Build Tools）和 Gradle Wrapper；不需要安装 Node.js、pnpm、Expo CLI 或任何 JavaScript 依赖。将 Android SDK 路径写入未跟踪的 `local.properties` 后，在项目根目录执行：
-
-```properties
-# local.properties（示例）
-sdk.dir=C:\\Users\\<用户名>\\AppData\\Local\\Android\\Sdk
-```
+本项目需要 **Node.js 22**、**pnpm 9.12.0**、**JDK 21**、Android SDK、Build Tools 36.0.0 以及 NDK 27.1.12297006。克隆源码并安装依赖后，可先执行质量检查：
 
 ```bash
-# Linux / macOS
-./gradlew :app:testDebugUnitTest :app:lintDebug :app:assembleDebug :app:assembleRelease
-
-# Windows PowerShell
-.\gradlew.bat :app:testDebugUnitTest :app:lintDebug :app:assembleDebug :app:assembleRelease
+corepack enable
+pnpm install --frozen-lockfile
+pnpm check
+pnpm test
 ```
 
-Release APK 输出在 `app/build/outputs/apk/release/`。该模块使用 Gradle ABI split，一次 Release 构建将生成 `armeabi-v7a`、`arm64-v8a`、`x86`、`x86_64` 四种 APK。
+Windows 用户请优先使用完整的四 ABI 自动构建说明：[WINDOWS_FOUR_ABI_BUILD.md](WINDOWS_FOUR_ABI_BUILD.md)。macOS、Linux 和 Windows 的通用环境准备、手动构建、16KB 对齐、签名与安装验证说明见：[LOCAL_ANDROID_BUILD.md](LOCAL_ANDROID_BUILD.md)。
 
-若本地未配置发布签名环境变量，构建配置会使用 `app/openwrt-status-release.keystore`。**请勿提交**私有 keystore、`local.properties` 或任何路由器密码。GitHub Actions 使用仓库 Secrets 恢复稳定发布签名：`ANDROID_RELEASE_KEYSTORE_B64`、`ANDROID_RELEASE_KEYSTORE_PASSWORD`、`ANDROID_RELEASE_KEY_ALIAS`、`ANDROID_RELEASE_KEY_PASSWORD`。
+GitHub Actions 会分别构建四种 ABI，使用 `zipalign -P 16` 做 16KB 页面边界对齐、重新进行 v1/v2/v3 签名，并校验 APK 清单中的 `versionName` 与 `versionCode`。为保证工作流可直接运行，它会在每次构建中生成并在结束后删除临时 debug keystore，密钥不会提交到 Git。
 
-## 自动发布
+> 临时签名意味着不同工作流运行生成的 APK 不具有相同的安装签名。若 Android 报告签名不一致，请先卸载旧包再安装；卸载会清除应用本地存储的路由器资料。若需要长期支持直接覆盖升级，仓库维护者应在后续将稳定的发布 keystore 以 GitHub Secret 保存，并改用该稳定签名身份。
 
-工作流为 [`.github/workflows/android-apk-release.yml`](.github/workflows/android-apk-release.yml)。推送 `v*` 标签或手动运行工作流时，CI 会使用 Temurin JDK 17 执行 Kotlin 单元测试、Android Lint 和四 ABI 签名 Release 构建；当由标签触发时，四个 APK 将上传至对应 GitHub Release。
+## GitHub Actions 发布机制
 
-```bash
-git tag v2.0.0
-git push origin v2.0.0
-```
+工作流位于 [`.github/workflows/build-android.yml`](.github/workflows/build-android.yml)，会在推送到 `main` 或手动运行时执行：
 
-## 项目结构
+1. 使用 Node.js 22、JDK 21、Android NDK 27.1.12297006 和锁定的 pnpm 依赖进行类型检查和单元测试。
+2. 分别构建 `arm64-v8a`、`armeabi-v7a`、`x86` 和 `x86_64` Release APK。
+3. 对 APK 进行 16KB 对齐、v1/v2/v3 签名、签名校验和版本核验。
+4. 使用 GitHub 平台提供的 `GITHUB_TOKEN` 创建或更新 `v<versionName>` GitHub Release，并上传四个 APK 及对应 SHA-256 文件。
 
-```text
-app/src/main/java/com/app/openwrtstatusapp/
-├── data/       # DataStore、SSH 操作门面、文件与 UCI 处理
-├── domain/     # 路由器、状态、软件包、服务等领域模型
-├── network/    # LuCI ubus HTTP 与本地 STUN NAT 检测
-├── ssh/        # JSch SSH/SFTP 会话管理
-└── ui/         # Compose 主题、ViewModel、四标签导航与功能弹窗
-```
+同一个版本标签只能指向一个提交；若修改了发布内容，请先递增 `app.config.ts` 与 `android/app/build.gradle` 中保持一致的版本号，再推送到 `main`。
 
-## 已验证的质量检查
+## 安全提示
 
-| 检查 | 结果 |
-| --- | --- |
-| Kotlin Debug 编译 | 通过 |
-| JUnit 单元测试 | 通过（命令安全与 STUN XOR-MAPPED-ADDRESS 解析） |
-| Android Lint | 通过 |
-| Debug APK | 通过 |
-| Release APK | 通过，已生成四 ABI 签名 APK |
+请勿提交路由器密码、SSH 私钥、Android keystore、`.env` 文件或 APK 构建产物。
 
 ## 许可证
 

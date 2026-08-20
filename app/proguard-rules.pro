@@ -1,2 +1,0 @@
--keep class com.jcraft.jsch.** { *; }
--dontwarn org.bouncycastle.**
