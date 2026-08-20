@@ -97,7 +97,7 @@ app/src/main/java/com/app/openwrtstatusapp/
 | JUnit 单元测试 | 通过（9 项：升级 payload、导入中断续跑、命令安全与 STUN XOR-MAPPED-ADDRESS 解析） |
 | Android Lint | 通过 |
 | Debug APK | 通过，已生成四 ABI APK |
-| Release APK | 等待 GitHub Actions 使用稳定签名 Secrets 在 `Dev` 分支执行四 ABI 构建 |
+| Release APK | 已由 GitHub Actions 在 `Dev` 分支使用稳定签名 Secrets 成功完成四 ABI 构建；该验证未创建标签或 Release |
 
 ## 许可证
 

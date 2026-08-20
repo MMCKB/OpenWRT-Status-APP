@@ -18,7 +18,7 @@
 | Kotlin 编译与 Lint | 已通过 | `:app:compileDebugKotlin` 与 `:app:lintDebug` 已在纯 Kotlin 工程中通过。 |
 | Debug 四 ABI APK | 已通过 | 已生成 `armeabi-v7a`、`arm64-v8a`、`x86`、`x86_64` Debug APK。 |
 | 截图回归 | 受环境限制 | 当前环境未安装 Android Emulator/adb 且无连接设备，无法伪造设备截图；K1 保留原版主题令牌、七项导航和仪表盘布局，待在有 Android 设备或模拟器的 CI/本机执行像素截图基线对比。 |
-| 签名 Release 四 ABI | 待远程验证 | 本地不保留私有稳定 keystore；GitHub Actions 使用既有四项 Release Secrets 对 Dev 分支运行同一 Gradle 验证，确保可覆盖 R2。 |
+| 签名 Release 四 ABI | 已通过 | GitHub Actions [run 32342701491](https://github.com/MMCKB/OpenWRT-Status-APP/actions/runs/32342701491) 已使用既有四项 Release Secrets 成功执行 `:app:testDebugUnitTest`、`:app:assembleRelease` 和 `:app:lintDebug`；手动 Dev 构建不创建标签或 GitHub Release。 |
 
 ## 升级规则
 
