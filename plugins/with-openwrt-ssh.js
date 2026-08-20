@@ -8,9 +8,6 @@ const fs = require("fs");
 const path = require("path");
 
 const JAVA_PACKAGE = "com.openwrtstatus.ssh";
-// Android 16 设备发生 React 界面渲染前的进程级崩溃。暂不注册手写桥接包，
-// 以验证该 legacy ReactPackage 是否为启动根因；原生源码保留以便后续兼容恢复。
-const CUSTOM_NATIVE_BRIDGE_ENABLED = false;
 const SOURCE_FILES = {
   "OpenWrtSshPackage.java": `package ${JAVA_PACKAGE};
 
@@ -18,7 +15,6 @@ import com.facebook.react.ReactPackage;
 import com.facebook.react.bridge.NativeModule;
 import com.facebook.react.bridge.ReactApplicationContext;
 import com.facebook.react.uimanager.ViewManager;
-import android.util.Log;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
@@ -27,13 +23,7 @@ public class OpenWrtSshPackage implements ReactPackage {
   @Override
   public List<NativeModule> createNativeModules(ReactApplicationContext reactContext) {
     List<NativeModule> modules = new ArrayList<>();
-    try {
-      modules.add(new OpenWrtSshModule(reactContext));
-      modules.add(new OpenWrtNatModule(reactContext));
-    } catch (Throwable error) {
-      // 原生桥接不可用时允许 Expo 继续启动，功能层会提示 SSH/NAT 不可用。
-      Log.e("OpenWrtStatus", "Unable to initialize OpenWrt native modules", error);
-    }
+    modules.add(new OpenWrtSshModule(reactContext));
     return modules;
   }
 
@@ -262,209 +252,31 @@ public class OpenWrtSshModule extends ReactContextBaseJavaModule {
   }
 }
 `,
-  "OpenWrtNatModule.java": `package ${JAVA_PACKAGE};
-
-import com.facebook.react.bridge.Arguments;
-import com.facebook.react.bridge.Promise;
-import com.facebook.react.bridge.ReactApplicationContext;
-import com.facebook.react.bridge.ReactContextBaseJavaModule;
-import com.facebook.react.bridge.ReactMethod;
-import com.facebook.react.bridge.WritableMap;
-import java.io.IOException;
-import java.net.DatagramPacket;
-import java.net.DatagramSocket;
-import java.net.Inet4Address;
-import java.net.InetAddress;
-import java.security.SecureRandom;
-import java.util.Arrays;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
-
-public class OpenWrtNatModule extends ReactContextBaseJavaModule {
-  private static final int STUN_PORT = 19302;
-  private static final int MAGIC_COOKIE = 0x2112A442;
-  private static final int BINDING_REQUEST = 0x0001;
-  private static final int BINDING_SUCCESS = 0x0101;
-  private static final int MAPPED_ADDRESS = 0x0001;
-  private static final int XOR_MAPPED_ADDRESS = 0x0020;
-  private final ExecutorService executor = Executors.newSingleThreadExecutor();
-  private final SecureRandom random = new SecureRandom();
-
-  public OpenWrtNatModule(ReactApplicationContext context) { super(context); }
-  @Override public String getName() { return "OpenWrtNat"; }
-
-  @ReactMethod
-  public void detect(Promise promise) {
-    executor.execute(() -> {
-      DatagramSocket socket = null;
-      try {
-        socket = new DatagramSocket();
-        socket.setSoTimeout(4500);
-        StunMapping primary = query(socket, "stun.l.google.com");
-        StunMapping secondary = null;
-        try { secondary = query(socket, "stun1.l.google.com"); } catch (Exception ignored) { }
-        String behavior;
-        String typeLabel;
-        if (secondary == null) { behavior = "single-server"; typeLabel = "已取得公网映射（无法完成第二端点比对）"; }
-        else if (!primary.address.equals(secondary.address)) { behavior = "multiple-public-addresses"; typeLabel = "多公网地址或网络策略变化"; }
-        else if (primary.port != secondary.port) { behavior = "endpoint-dependent-mapping"; typeLabel = "对称 NAT（端点相关映射）"; }
-        else { behavior = "endpoint-independent-mapping"; typeLabel = "端点无关映射（锥型或受限锥型 NAT）"; }
-        WritableMap result = Arguments.createMap();
-        result.putString("publicAddress", primary.address);
-        result.putInt("publicPort", primary.port);
-        result.putString("primaryServer", primary.server);
-        result.putString("mappingBehavior", behavior);
-        result.putString("typeLabel", typeLabel);
-        if (secondary != null) {
-          result.putString("comparisonAddress", secondary.address);
-          result.putInt("comparisonPort", secondary.port);
-          result.putString("comparisonServer", secondary.server);
-        }
-        promise.resolve(result);
-      } catch (Exception error) {
-        String detail = error.getMessage() == null ? "未收到 STUN 服务器响应。" : error.getMessage();
-        promise.reject("NAT_DETECT_FAILED", "手机网络 NAT 检测失败：" + detail, error);
-      } finally { if (socket != null) socket.close(); }
-    });
-  }
-
-  private StunMapping query(DatagramSocket socket, String host) throws Exception {
-    InetAddress address = null;
-    for (InetAddress candidate : InetAddress.getAllByName(host)) if (candidate instanceof Inet4Address) { address = candidate; break; }
-    if (address == null) throw new IOException("STUN 服务未返回 IPv4 地址。");
-    byte[] transactionId = new byte[12];
-    random.nextBytes(transactionId);
-    byte[] request = new byte[20];
-    writeUnsignedShort(request, 0, BINDING_REQUEST);
-    writeUnsignedShort(request, 2, 0);
-    writeInt(request, 4, MAGIC_COOKIE);
-    System.arraycopy(transactionId, 0, request, 8, transactionId.length);
-    socket.send(new DatagramPacket(request, request.length, address, STUN_PORT));
-    long deadline = System.currentTimeMillis() + 4500;
-    while (System.currentTimeMillis() < deadline) {
-      byte[] response = new byte[576];
-      DatagramPacket packet = new DatagramPacket(response, response.length);
-      socket.receive(packet);
-      StunMapping mapping = parseResponse(packet.getData(), packet.getLength(), transactionId, host);
-      if (mapping != null) return mapping;
-    }
-    throw new IOException("STUN 响应不匹配。");
-  }
-
-  private StunMapping parseResponse(byte[] data, int length, byte[] transactionId, String server) throws IOException {
-    if (length < 20 || readUnsignedShort(data, 0) != BINDING_SUCCESS || readInt(data, 4) != MAGIC_COOKIE) return null;
-    if (!Arrays.equals(Arrays.copyOfRange(data, 8, 20), transactionId)) return null;
-    int end = Math.min(length, 20 + readUnsignedShort(data, 2));
-    for (int offset = 20; offset + 4 <= end;) {
-      int type = readUnsignedShort(data, offset);
-      int attributeLength = readUnsignedShort(data, offset + 2);
-      int valueOffset = offset + 4;
-      if (valueOffset + attributeLength > end) break;
-      if (type == XOR_MAPPED_ADDRESS || type == MAPPED_ADDRESS) {
-        StunMapping mapping = parseMappedAddress(data, valueOffset, attributeLength, type == XOR_MAPPED_ADDRESS, server);
-        if (mapping != null) return mapping;
-      }
-      offset = valueOffset + ((attributeLength + 3) & ~3);
-    }
-    throw new IOException("STUN 响应未包含 IPv4 公网映射。");
-  }
-
-  private StunMapping parseMappedAddress(byte[] data, int offset, int length, boolean xor, String server) {
-    if (length < 8 || data[offset + 1] != 0x01) return null;
-    int port = readUnsignedShort(data, offset + 2);
-    if (xor) port ^= (MAGIC_COOKIE >>> 16);
-    byte[] address = Arrays.copyOfRange(data, offset + 4, offset + 8);
-    if (xor) { address[0] ^= (byte) 0x21; address[1] ^= (byte) 0x12; address[2] ^= (byte) 0xA4; address[3] ^= (byte) 0x42; }
-    return new StunMapping((address[0] & 0xff) + "." + (address[1] & 0xff) + "." + (address[2] & 0xff) + "." + (address[3] & 0xff), port, server);
-  }
-
-  private static int readUnsignedShort(byte[] data, int offset) { return ((data[offset] & 0xff) << 8) | (data[offset + 1] & 0xff); }
-  private static int readInt(byte[] data, int offset) { return ((data[offset] & 0xff) << 24) | ((data[offset + 1] & 0xff) << 16) | ((data[offset + 2] & 0xff) << 8) | (data[offset + 3] & 0xff); }
-  private static void writeUnsignedShort(byte[] data, int offset, int value) { data[offset] = (byte) ((value >>> 8) & 0xff); data[offset + 1] = (byte) (value & 0xff); }
-  private static void writeInt(byte[] data, int offset, int value) { data[offset] = (byte) ((value >>> 24) & 0xff); data[offset + 1] = (byte) ((value >>> 16) & 0xff); data[offset + 2] = (byte) ((value >>> 8) & 0xff); data[offset + 3] = (byte) (value & 0xff); }
-  @Override public void invalidate() { executor.shutdownNow(); super.invalidate(); }
-
-  private static final class StunMapping {
-    final String address; final int port; final String server;
-    StunMapping(String address, int port, String server) { this.address = address; this.port = port; this.server = server; }
-  }
-}
-`,
 };
 
 function withOpenWrtSsh(config) {
   const appScheme = config.scheme || "openwrt-status";
   config = withAppBuildGradle(config, (modConfig) => {
-    let contents = modConfig.modResults.contents;
-    if (!contents.includes('debuggableVariants = ["debug"]')) {
-      contents = contents.replace(
-        /react\s*\{/,
-        'react {\n    debuggableVariants = ["debug"]',
-      );
-    }
-    if (
-      CUSTOM_NATIVE_BRIDGE_ENABLED &&
-      !contents.includes("com.github.mwiede:jsch")
-    ) {
-      contents = contents.replace(
+    if (!modConfig.modResults.contents.includes("com.github.mwiede:jsch")) {
+      modConfig.modResults.contents = modConfig.modResults.contents.replace(
         /dependencies\s*\{/,
         'dependencies {\n    implementation("com.github.mwiede:jsch:0.2.22")',
       );
     }
-    if (!CUSTOM_NATIVE_BRIDGE_ENABLED) {
-      contents = contents.replace(
-        /\s*implementation\("com\.github\.mwiede:jsch:0\.2\.22"\)/g,
-        "",
-      );
-    }
-    if (!contents.includes("openwrt-status-release.keystore")) {
-      contents = contents.replace(
-        /(signingConfigs\s*\{)/,
-        `$1
-        release {
-            // CI restores this persistent certificate from GitHub Actions Secrets.
-            // Using the same identity allows in-place upgrades from earlier releases.
-            storeFile file('openwrt-status-release.keystore')
-            storePassword System.getenv('ANDROID_RELEASE_KEYSTORE_PASSWORD')
-            keyAlias System.getenv('ANDROID_RELEASE_KEY_ALIAS')
-            keyPassword System.getenv('ANDROID_RELEASE_KEY_PASSWORD')
-        }`,
-      );
-    }
-    contents = contents.replace(
-      /(buildTypes\s*\{[\s\S]*?release\s*\{[\s\S]*?)signingConfig\s+signingConfigs\.debug/,
-      "$1signingConfig signingConfigs.release",
-    );
-    modConfig.modResults.contents = contents;
     return modConfig;
   });
 
   config = withMainApplication(config, (modConfig) => {
     let contents = modConfig.modResults.contents;
     const importLine = `import ${JAVA_PACKAGE}.OpenWrtSshPackage`;
-    if (!CUSTOM_NATIVE_BRIDGE_ENABLED) {
-      contents = contents.replace(`\n${importLine}\n`, "\n");
-      contents = contents.replace(/\s*add\(OpenWrtSshPackage\(\)\)/g, "");
-      modConfig.modResults.contents = contents;
-      return modConfig;
-    }
     if (!contents.includes(importLine)) {
-      contents = contents.replace(
-        /package [^\n]+\n/,
-        (match) => `${match}\n${importLine}\n`,
-      );
+      contents = contents.replace(/package [^\n]+\n/, (match) => `${match}\n${importLine}\n`);
     }
     if (!contents.includes("OpenWrtSshPackage()")) {
       if (contents.includes("PackageList(this).packages.apply {")) {
-        contents = contents.replace(
-          "PackageList(this).packages.apply {",
-          "PackageList(this).packages.apply {\n              add(OpenWrtSshPackage())",
-        );
+        contents = contents.replace("PackageList(this).packages.apply {", "PackageList(this).packages.apply {\n              add(OpenWrtSshPackage())");
       } else if (contents.includes("new PackageList(this).getPackages()")) {
-        contents = contents.replace(
-          "new PackageList(this).getPackages()",
-          "new PackageList(this).getPackages();\n    packages.add(new OpenWrtSshPackage())",
-        );
+        contents = contents.replace("new PackageList(this).getPackages()", "new PackageList(this).getPackages();\n    packages.add(new OpenWrtSshPackage())");
       } else {
         throw new Error("无法找到 MainApplication 的 ReactPackage 注册位置。");
       }
@@ -477,17 +289,7 @@ function withOpenWrtSsh(config) {
     const application = modConfig.modResults.manifest.application?.[0];
     if (!application) throw new Error("无法找到 Android Application 配置。");
     const metadata = application["meta-data"] ?? [];
-    if (!CUSTOM_NATIVE_BRIDGE_ENABLED) {
-      application["meta-data"] = metadata.filter(
-        (item) => item.$?.["android:name"] !== "android.app.shortcuts",
-      );
-      return modConfig;
-    }
-    if (
-      !metadata.some(
-        (item) => item.$?.["android:name"] === "android.app.shortcuts",
-      )
-    ) {
+    if (!metadata.some((item) => item.$?.["android:name"] === "android.app.shortcuts")) {
       metadata.push({
         $: {
           "android:name": "android.app.shortcuts",
@@ -499,61 +301,24 @@ function withOpenWrtSsh(config) {
     return modConfig;
   });
 
-  return withDangerousMod(config, [
-    "android",
-    async (modConfig) => {
-      const destination = path.join(
-        modConfig.modRequest.platformProjectRoot,
-        "app",
-        "src",
-        "main",
-        "java",
-        ...JAVA_PACKAGE.split("."),
-      );
-      const resourcesDirectory = path.join(
-        modConfig.modRequest.platformProjectRoot,
-        "app",
-        "src",
-        "main",
-        "res",
-      );
-      if (!CUSTOM_NATIVE_BRIDGE_ENABLED) {
-        // A prebuild can run over an existing android directory. Remove stale
-        // sources as well as skipping generation; otherwise Gradle still
-        // compiles the legacy JSch bridge even though it is not registered.
-        fs.rmSync(destination, { recursive: true, force: true });
-        fs.rmSync(
-          path.join(resourcesDirectory, "xml", "openwrt_status_shortcuts.xml"),
-          { force: true },
-        );
-        fs.rmSync(
-          path.join(resourcesDirectory, "values", "openwrt_strings.xml"),
-          { force: true },
-        );
-        return modConfig;
-      }
-      fs.mkdirSync(destination, { recursive: true });
-      Object.entries(SOURCE_FILES).forEach(([name, source]) =>
-        fs.writeFileSync(path.join(destination, name), source),
-      );
-      const xmlDirectory = path.join(resourcesDirectory, "xml");
-      const valuesDirectory = path.join(resourcesDirectory, "values");
-      fs.mkdirSync(xmlDirectory, { recursive: true });
-      fs.mkdirSync(valuesDirectory, { recursive: true });
-      fs.writeFileSync(
-        path.join(valuesDirectory, "openwrt_strings.xml"),
-        `<?xml version="1.0" encoding="utf-8"?>
+  return withDangerousMod(config, ["android", async (modConfig) => {
+    const destination = path.join(modConfig.modRequest.platformProjectRoot, "app", "src", "main", "java", ...JAVA_PACKAGE.split("."));
+    fs.mkdirSync(destination, { recursive: true });
+    Object.entries(SOURCE_FILES).forEach(([name, source]) => fs.writeFileSync(path.join(destination, name), source));
+    const resourcesDirectory = path.join(modConfig.modRequest.platformProjectRoot, "app", "src", "main", "res");
+    const xmlDirectory = path.join(resourcesDirectory, "xml");
+    const valuesDirectory = path.join(resourcesDirectory, "values");
+    fs.mkdirSync(xmlDirectory, { recursive: true });
+    fs.mkdirSync(valuesDirectory, { recursive: true });
+    fs.writeFileSync(path.join(valuesDirectory, "openwrt_strings.xml"), `<?xml version="1.0" encoding="utf-8"?>
 <resources>
   <string name="openwrt_shortcut_quick_short">快捷操作</string>
   <string name="openwrt_shortcut_quick_long">OpenWrt 快捷操作</string>
   <string name="openwrt_shortcut_diagnostics_short">网络诊断</string>
   <string name="openwrt_shortcut_diagnostics_long">按 WAN 网络诊断</string>
 </resources>
-`,
-      );
-      fs.writeFileSync(
-        path.join(xmlDirectory, "openwrt_status_shortcuts.xml"),
-        `<?xml version="1.0" encoding="utf-8"?>
+`);
+    fs.writeFileSync(path.join(xmlDirectory, "openwrt_status_shortcuts.xml"), `<?xml version="1.0" encoding="utf-8"?>
 <shortcuts xmlns:android="http://schemas.android.com/apk/res/android">
   <shortcut android:shortcutId="openwrt_quick_actions" android:enabled="true" android:icon="@mipmap/ic_launcher" android:shortcutShortLabel="@string/openwrt_shortcut_quick_short" android:shortcutLongLabel="@string/openwrt_shortcut_quick_long">
     <intent android:action="android.intent.action.VIEW" android:data="${appScheme}:///quick-actions" />
@@ -562,11 +327,9 @@ function withOpenWrtSsh(config) {
     <intent android:action="android.intent.action.VIEW" android:data="${appScheme}:///diagnostics" />
   </shortcut>
 </shortcuts>
-`,
-      );
-      return modConfig;
-    },
-  ]);
+`);
+    return modConfig;
+  }]);
 }
 
 module.exports = withOpenWrtSsh;

@@ -1,9 +1,19 @@
 import React, { useEffect, useState } from "react";
 import { ActivityIndicator, StyleSheet, Text, View } from "react-native";
+import { useFonts } from "expo-font";
 import * as SplashScreen from "expo-splash-screen";
+import MaterialIcons from "@expo/vector-icons/MaterialIcons";
 
 import { useColors } from "@/hooks/use-colors";
 import { useThemeContext } from "@/lib/theme-provider";
+
+try {
+  SplashScreen.preventAutoHideAsync();
+} catch {
+  // The native splash may already be hidden on web or during hot reload.
+}
+
+const materialFont = (MaterialIcons.font as Record<string, unknown>).material;
 
 export function SplashLoader({ children }: { children: React.ReactNode }) {
   const colors = useColors();
@@ -11,26 +21,29 @@ export function SplashLoader({ children }: { children: React.ReactNode }) {
   const isDark = colorScheme === "dark";
   const [progress, setProgress] = useState(8);
   const [isReady, setIsReady] = useState(false);
+  const [fontsLoaded] = useFonts({ material: materialFont as never });
+
   useEffect(() => {
-    // 仅在 React 树完成首帧提交后调用原生 Splash API，避免模块加载阶段的
-    // 原生调用在 Android 16 上放大为进程启动异常。
+    // Hide the native splash as soon as the React tree exists. Otherwise it covers
+    // this React progress screen and the user only sees the static launcher image.
     SplashScreen.hideAsync().catch(() => undefined);
   }, []);
 
   useEffect(() => {
-    // 路由树不再依赖字体资源加载；图标组件自行处理字体可用性。
+    // The route tree must never be gated by a font request. A failed or delayed font
+    // request used to leave this view at 100% forever on some Android releases.
     const progressTimer = setInterval(() => {
       setProgress((current) => Math.min(94, current + 12));
     }, 100);
-    const completeTimer = setTimeout(() => setProgress(100), 420);
-    const readyTimer = setTimeout(() => setIsReady(true), 620);
+    const completeTimer = setTimeout(() => setProgress(100), fontsLoaded ? 520 : 760);
+    const readyTimer = setTimeout(() => setIsReady(true), fontsLoaded ? 760 : 1_000);
 
     return () => {
       clearInterval(progressTimer);
       clearTimeout(completeTimer);
       clearTimeout(readyTimer);
     };
-  }, []);
+  }, [fontsLoaded]);
 
   if (!isReady) {
     return (

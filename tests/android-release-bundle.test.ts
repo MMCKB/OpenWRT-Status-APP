@@ -15,15 +15,6 @@ const obsoleteBundlePath = resolve(
   "android/app/src/main/assets/index.android.bundle",
 );
 const routerFormPath = resolve(projectRoot, "app/(tabs)/router-form.tsx");
-const hapticTabPath = resolve(projectRoot, "components/haptic-tab.tsx");
-const rootLayoutPath = resolve(projectRoot, "app/_layout.tsx");
-const splashLoaderPath = resolve(projectRoot, "components/splash-loader.tsx");
-const iconSymbolPath = resolve(projectRoot, "components/ui/icon-symbol.tsx");
-const startupErrorBoundaryPath = resolve(
-  projectRoot,
-  "components/startup-error-boundary.tsx",
-);
-const gitignorePath = resolve(projectRoot, ".gitignore");
 const wirelessManagerPath = resolve(projectRoot, "app/wireless-manager.tsx");
 const serviceHealthPath = resolve(projectRoot, "app/services-health.tsx");
 const servicesTabPath = resolve(projectRoot, "app/(tabs)/services.tsx");
@@ -36,11 +27,6 @@ const mainActivityPath = resolve(
   projectRoot,
   "android/app/src/main/java/com/app/openwrtstatusapp/MainActivity.kt",
 );
-const mainApplicationPath = resolve(
-  projectRoot,
-  "android/app/src/main/java/com/app/openwrtstatusapp/MainApplication.kt",
-);
-const sshPluginPath = resolve(projectRoot, "plugins/with-openwrt-ssh.js");
 const sshPackagePath = resolve(
   projectRoot,
   "android/app/src/main/java/com/openwrtstatus/ssh/OpenWrtSshPackage.java",
@@ -67,9 +53,9 @@ describe("Android Release JavaScript bundle", () => {
     const gradleVersion = gradle.match(/versionName\s+"([0-9.]+)"/)?.[1];
     const gradleVersionCode = gradle.match(/versionCode\s+(\d+)/)?.[1];
 
-    expect(expoVersion).toBe("1.0.33");
+    expect(expoVersion).toBe("1.0.27");
     expect(expoVersion).toBe(gradleVersion);
-    expect(expoVersionCode).toBe("29");
+    expect(expoVersionCode).toBe("23");
     expect(expoVersionCode).toBe(gradleVersionCode);
   });
 
@@ -79,54 +65,6 @@ describe("Android Release JavaScript bundle", () => {
     expect(gradle).not.toMatch(
       /debuggableVariants\s*=\s*\["debug",\s*"release"\]/,
     );
-  });
-
-  it("通过 Expo Router 兼容入口使用导航 API，避免 SDK 57 发布打包被直接导入拦截", () => {
-    const routerForm = readFileSync(routerFormPath, "utf8");
-    const hapticTab = readFileSync(hapticTabPath, "utf8");
-
-    expect(routerForm).toContain('from "expo-router/react-navigation"');
-    expect(routerForm).not.toContain('from "@react-navigation/');
-    expect(hapticTab).toContain('from "expo-router/js-tabs"');
-    expect(hapticTab).toContain('from "expo-router/react-navigation"');
-    expect(hapticTab).not.toContain('from "@react-navigation/');
-  });
-
-  it("在 Android 上禁用会触发 React Native 0.86 Fabric 断言的栈转场动画", () => {
-    const rootLayout = readFileSync(rootLayoutPath, "utf8");
-
-    expect(rootLayout).toContain(
-      'animation: Platform.OS === "android" ? "none" : "default"',
-    );
-  });
-
-  it("启动链路不在模块加载时预加载字体或调用 Splash API，并由错误边界保护渲染失败", () => {
-    const rootLayout = readFileSync(rootLayoutPath, "utf8");
-    const splashLoader = readFileSync(splashLoaderPath, "utf8");
-    const iconSymbol = readFileSync(iconSymbolPath, "utf8");
-    const startupErrorBoundary = readFileSync(startupErrorBoundaryPath, "utf8");
-
-    expect(rootLayout).toContain("StartupErrorBoundary");
-    expect(splashLoader).not.toContain("preventAutoHideAsync");
-    expect(splashLoader).not.toContain("useFonts");
-    expect(iconSymbol).not.toContain("useFonts");
-    expect(startupErrorBoundary).toContain("getDerivedStateFromError");
-  });
-
-  it("Android 16 原生启动隔离包不注册手写 SSH/NAT ReactPackage", () => {
-    const mainApplication = readFileSync(mainApplicationPath, "utf8");
-    const sshPlugin = readFileSync(sshPluginPath, "utf8");
-
-    expect(mainApplication).not.toContain("OpenWrtSshPackage");
-    expect(mainApplication).not.toContain("add(OpenWrtSshPackage())");
-    expect(sshPlugin).toContain("const CUSTOM_NATIVE_BRIDGE_ENABLED = false");
-  });
-
-  it("不允许原生构建报告进入 Expo Router 的 app 路由目录", () => {
-    const gitignore = readFileSync(gitignorePath, "utf8");
-
-    expect(existsSync(resolve(projectRoot, "app/build"))).toBe(false);
-    expect(gitignore).toContain("/app/build/");
   });
 
   it("不保留会覆盖新源码的预构建 bundle，并在 CI 中拒绝这类文件", () => {
@@ -150,7 +88,7 @@ describe("Android Release JavaScript bundle", () => {
     expect(gradle).toContain("ANDROID_RELEASE_KEYSTORE_PASSWORD");
   });
 
-  it("当前源码包含服务、管理权扩展和密码显示，并允许 Android 16 最小包隔离原生桥接", () => {
+  it("当前源码包含服务、管理权扩展和密码显示，且不保留已取消的返回手势与定时重启功能", () => {
     const routerForm = readFileSync(routerFormPath, "utf8");
     const wirelessManager = readFileSync(wirelessManagerPath, "utf8");
     const serviceHealth = readFileSync(serviceHealthPath, "utf8");
@@ -160,9 +98,10 @@ describe("Android Release JavaScript bundle", () => {
     const luciTheme = readFileSync(luciThemePath, "utf8");
     const firewall = readFileSync(firewallPath, "utf8");
     const mainActivity = readFileSync(mainActivityPath, "utf8");
+    const sshPackage = readFileSync(sshPackagePath, "utf8");
+    const natModule = readFileSync(natModulePath, "utf8");
     const nativeNat = readFileSync(nativeNatPath, "utf8");
     const routerProvider = readFileSync(routerProviderPath, "utf8");
-    const sshPlugin = readFileSync(sshPluginPath, "utf8");
 
     expect(routerForm).toContain("isPasswordVisible");
     expect(routerForm).toContain("isSshPasswordVisible");
@@ -213,36 +152,9 @@ describe("Android Release JavaScript bundle", () => {
     ).toBe(false);
     expect(mainActivity).not.toContain("setPredictiveBackEnabled");
     expect(routerProvider).not.toContain("predictiveBackEnabled");
-    const nativeBridgeIsolated = sshPlugin.includes(
-      "const CUSTOM_NATIVE_BRIDGE_ENABLED = false",
-    );
-    if (nativeBridgeIsolated) {
-      expect(existsSync(sshPackagePath)).toBe(false);
-      expect(existsSync(natModulePath)).toBe(false);
-      expect(sshPlugin).toContain("fs.rmSync(destination");
-      const manifest = readFileSync(
-        resolve(projectRoot, "android/app/src/main/AndroidManifest.xml"),
-        "utf8",
-      );
-      expect(manifest).not.toContain("android.app.shortcuts");
-      expect(
-        existsSync(
-          resolve(
-            projectRoot,
-            "android/app/src/main/res/xml/openwrt_status_shortcuts.xml",
-          ),
-        ),
-      ).toBe(false);
-    } else {
-      const sshPackage = readFileSync(sshPackagePath, "utf8");
-      const natModule = readFileSync(natModulePath, "utf8");
-      expect(sshPackage).toContain("new OpenWrtNatModule(reactContext)");
-      expect(sshPackage).toContain(
-        "Unable to initialize OpenWrt native modules",
-      );
-      expect(natModule).toContain('return "OpenWrtNat"');
-      expect(natModule).toContain("stun.l.google.com");
-    }
+    expect(sshPackage).toContain("new OpenWrtNatModule(reactContext)");
+    expect(natModule).toContain('return "OpenWrtNat"');
+    expect(natModule).toContain("stun.l.google.com");
     expect(nativeNat).toContain("detectPhoneNat");
     expect(nativeNat).not.toContain("native-ssh");
     expect(routerProvider).toContain("已有同名路由器，请使用不同的名称。");

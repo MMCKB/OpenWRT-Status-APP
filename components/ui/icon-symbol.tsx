@@ -1,4 +1,5 @@
 import MaterialIcons from "@expo/vector-icons/MaterialIcons";
+import { useFonts } from "expo-font";
 import type { SymbolWeight } from "expo-symbols";
 import type { ComponentProps } from "react";
 import type { OpaqueColorValue, StyleProp, TextStyle } from "react-native";
@@ -65,6 +66,8 @@ const MAPPING: Record<string, MaterialIconName> = {
   "ellipsis.circle.fill": "more-vert",
 };
 
+const materialFont = (MaterialIcons.font as Record<string, unknown>).material;
+
 export function IconSymbol({
   name,
   size = 24,
@@ -77,10 +80,12 @@ export function IconSymbol({
   style?: StyleProp<TextStyle>;
   weight?: SymbolWeight;
 }) {
+  const [fontLoaded] = useFonts({ material: materialFont as never });
   const mappedName = MAPPING[name] ?? (name as MaterialIconName);
   const iconName = Object.prototype.hasOwnProperty.call(MaterialIcons.glyphMap, mappedName)
     ? mappedName
     : "help-outline";
 
+  if (!fontLoaded) return null;
   return <MaterialIcons color={color} size={size} name={iconName} style={style} />;
 }

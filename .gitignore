@@ -45,9 +45,6 @@ app-example
 /ios
 
 # Android local configuration, build caches, native intermediates, and signing material
-/.gradle/
-/local.properties
-/app/build/
 /android/.gradle/
 /android/build/
 /android/app/build/

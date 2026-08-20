@@ -25,7 +25,6 @@ import {
   subscribeSafeAreaInsets,
 } from "@/lib/_core/manus-runtime";
 import { SplashLoader } from "@/components/splash-loader";
-import { StartupErrorBoundary } from "@/components/startup-error-boundary";
 import { AppDialogProvider } from "@/components/app-dialog";
 import { RouterProvider } from "@/lib/router-provider";
 
@@ -108,6 +107,7 @@ export default function RootLayout() {
                     <RootNavigator />
                     <StatusBar
                       style={colorScheme === "dark" ? "light" : "dark"}
+                      backgroundColor={colors.background}
                     />
                   </SafeAreaView>
                 </AppDialogProvider>
@@ -119,11 +119,7 @@ export default function RootLayout() {
     );
   }
 
-  const content = (
-    <StartupErrorBoundary>
-      <ThemedAppContent />
-    </StartupErrorBoundary>
-  );
+  const content = <ThemedAppContent />;
 
   const shouldOverrideSafeArea = Platform.OS === "web";
 
@@ -157,11 +153,7 @@ function RootNavigator() {
       screenOptions={{
         headerShown: false,
         contentStyle: { backgroundColor: colors.background },
-        // React Native 0.86/Fabric currently has an Android assertion crash in
-        // animated React Navigation stack transitions. Upstream tracking:
-        // https://github.com/software-mansion/react-native-reanimated/issues/9785
-        // Keep native navigation deterministic until Expo includes the fix.
-        animation: Platform.OS === "android" ? "none" : "default",
+        animation: "default",
         gestureEnabled: false,
       }}
     >
