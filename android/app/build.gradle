@@ -93,8 +93,8 @@ android {
         applicationId 'com.app.openwrtstatusapp'
         minSdkVersion rootProject.ext.minSdkVersion
         targetSdkVersion rootProject.ext.targetSdkVersion
-        versionCode 26
-        versionName "1.0.30"
+        versionCode 29
+        versionName "1.0.33"
 
         buildConfigField "String", "REACT_NATIVE_RELEASE_LEVEL", "\"${findProperty('reactNativeReleaseLevel') ?: 'stable'}\""
     }
@@ -162,7 +162,6 @@ android {
 }
 
 dependencies {
-    implementation("com.github.mwiede:jsch:0.2.22")
     // The version of react-native is set by the React Native Gradle Plugin
     implementation("com.facebook.react:react-android")
 

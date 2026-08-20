@@ -8,6 +8,9 @@ const fs = require("fs");
 const path = require("path");
 
 const JAVA_PACKAGE = "com.openwrtstatus.ssh";
+// Android 16 设备发生 React 界面渲染前的进程级崩溃。暂不注册手写桥接包，
+// 以验证该 legacy ReactPackage 是否为启动根因；原生源码保留以便后续兼容恢复。
+const CUSTOM_NATIVE_BRIDGE_ENABLED = false;
 const SOURCE_FILES = {
   "OpenWrtSshPackage.java": `package ${JAVA_PACKAGE};
 
@@ -15,6 +18,7 @@ import com.facebook.react.ReactPackage;
 import com.facebook.react.bridge.NativeModule;
 import com.facebook.react.bridge.ReactApplicationContext;
 import com.facebook.react.uimanager.ViewManager;
+import android.util.Log;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
@@ -23,8 +27,13 @@ public class OpenWrtSshPackage implements ReactPackage {
   @Override
   public List<NativeModule> createNativeModules(ReactApplicationContext reactContext) {
     List<NativeModule> modules = new ArrayList<>();
-    modules.add(new OpenWrtSshModule(reactContext));
-    modules.add(new OpenWrtNatModule(reactContext));
+    try {
+      modules.add(new OpenWrtSshModule(reactContext));
+      modules.add(new OpenWrtNatModule(reactContext));
+    } catch (Throwable error) {
+      // 原生桥接不可用时允许 Expo 继续启动，功能层会提示 SSH/NAT 不可用。
+      Log.e("OpenWrtStatus", "Unable to initialize OpenWrt native modules", error);
+    }
     return modules;
   }
 
@@ -389,14 +398,23 @@ function withOpenWrtSsh(config) {
     let contents = modConfig.modResults.contents;
     if (!contents.includes('debuggableVariants = ["debug"]')) {
       contents = contents.replace(
-        /react\s*\{/, 
+        /react\s*\{/,
         'react {\n    debuggableVariants = ["debug"]',
       );
     }
-    if (!contents.includes("com.github.mwiede:jsch")) {
+    if (
+      CUSTOM_NATIVE_BRIDGE_ENABLED &&
+      !contents.includes("com.github.mwiede:jsch")
+    ) {
       contents = contents.replace(
         /dependencies\s*\{/,
         'dependencies {\n    implementation("com.github.mwiede:jsch:0.2.22")',
+      );
+    }
+    if (!CUSTOM_NATIVE_BRIDGE_ENABLED) {
+      contents = contents.replace(
+        /\s*implementation\("com\.github\.mwiede:jsch:0\.2\.22"\)/g,
+        "",
       );
     }
     if (!contents.includes("openwrt-status-release.keystore")) {
@@ -424,14 +442,29 @@ function withOpenWrtSsh(config) {
   config = withMainApplication(config, (modConfig) => {
     let contents = modConfig.modResults.contents;
     const importLine = `import ${JAVA_PACKAGE}.OpenWrtSshPackage`;
+    if (!CUSTOM_NATIVE_BRIDGE_ENABLED) {
+      contents = contents.replace(`\n${importLine}\n`, "\n");
+      contents = contents.replace(/\s*add\(OpenWrtSshPackage\(\)\)/g, "");
+      modConfig.modResults.contents = contents;
+      return modConfig;
+    }
     if (!contents.includes(importLine)) {
-      contents = contents.replace(/package [^\n]+\n/, (match) => `${match}\n${importLine}\n`);
+      contents = contents.replace(
+        /package [^\n]+\n/,
+        (match) => `${match}\n${importLine}\n`,
+      );
     }
     if (!contents.includes("OpenWrtSshPackage()")) {
       if (contents.includes("PackageList(this).packages.apply {")) {
-        contents = contents.replace("PackageList(this).packages.apply {", "PackageList(this).packages.apply {\n              add(OpenWrtSshPackage())");
+        contents = contents.replace(
+          "PackageList(this).packages.apply {",
+          "PackageList(this).packages.apply {\n              add(OpenWrtSshPackage())",
+        );
       } else if (contents.includes("new PackageList(this).getPackages()")) {
-        contents = contents.replace("new PackageList(this).getPackages()", "new PackageList(this).getPackages();\n    packages.add(new OpenWrtSshPackage())");
+        contents = contents.replace(
+          "new PackageList(this).getPackages()",
+          "new PackageList(this).getPackages();\n    packages.add(new OpenWrtSshPackage())",
+        );
       } else {
         throw new Error("无法找到 MainApplication 的 ReactPackage 注册位置。");
       }
@@ -444,7 +477,17 @@ function withOpenWrtSsh(config) {
     const application = modConfig.modResults.manifest.application?.[0];
     if (!application) throw new Error("无法找到 Android Application 配置。");
     const metadata = application["meta-data"] ?? [];
-    if (!metadata.some((item) => item.$?.["android:name"] === "android.app.shortcuts")) {
+    if (!CUSTOM_NATIVE_BRIDGE_ENABLED) {
+      application["meta-data"] = metadata.filter(
+        (item) => item.$?.["android:name"] !== "android.app.shortcuts",
+      );
+      return modConfig;
+    }
+    if (
+      !metadata.some(
+        (item) => item.$?.["android:name"] === "android.app.shortcuts",
+      )
+    ) {
       metadata.push({
         $: {
           "android:name": "android.app.shortcuts",
@@ -456,24 +499,61 @@ function withOpenWrtSsh(config) {
     return modConfig;
   });
 
-  return withDangerousMod(config, ["android", async (modConfig) => {
-    const destination = path.join(modConfig.modRequest.platformProjectRoot, "app", "src", "main", "java", ...JAVA_PACKAGE.split("."));
-    fs.mkdirSync(destination, { recursive: true });
-    Object.entries(SOURCE_FILES).forEach(([name, source]) => fs.writeFileSync(path.join(destination, name), source));
-    const resourcesDirectory = path.join(modConfig.modRequest.platformProjectRoot, "app", "src", "main", "res");
-    const xmlDirectory = path.join(resourcesDirectory, "xml");
-    const valuesDirectory = path.join(resourcesDirectory, "values");
-    fs.mkdirSync(xmlDirectory, { recursive: true });
-    fs.mkdirSync(valuesDirectory, { recursive: true });
-    fs.writeFileSync(path.join(valuesDirectory, "openwrt_strings.xml"), `<?xml version="1.0" encoding="utf-8"?>
+  return withDangerousMod(config, [
+    "android",
+    async (modConfig) => {
+      const destination = path.join(
+        modConfig.modRequest.platformProjectRoot,
+        "app",
+        "src",
+        "main",
+        "java",
+        ...JAVA_PACKAGE.split("."),
+      );
+      const resourcesDirectory = path.join(
+        modConfig.modRequest.platformProjectRoot,
+        "app",
+        "src",
+        "main",
+        "res",
+      );
+      if (!CUSTOM_NATIVE_BRIDGE_ENABLED) {
+        // A prebuild can run over an existing android directory. Remove stale
+        // sources as well as skipping generation; otherwise Gradle still
+        // compiles the legacy JSch bridge even though it is not registered.
+        fs.rmSync(destination, { recursive: true, force: true });
+        fs.rmSync(
+          path.join(resourcesDirectory, "xml", "openwrt_status_shortcuts.xml"),
+          { force: true },
+        );
+        fs.rmSync(
+          path.join(resourcesDirectory, "values", "openwrt_strings.xml"),
+          { force: true },
+        );
+        return modConfig;
+      }
+      fs.mkdirSync(destination, { recursive: true });
+      Object.entries(SOURCE_FILES).forEach(([name, source]) =>
+        fs.writeFileSync(path.join(destination, name), source),
+      );
+      const xmlDirectory = path.join(resourcesDirectory, "xml");
+      const valuesDirectory = path.join(resourcesDirectory, "values");
+      fs.mkdirSync(xmlDirectory, { recursive: true });
+      fs.mkdirSync(valuesDirectory, { recursive: true });
+      fs.writeFileSync(
+        path.join(valuesDirectory, "openwrt_strings.xml"),
+        `<?xml version="1.0" encoding="utf-8"?>
 <resources>
   <string name="openwrt_shortcut_quick_short">快捷操作</string>
   <string name="openwrt_shortcut_quick_long">OpenWrt 快捷操作</string>
   <string name="openwrt_shortcut_diagnostics_short">网络诊断</string>
   <string name="openwrt_shortcut_diagnostics_long">按 WAN 网络诊断</string>
 </resources>
-`);
-    fs.writeFileSync(path.join(xmlDirectory, "openwrt_status_shortcuts.xml"), `<?xml version="1.0" encoding="utf-8"?>
+`,
+      );
+      fs.writeFileSync(
+        path.join(xmlDirectory, "openwrt_status_shortcuts.xml"),
+        `<?xml version="1.0" encoding="utf-8"?>
 <shortcuts xmlns:android="http://schemas.android.com/apk/res/android">
   <shortcut android:shortcutId="openwrt_quick_actions" android:enabled="true" android:icon="@mipmap/ic_launcher" android:shortcutShortLabel="@string/openwrt_shortcut_quick_short" android:shortcutLongLabel="@string/openwrt_shortcut_quick_long">
     <intent android:action="android.intent.action.VIEW" android:data="${appScheme}:///quick-actions" />
@@ -482,9 +562,11 @@ function withOpenWrtSsh(config) {
     <intent android:action="android.intent.action.VIEW" android:data="${appScheme}:///diagnostics" />
   </shortcut>
 </shortcuts>
-`);
-    return modConfig;
-  }]);
+`,
+      );
+      return modConfig;
+    },
+  ]);
 }
 
 module.exports = withOpenWrtSsh;

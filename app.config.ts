@@ -47,7 +47,7 @@ const config: ExpoConfig = {
       projectId: "c4d4af65-fe2b-4803-8ba9-5efecb95d126",
     },
   },
-  version: "1.0.30",
+  version: "1.0.33",
   orientation: "portrait",
   icon: "./assets/images/icon.png",
   scheme: env.scheme,
@@ -68,7 +68,7 @@ const config: ExpoConfig = {
       backgroundColor: "#F6F5F1",
       foregroundImage: "./assets/images/android-icon-foreground.png",
     },
-    versionCode: 26,
+    versionCode: 29,
     package: env.androidPackage,
     permissions: ["POST_NOTIFICATIONS"],
     intentFilters: [

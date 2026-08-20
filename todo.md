@@ -90,3 +90,7 @@
 - [x] 将 main 分支升级至 Expo SDK 57，并审计、对齐受影响的 React Native、Expo 模块及原生构建依赖
 - [x] 修复 Expo Router SDK 57 的导航兼容与 Android Fabric 栈转场启动崩溃，并验证 v1.0.29 四 ABI 稳定签名 APK
 - [x] 移除被 Expo Router 当作路由加载的历史 Kotlin/Gradle app/build 测试报告，新增发布门禁并验证 v1.0.30 四 ABI 稳定签名 APK
+- [x] 构建不注册自定义 SSH/NAT ReactPackage 的最小 Android 启动包，并完成 v1.0.33 四 ABI 稳定签名 Release 验证
+- [x] 在 Android 16 ARM64 真机安装 v1.0.33，确认最小启动包仍然闪退，证明自定义 SSH/NAT 原生模块并非根因
+- [x] 在 SSH/NAT 原生模块已排除后停止进一步最小化排查，按用户要求回退至 Expo SDK 升级前版本
+- [x] 将 GitHub main、Release 与提交历史回退至 Expo SDK 57 升级前的最后稳定版本，并清理后续升级记录

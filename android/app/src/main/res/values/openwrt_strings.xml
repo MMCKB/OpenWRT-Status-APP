@@ -1,7 +1,0 @@
-<?xml version="1.0" encoding="utf-8"?>
-<resources>
-  <string name="openwrt_shortcut_quick_short">快捷操作</string>
-  <string name="openwrt_shortcut_quick_long">OpenWrt 快捷操作</string>
-  <string name="openwrt_shortcut_diagnostics_short">网络诊断</string>
-  <string name="openwrt_shortcut_diagnostics_long">按 WAN 网络诊断</string>
-</resources>

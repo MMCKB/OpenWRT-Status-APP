@@ -25,6 +25,7 @@ import {
   subscribeSafeAreaInsets,
 } from "@/lib/_core/manus-runtime";
 import { SplashLoader } from "@/components/splash-loader";
+import { StartupErrorBoundary } from "@/components/startup-error-boundary";
 import { AppDialogProvider } from "@/components/app-dialog";
 import { RouterProvider } from "@/lib/router-provider";
 
@@ -118,7 +119,11 @@ export default function RootLayout() {
     );
   }
 
-  const content = <ThemedAppContent />;
+  const content = (
+    <StartupErrorBoundary>
+      <ThemedAppContent />
+    </StartupErrorBoundary>
+  );
 
   const shouldOverrideSafeArea = Platform.OS === "web";
 
