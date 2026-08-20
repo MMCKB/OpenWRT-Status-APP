@@ -88,6 +88,9 @@ export default function ServicesHealthScreen() {
     [health],
   );
   const disk = health?.disks[0] ?? null;
+  const highestTemperature = health?.temperaturesC.length
+    ? Math.max(...health.temperaturesC)
+    : null;
   const disabled = !hasRouter || !isSupported || isRunning || isLoading;
 
   function confirmServiceAction(
@@ -424,6 +427,14 @@ export default function ServicesHealthScreen() {
                     ? "warning"
                     : "success"
               }
+              progress={memoryPercent === null ? null : memoryPercent / 100}
+              progressLabel={
+                memoryPercent !== null && memoryPercent >= 75
+                  ? memoryPercent >= 90
+                    ? "危险：内存占用过高"
+                    : "警告：内存占用较高"
+                  : undefined
+              }
             />
             <MetricTile
               icon="storage"
@@ -443,7 +454,25 @@ export default function ServicesHealthScreen() {
                 disk?.usePercent !== undefined &&
                 disk.usePercent >= 90
                   ? "danger"
-                  : "normal"
+                  : disk?.usePercent !== null &&
+                      disk?.usePercent !== undefined &&
+                      disk.usePercent >= 75
+                    ? "warning"
+                    : "normal"
+              }
+              progress={
+                disk?.usePercent === null || disk?.usePercent === undefined
+                  ? null
+                  : disk.usePercent / 100
+              }
+              progressLabel={
+                disk?.usePercent !== null &&
+                disk?.usePercent !== undefined &&
+                disk.usePercent >= 75
+                  ? disk.usePercent >= 90
+                    ? "危险：存储空间不足"
+                    : "警告：存储空间偏低"
+                  : undefined
               }
             />
           </View>
@@ -463,6 +492,14 @@ export default function ServicesHealthScreen() {
                   : health?.temperaturesC.some((value) => value >= 70)
                     ? "warning"
                     : "normal"
+              }
+              progress={highestTemperature === null ? null : highestTemperature / 100}
+              progressLabel={
+                highestTemperature !== null && highestTemperature >= 70
+                  ? highestTemperature >= 85
+                    ? "危险：温度过高"
+                    : "警告：温度偏高"
+                  : undefined
               }
             />
             <MetricTile
