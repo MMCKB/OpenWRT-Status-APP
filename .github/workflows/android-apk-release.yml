@@ -41,6 +41,14 @@ jobs:
           ANDROID_RELEASE_KEY_PASSWORD: ${{ secrets.ANDROID_RELEASE_KEY_PASSWORD }}
         run: ./gradlew --no-daemon test lint assembleRelease
 
+      - name: Upload signed four-ABI APK artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: openwrt-status-k1-signed-apks-${{ github.run_number }}
+          path: app/build/outputs/apk/release/*.apk
+          if-no-files-found: error
+          retention-days: 14
+
       - name: Publish GitHub Release assets
         if: github.ref_type == 'tag'
         uses: softprops/action-gh-release@v2
