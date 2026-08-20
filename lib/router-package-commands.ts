@@ -15,6 +15,11 @@ export interface ApkRepository {
   deleted?: boolean;
 }
 
+/** OpenWrt 25.12 APK feed files managed by the application. */
+export const APK_CUSTOM_FEEDS_SOURCE =
+  "/etc/apk/repositories.d/customfeeds.list";
+export const APK_DIST_FEEDS_SOURCE = "/etc/apk/repositories.d/distfeeds.list";
+
 function quotePackageName(name: string): string {
   const sanitized = name.trim().replace(/[^a-zA-Z0-9+._:@/-]/g, "");
   if (!sanitized) throw new Error("软件包名称无效。");
@@ -78,16 +83,21 @@ export function buildApkRemoveCommand(packageName: string): string {
   return `apk del ${quotePackageName(packageName)}`;
 }
 
-/** 读取 /etc/apk/repositories 的每个有效条目。 */
+/**
+ * 读取 OpenWrt APK feed 条目。
+ *
+ * OpenWrt 25.12 通常把官方源和自定义源分别保存在 distfeeds.list 与
+ * customfeeds.list；先显式读取二者，再兼容其他 repositories.d 文件及旧路径。
+ */
 export function buildApkRepositoriesSnapshotCommand(): string {
-  return `if ! command -v apk >/dev/null 2>&1; then echo 'ERROR|apk_missing'; exit 2; fi; found=0; for file in /etc/apk/repositories /etc/apk/repositories.d/*; do [ -f "$file" ] || continue; found=1; awk -v source="$file" '{ raw=$0; sub(/\r$/, "", raw); if (raw ~ /^[[:space:]]*$/) next; enabled=1; if (raw ~ /^[[:space:]]*#/) { enabled=0; sub(/^[[:space:]]*#[[:space:]]*/, "", raw); } if (raw != "") printf "REPO|%s|%d|%d|%s\n", source, NR, enabled, raw; }' "$file"; done; [ "$found" -eq 1 ] || { echo 'ERROR|repositories_missing'; exit 2; }`;
+  return `if ! command -v apk >/dev/null 2>&1; then echo 'ERROR|apk_missing'; exit 2; fi; found=0; seen=' '; for file in ${APK_CUSTOM_FEEDS_SOURCE} ${APK_DIST_FEEDS_SOURCE} /etc/apk/repositories.d/*.list /etc/apk/repositories /etc/apk/repositories.d/*; do [ -f "$file" ] || continue; case "$seen" in *" $file "*) continue ;; esac; seen="$seen$file "; found=1; awk -v source="$file" '{ raw=$0; sub(/\r$/, "", raw); if (raw ~ /^[[:space:]]*$/) next; enabled=1; if (raw ~ /^[[:space:]]*#/) { enabled=0; sub(/^[[:space:]]*#[[:space:]]*/, "", raw); } if (raw != "") printf "REPO|%s|%d|%d|%s\n", source, NR, enabled, raw; }' "$file"; done; [ "$found" -eq 1 ] || { echo 'ERROR|repositories_missing'; exit 2; }`;
 }
 
 /**
  * 受控保存 APK 仓库列表。仅接受 HTTP(S) 地址，保存前备份，并原子替换后更新索引。
  */
 function normalizeRepositorySource(source: string | undefined) {
-  const resolved = source || "/etc/apk/repositories";
+  const resolved = source || APK_CUSTOM_FEEDS_SOURCE;
   if (
     resolved !== "/etc/apk/repositories" &&
     !/^\/etc\/apk\/repositories\.d\/[A-Za-z0-9._-]+$/.test(resolved)

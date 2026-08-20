@@ -37,7 +37,7 @@ const actions: {
 
 export default function DiagnosticsScreen() {
   const colors = useColors();
-  const { selectedStatus } = useRouterStore();
+  const { selectedStatus, settings } = useRouterStore();
   const { execute, hasRouter, isRunning, isSupported, error } = useManagedSsh();
   const wanInterfaces = useMemo(
     () => (selectedStatus?.interfaces ?? []).filter(isWanInterface),
@@ -52,9 +52,18 @@ export default function DiagnosticsScreen() {
   const [output, setOutput] = useState<string | null>(null);
   const activeWan = wan || wanInterfaces[0]?.name || "";
 
+  function showResult(result: string) {
+    if (settings.diagnosticOutputDisplay !== "dialog") setOutput(result);
+    if (settings.diagnosticOutputDisplay !== "page") {
+      Alert.alert("命令输出", result.trim() || "命令未返回输出。", [
+        { text: "关闭", style: "cancel" },
+      ]);
+    }
+  }
+
   async function run(kind: DiagnosticKind) {
     try {
-      setOutput(
+      showResult(
         await execute(
           buildWanDiagnosticCommand(activeWan, kind, target, Number(port)),
         ),
@@ -63,7 +72,7 @@ export default function DiagnosticsScreen() {
   }
   async function runDnsLatency(family: "ipv4" | "ipv6") {
     try {
-      setOutput(
+      showResult(
         await execute(
           buildDnsLatencyCommand(
             activeWan,
@@ -77,7 +86,7 @@ export default function DiagnosticsScreen() {
   }
   async function runNat() {
     try {
-      setOutput(await execute(buildNatDiagnosticCommand(activeWan)));
+      showResult(await execute(buildNatDiagnosticCommand(activeWan)));
     } catch {}
   }
   function reconnect() {
@@ -91,7 +100,7 @@ export default function DiagnosticsScreen() {
           style: "destructive",
           onPress: () =>
             void execute(buildWanReconnectCommand(activeWan))
-              .then(setOutput)
+              .then(showResult)
               .catch(() => {}),
         },
       ],
@@ -101,7 +110,7 @@ export default function DiagnosticsScreen() {
   return (
     <ManagementShell
       title="网络诊断"
-      description="所有诊断命令在指定 WAN 上执行。结果来自路由器，不会上传到外部服务。"
+      description="所有诊断命令在指定接口上执行。结果来自路由器，不会上传到外部服务。"
     >
       {!wanInterfaces.length ? (
         <EmptyState
@@ -111,7 +120,7 @@ export default function DiagnosticsScreen() {
         />
       ) : (
         <>
-          <SectionCard title="选择宽带">
+          <SectionCard title="选择接口">
             {wanInterfaces.map((item, index) => (
               <Pressable
                 key={item.name}
@@ -325,10 +334,10 @@ export default function DiagnosticsScreen() {
               </Pressable>
             </View>
           </SectionCard>
-          <SectionCard title="NAT 与 IPv6 连通性">
+          <SectionCard title="NAT 类型检测">
             <Text style={[styles.sectionDescription, { color: colors.muted }]}>
-              检测 WAN 的本地出口、防火墙 NAT、STUN 映射和 IPv4/IPv6
-              连通性。若路由器未安装 stunclient，将显示安装提示。
+              仅检测所选接口的 NAT 类型与 STUN 公网映射。若路由器未安装
+              stunclient，将显示安装提示。
             </Text>
             <Pressable
               accessibilityRole="button"
@@ -345,14 +354,13 @@ export default function DiagnosticsScreen() {
               <Text style={styles.natButtonText}>开始 NAT 检测</Text>
             </Pressable>
           </SectionCard>
-          <SectionCard title="连接操作">
+          <View style={styles.connectionAction}>
             <Pressable
               accessibilityRole="button"
               onPress={reconnect}
               disabled={isRunning || !hasRouter || !isSupported}
               style={({ pressed }) => [
                 styles.reconnect,
-                { borderColor: colors.warning },
                 pressed && styles.pressed,
                 (isRunning || !isSupported) && styles.disabled,
               ]}
@@ -362,7 +370,7 @@ export default function DiagnosticsScreen() {
                 重连 {activeWan}
               </Text>
             </Pressable>
-          </SectionCard>
+          </View>
           {isRunning ? (
             <ToolNotice>
               <View style={styles.running}>
@@ -463,17 +471,17 @@ const styles = StyleSheet.create({
   },
   natButtonText: { color: "#FFFFFF", fontSize: 13, fontWeight: "800" },
   reconnect: {
-    marginHorizontal: 15,
-    marginBottom: 15,
+    alignSelf: "flex-start",
     minHeight: 42,
-    borderWidth: 1,
-    borderRadius: 11,
+    borderRadius: 999,
+    paddingHorizontal: 15,
     flexDirection: "row",
     justifyContent: "center",
     alignItems: "center",
     gap: 7,
   },
   reconnectText: { fontSize: 13, fontWeight: "800" },
+  connectionAction: { marginTop: 4, marginBottom: 4 },
   running: { flexDirection: "row", alignItems: "center", gap: 10 },
   runningText: { fontSize: 13 },
   output: { margin: 14, borderRadius: 12, padding: 12 },

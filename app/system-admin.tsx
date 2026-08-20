@@ -41,6 +41,7 @@ import {
   buildNetworkGlobalSnapshotCommand,
   buildNetworkInterfaceDeleteCommand,
   buildNetworkInterfaceRestartCommand,
+  buildNetworkInterfaceOptionsSnapshotCommand,
   buildNetworkInterfaceSnapshotCommand,
   buildNetworkInterfaceStatusCommand,
   buildSaveLedCommand,
@@ -62,6 +63,7 @@ import {
   parseLuciThemes,
   parseMountedFileSystems,
   parseMountPoints,
+  parseNetworkInterfaceOptions,
   parseNetworkInterfaceSettings,
   parseNetworkInterfaceStatus,
   parseNetworkDeviceSettings,
@@ -81,6 +83,7 @@ import {
   type MountedFileSystem,
   type NewLedSettings,
   type NetworkInterfaceSettings,
+  type NetworkInterfaceOptions,
   type NetworkInterfaceStatus,
   type NetworkDeviceSettings,
   type NetworkGlobalSettings,
@@ -128,6 +131,11 @@ const emptyNetworkGlobal: NetworkGlobalSettings = {
   ulaPrefix: "",
   packetSteering: false,
 };
+const emptyNetworkInterfaceOptions: NetworkInterfaceOptions = {
+  protocols: ["dhcp", "static", "pppoe", "none", "unmanaged"],
+  devices: [],
+  firewallZones: [],
+};
 
 export default function SystemAdminScreen() {
   const colors = useColors();
@@ -140,6 +148,7 @@ export default function SystemAdminScreen() {
   const [ledCapabilities, setLedCapabilities] = useState<LedCapabilities>({
     devices: [],
     triggers: [],
+    networkDevices: [],
   });
   const [mounts, setMounts] = useState<MountPoint[]>([]);
   const [mountedFileSystems, setMountedFileSystems] = useState<
@@ -156,6 +165,7 @@ export default function SystemAdminScreen() {
   const [apkKeyName, setApkKeyName] = useState("");
   const [apkKeyValue, setApkKeyValue] = useState("");
   const [apkKeyUrl, setApkKeyUrl] = useState("");
+  const [apkKeyUrlDialogVisible, setApkKeyUrlDialogVisible] = useState(false);
   const [uhttpd, setUhttpd] = useState(emptyUhttpd);
   const [luciThemes, setLuciThemes] = useState<LuciTheme[]>([]);
   const [interfaces, setInterfaces] = useState<NetworkInterfaceSettings[]>([]);
@@ -166,6 +176,8 @@ export default function SystemAdminScreen() {
     [],
   );
   const [networkGlobal, setNetworkGlobal] = useState(emptyNetworkGlobal);
+  const [networkInterfaceOptions, setNetworkInterfaceOptions] =
+    useState<NetworkInterfaceOptions>(emptyNetworkInterfaceOptions);
 
   const disabled = !hasRouter || !isSupported || isRunning || loading;
 
@@ -187,6 +199,7 @@ export default function SystemAdminScreen() {
         interfaceStatusRaw,
         networkDeviceRaw,
         networkGlobalRaw,
+        networkInterfaceOptionsRaw,
       ] = await Promise.all([
         execute(buildStartupSnapshotCommand()),
         execute(buildLedSnapshotCommand()),
@@ -201,6 +214,7 @@ export default function SystemAdminScreen() {
         execute(buildNetworkInterfaceStatusCommand()),
         execute(buildNetworkDeviceSnapshotCommand()),
         execute(buildNetworkGlobalSnapshotCommand()),
+        execute(buildNetworkInterfaceOptionsSnapshotCommand()),
       ]);
       setServices(parseStartupServices(startupRaw));
       setLeds(parseLedSettings(ledRaw));
@@ -217,6 +231,9 @@ export default function SystemAdminScreen() {
       setInterfaceStatuses(parseNetworkInterfaceStatus(interfaceStatusRaw));
       setNetworkDevices(parseNetworkDeviceSettings(networkDeviceRaw));
       setNetworkGlobal(parseNetworkGlobalSettings(networkGlobalRaw));
+      setNetworkInterfaceOptions(
+        parseNetworkInterfaceOptions(networkInterfaceOptionsRaw),
+      );
     } catch (reason) {
       setOutput(
         reason instanceof Error ? reason.message : "读取系统配置失败。",
@@ -294,6 +311,30 @@ export default function SystemAdminScreen() {
       setOutput(
         reason instanceof Error ? reason.message : "读取仓库公钥文件失败。",
       );
+    }
+  }
+
+  function downloadApkRepositoryKeyFromUrl() {
+    try {
+      const url = apkKeyUrl.trim();
+      const inferredName = url
+        .split(/[?#]/, 1)[0]
+        .split("/")
+        .filter(Boolean)
+        .pop()
+        ?.trim();
+      const keyName = apkKeyName.trim() || inferredName;
+      if (!keyName) {
+        throw new Error("请提供以公钥文件名结尾的 HTTPS 链接。");
+      }
+      setApkKeyName(keyName);
+      setApkKeyUrlDialogVisible(false);
+      void run(
+        buildFetchApkRepositoryKeyCommand(keyName, url),
+        "APK 仓库公钥已从 URL 下载并保存。",
+      );
+    } catch (reason) {
+      setOutput(reason instanceof Error ? reason.message : "公钥 URL 不合法。");
     }
   }
 
@@ -404,7 +445,19 @@ export default function SystemAdminScreen() {
                   capabilities={ledCapabilities}
                   disabled={disabled}
                   colors={colors}
-                  onSave={(next) =>
+                  onSave={(
+                    next: Pick<
+                      LedSetting,
+                      | "section"
+                      | "name"
+                      | "sysfs"
+                      | "trigger"
+                      | "delayOn"
+                      | "delayOff"
+                      | "netdevDevice"
+                      | "netdevMode"
+                    >,
+                  ) =>
                     leds.some(
                       (item) =>
                         item.section !== led.section && item.name === next.name,
@@ -458,6 +511,8 @@ export default function SystemAdminScreen() {
               <NewMountPointForm
                 disabled={disabled}
                 colors={colors}
+                mountedFileSystems={mountedFileSystems}
+                swapPartitions={swapPartitions}
                 onCreate={(mount) =>
                   confirm(
                     "新增挂载点",
@@ -474,7 +529,7 @@ export default function SystemAdminScreen() {
                 onPress={() =>
                   confirm(
                     "生成挂载配置",
-                    "将扫描已连接分区并生成缺失的 fstab 配置。",
+                    "将扫描当前全部文件系统和交换分区，并生成后替换现有 fstab 配置。",
                     buildGenerateMountConfigCommand,
                   )
                 }
@@ -514,6 +569,8 @@ export default function SystemAdminScreen() {
                   disabled={disabled}
                   colors={colors}
                   divider={index > 0}
+                  mountedFileSystems={mountedFileSystems}
+                  swapPartitions={swapPartitions}
                   onSave={(next) =>
                     confirm(
                       "保存挂载点",
@@ -805,13 +862,6 @@ export default function SystemAdminScreen() {
                     multiline
                     colors={colors}
                   />
-                  <TextField
-                    label="公钥文件 URL"
-                    value={apkKeyUrl}
-                    onChangeText={setApkKeyUrl}
-                    placeholder="https://example.com/keys/example.pub"
-                    colors={colors}
-                  />
                   <PrimaryButton
                     label="从文件导入 APK 仓库公钥"
                     disabled={disabled}
@@ -819,23 +869,10 @@ export default function SystemAdminScreen() {
                     onPress={() => void importApkRepositoryKey()}
                   />
                   <PrimaryButton
-                    label="从 URL 下载并保存 APK 公钥"
-                    disabled={
-                      disabled || !apkKeyName.trim() || !apkKeyUrl.trim()
-                    }
+                    label="从 URL 下载 APK 公钥"
+                    disabled={disabled}
                     color={colors.primary}
-                    onPress={() =>
-                      confirm(
-                        "从 URL 下载 APK 仓库公钥",
-                        "将由路由器通过 HTTPS 下载并保存到 /etc/apk/keys。请仅使用可信仓库提供的链接。",
-                        () =>
-                          buildFetchApkRepositoryKeyCommand(
-                            apkKeyName,
-                            apkKeyUrl,
-                          ),
-                        "APK 仓库公钥已从 URL 下载并保存。",
-                      )
-                    }
+                    onPress={() => setApkKeyUrlDialogVisible(true)}
                   />
                   <PrimaryButton
                     label="保存 APK 仓库公钥"
@@ -985,6 +1022,7 @@ export default function SystemAdminScreen() {
                   )}
                   disabled={disabled}
                   colors={colors}
+                  options={networkInterfaceOptions}
                   onSave={(next) =>
                     confirm(
                       "保存接口设置",
@@ -1138,6 +1176,65 @@ export default function SystemAdminScreen() {
           </View>
         </SectionCard>
       ) : null}
+      <Modal
+        visible={apkKeyUrlDialogVisible}
+        transparent
+        animationType="slide"
+        onRequestClose={() => setApkKeyUrlDialogVisible(false)}
+      >
+        <View style={styles.modalBackdrop}>
+          <View
+            style={[
+              styles.modalSheet,
+              { backgroundColor: colors.surface, borderColor: colors.border },
+            ]}
+          >
+            <View style={styles.modalHeader}>
+              <Text style={[styles.modalTitle, { color: colors.foreground }]}>
+                下载 APK 仓库公钥
+              </Text>
+              <Pressable
+                accessibilityRole="button"
+                accessibilityLabel="关闭公钥 URL 输入"
+                onPress={() => setApkKeyUrlDialogVisible(false)}
+                style={({ pressed }) => [
+                  styles.closeButton,
+                  {
+                    borderColor: colors.border,
+                    backgroundColor: colors.background,
+                  },
+                  pressed && styles.pressed,
+                ]}
+              >
+                <Text
+                  style={[styles.closeButtonText, { color: colors.foreground }]}
+                >
+                  关闭
+                </Text>
+              </Pressable>
+            </View>
+            <View style={styles.modalContent}>
+              <Text style={[styles.help, { color: colors.muted }]}>
+                路由器将通过 HTTPS 下载公钥并保存到
+                /etc/apk/keys。文件名会优先采用上方填写的名称，否则自动从链接推断。
+              </Text>
+              <TextField
+                label="公钥文件 URL"
+                value={apkKeyUrl}
+                onChangeText={setApkKeyUrl}
+                placeholder="https://example.com/keys/example.pub"
+                colors={colors}
+              />
+              <PrimaryButton
+                label="下载并保存"
+                disabled={disabled || !apkKeyUrl.trim()}
+                color={colors.primary}
+                onPress={downloadApkRepositoryKeyFromUrl}
+              />
+            </View>
+          </View>
+        </View>
+      </Modal>
     </ManagementShell>
   );
 }
@@ -1253,19 +1350,25 @@ function NewLedForm({
   onCreate: (value: NewLedSettings) => void;
 }) {
   const [editing, setEditing] = useState(false);
+  const [name, setName] = useState("");
   const [sysfs, setSysfs] = useState("");
   const [trigger, setTrigger] = useState("none");
   const [delayOn, setDelayOn] = useState("500");
   const [delayOff, setDelayOff] = useState("500");
+  const [netdevDevice, setNetdevDevice] = useState("");
+  const [netdevMode, setNetdevMode] = useState("link");
   const activeDevices = capabilities.devices;
   const activeTriggers = capabilities.triggers.filter(
     (value) => LED_TRIGGER_LABELS[value],
   );
   const reset = () => {
     setSysfs(activeDevices[0] ?? "");
+    setName(activeDevices[0] ?? "");
     setTrigger("none");
     setDelayOn("500");
     setDelayOff("500");
+    setNetdevDevice(capabilities.networkDevices[0] ?? "");
+    setNetdevMode("link");
   };
   return (
     <View style={[styles.subsection, { borderTopColor: colors.border }]}>
@@ -1298,7 +1401,7 @@ function NewLedForm({
               <SmallButton
                 label="关闭"
                 disabled={false}
-                color={colors.border}
+                color={colors.error}
                 onPress={() => setEditing(false)}
               />
             </View>
@@ -1306,11 +1409,18 @@ function NewLedForm({
               contentContainerStyle={styles.modalContent}
               keyboardShouldPersistTaps="handled"
             >
-              <Text style={[styles.help, { color: colors.muted }]}>
-                名称会使用所选 LED 设备名称，避免创建重复配置。
-              </Text>
               <Text style={[styles.fieldLabel, { color: colors.foreground }]}>
-                LED 名称
+                配置名称
+              </Text>
+              <TextField
+                label=""
+                value={name}
+                onChangeText={setName}
+                placeholder="例如：状态灯"
+                colors={colors}
+              />
+              <Text style={[styles.fieldLabel, { color: colors.foreground }]}>
+                LED 设备
               </Text>
               <ChoiceChips
                 values={activeDevices}
@@ -1337,17 +1447,34 @@ function NewLedForm({
                   colors={colors}
                 />
               ) : null}
+              {trigger === "netdev" ? (
+                <LedNetdevChoices
+                  devices={capabilities.networkDevices}
+                  selectedDevice={netdevDevice}
+                  selectedMode={netdevMode}
+                  onSelectDevice={setNetdevDevice}
+                  onSelectMode={setNetdevMode}
+                  colors={colors}
+                />
+              ) : null}
               <PrimaryButton
                 label="保存新增 LED"
-                disabled={disabled || !sysfs}
+                disabled={
+                  disabled ||
+                  !name.trim() ||
+                  !sysfs ||
+                  (trigger === "netdev" && !netdevDevice)
+                }
                 color={colors.primary}
                 onPress={() => {
                   onCreate({
-                    name: sysfs,
+                    name: name.trim(),
                     sysfs,
                     trigger,
                     delayOn: trigger === "timer" ? delayOn : "",
                     delayOff: trigger === "timer" ? delayOff : "",
+                    netdevDevice: trigger === "netdev" ? netdevDevice : "",
+                    netdevMode: trigger === "netdev" ? netdevMode : "",
                   });
                   setEditing(false);
                 }}
@@ -1381,26 +1508,77 @@ function LedTimerChoices({
   onDelayOff: (value: string) => void;
   colors: ReturnType<typeof useColors>;
 }) {
-  const values = ["100", "250", "500", "1000", "2000"];
   return (
     <View style={styles.field}>
       <Text style={[styles.fieldLabel, { color: colors.foreground }]}>
         开启时间（毫秒）
       </Text>
-      <ChoiceChips
-        values={values}
-        selected={delayOn}
-        onSelect={onDelayOn}
+      <TextField
+        label=""
+        value={delayOn}
+        onChangeText={onDelayOn}
+        keyboardType="number-pad"
+        placeholder="例如：500"
         colors={colors}
       />
       <Text style={[styles.fieldLabel, { color: colors.foreground }]}>
         关闭时间（毫秒）
       </Text>
-      <ChoiceChips
-        values={values}
-        selected={delayOff}
-        onSelect={onDelayOff}
+      <TextField
+        label=""
+        value={delayOff}
+        onChangeText={onDelayOff}
+        keyboardType="number-pad"
+        placeholder="例如：500"
         colors={colors}
+      />
+    </View>
+  );
+}
+
+function LedNetdevChoices({
+  devices,
+  selectedDevice,
+  selectedMode,
+  onSelectDevice,
+  onSelectMode,
+  colors,
+}: {
+  devices: string[];
+  selectedDevice: string;
+  selectedMode: string;
+  onSelectDevice: (value: string) => void;
+  onSelectMode: (value: string) => void;
+  colors: ReturnType<typeof useColors>;
+}) {
+  return (
+    <View style={styles.field}>
+      <Text style={[styles.fieldLabel, { color: colors.foreground }]}>
+        设备
+      </Text>
+      <ChoiceChips
+        values={devices}
+        selected={selectedDevice}
+        onSelect={onSelectDevice}
+        colors={colors}
+        emptyLabel="未发现网络设备"
+      />
+      <Text style={[styles.fieldLabel, { color: colors.foreground }]}>
+        触发方式
+      </Text>
+      <ChoiceChips
+        values={["link", "tx", "rx", "link tx", "link rx", "link tx rx"]}
+        selected={selectedMode}
+        onSelect={onSelectMode}
+        colors={colors}
+        labels={{
+          link: "链路",
+          tx: "发送",
+          rx: "接收",
+          "link tx": "链路 + 发送",
+          "link rx": "链路 + 接收",
+          "link tx rx": "链路 + 发送 + 接收",
+        }}
       />
     </View>
   );
@@ -1715,7 +1893,14 @@ function LedRow({
   onSave: (
     value: Pick<
       LedSetting,
-      "section" | "name" | "sysfs" | "trigger" | "delayOn" | "delayOff"
+      | "section"
+      | "name"
+      | "sysfs"
+      | "trigger"
+      | "delayOn"
+      | "delayOff"
+      | "netdevDevice"
+      | "netdevMode"
     >,
   ) => void;
   onDelete: () => void;
@@ -1846,6 +2031,20 @@ function LedRow({
                   colors={colors}
                 />
               ) : null}
+              {draft.trigger === "netdev" ? (
+                <LedNetdevChoices
+                  devices={capabilities.networkDevices}
+                  selectedDevice={draft.netdevDevice}
+                  selectedMode={draft.netdevMode}
+                  onSelectDevice={(netdevDevice) =>
+                    setDraft((value) => ({ ...value, netdevDevice }))
+                  }
+                  onSelectMode={(netdevMode) =>
+                    setDraft((value) => ({ ...value, netdevMode }))
+                  }
+                  colors={colors}
+                />
+              ) : null}
               <PrimaryButton
                 label="保存"
                 disabled={disabled || !draft.name || !draft.sysfs}
@@ -1858,6 +2057,10 @@ function LedRow({
                     trigger: draft.trigger,
                     delayOn: draft.trigger === "timer" ? draft.delayOn : "",
                     delayOff: draft.trigger === "timer" ? draft.delayOff : "",
+                    netdevDevice:
+                      draft.trigger === "netdev" ? draft.netdevDevice : "",
+                    netdevMode:
+                      draft.trigger === "netdev" ? draft.netdevMode : "",
                   });
                   setEditing(false);
                 }}
@@ -1874,10 +2077,14 @@ function MountPointFields({
   value,
   onChange,
   colors,
+  mountedFileSystems,
+  swapPartitions,
 }: {
   value: Omit<MountPoint, "section">;
   onChange: (value: Omit<MountPoint, "section">) => void;
   colors: ReturnType<typeof useColors>;
+  mountedFileSystems: MountedFileSystem[];
+  swapPartitions: SwapPartition[];
 }) {
   const update = (
     key: keyof Omit<MountPoint, "section">,
@@ -1885,25 +2092,64 @@ function MountPointFields({
   ) => onChange({ ...value, [key]: next });
   return (
     <>
-      <TextField
-        label="挂载路径"
-        value={value.target}
-        onChangeText={(next) => update("target", next)}
-        placeholder="/mnt/sda1"
+      <Text style={[styles.fieldLabel, { color: colors.foreground }]}>
+        挂载路径
+      </Text>
+      <ChoiceChips
+        values={Array.from(
+          new Set(
+            [
+              ...mountedFileSystems.map((item) => item.target),
+              value.target,
+            ].filter(Boolean),
+          ),
+        )}
+        selected={value.target}
+        onSelect={(next) => update("target", next)}
         colors={colors}
       />
-      <TextField
-        label="设备路径"
-        value={value.device}
-        onChangeText={(next) => update("device", next)}
-        placeholder="/dev/sda1"
+      <Text style={[styles.fieldLabel, { color: colors.foreground }]}>
+        设备路径（UUID）
+      </Text>
+      <ChoiceChips
+        values={Array.from(
+          new Set(
+            [
+              ...mountedFileSystems.map((item) => item.device),
+              ...swapPartitions.map((item) => item.device),
+              value.device,
+            ].filter(Boolean),
+          ),
+        )}
+        selected={value.device}
+        onSelect={(next) => {
+          const matched = mountedFileSystems.find(
+            (item) => item.device === next,
+          );
+          onChange({
+            ...value,
+            device: next,
+            fstype: matched?.fstype || value.fstype,
+            target: matched?.target || value.target,
+          });
+        }}
         colors={colors}
       />
-      <TextField
-        label="文件系统"
-        value={value.fstype}
-        onChangeText={(next) => update("fstype", next)}
-        placeholder="ext4"
+      <Text style={[styles.fieldLabel, { color: colors.foreground }]}>
+        文件系统
+      </Text>
+      <ChoiceChips
+        values={Array.from(
+          new Set(
+            [
+              ...mountedFileSystems.map((item) => item.fstype),
+              value.fstype,
+              "auto",
+            ].filter(Boolean),
+          ),
+        )}
+        selected={value.fstype}
+        onSelect={(next) => update("fstype", next)}
         colors={colors}
       />
       <SettingSwitch
@@ -1929,6 +2175,8 @@ function MountPointCard({
   divider,
   onSave,
   onDelete,
+  mountedFileSystems,
+  swapPartitions,
 }: {
   mount: MountPoint;
   disabled: boolean;
@@ -1936,6 +2184,8 @@ function MountPointCard({
   divider: boolean;
   onSave: (value: MountPoint) => void;
   onDelete: () => void;
+  mountedFileSystems: MountedFileSystem[];
+  swapPartitions: SwapPartition[];
 }) {
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState(mount);
@@ -2017,6 +2267,8 @@ function MountPointCard({
                   setDraft((current) => ({ ...current, ...next }))
                 }
                 colors={colors}
+                mountedFileSystems={mountedFileSystems}
+                swapPartitions={swapPartitions}
               />
               <PrimaryButton
                 label="保存"
@@ -2025,7 +2277,8 @@ function MountPointCard({
                 }
                 color={colors.primary}
                 onPress={() => {
-                  onSave(draft);
+                  if (JSON.stringify(draft) !== JSON.stringify(mount))
+                    onSave(draft);
                   setEditing(false);
                 }}
               />
@@ -2040,10 +2293,14 @@ function MountPointCard({
 function NewMountPointForm({
   disabled,
   colors,
+  mountedFileSystems,
+  swapPartitions,
   onCreate,
 }: {
   disabled: boolean;
   colors: ReturnType<typeof useColors>;
+  mountedFileSystems: MountedFileSystem[];
+  swapPartitions: SwapPartition[];
   onCreate: (value: Omit<MountPoint, "section">) => void;
 }) {
   const empty: Omit<MountPoint, "section"> = {
@@ -2062,7 +2319,17 @@ function NewMountPointForm({
         disabled={disabled}
         color={colors.primary}
         onPress={() => {
-          setDraft(empty);
+          const source = mountedFileSystems[0];
+          setDraft(
+            source
+              ? {
+                  ...empty,
+                  target: source.target,
+                  device: source.device,
+                  fstype: source.fstype,
+                }
+              : empty,
+          );
           setEditing(true);
         }}
       />
@@ -2098,6 +2365,8 @@ function NewMountPointForm({
                 value={draft}
                 onChange={setDraft}
                 colors={colors}
+                mountedFileSystems={mountedFileSystems}
+                swapPartitions={swapPartitions}
               />
               <PrimaryButton
                 label="创建挂载点"
@@ -2123,6 +2392,7 @@ function NetworkInterfaceCard({
   status,
   disabled,
   colors,
+  options,
   onSave,
   onRestart,
   onDelete,
@@ -2131,12 +2401,16 @@ function NetworkInterfaceCard({
   status?: NetworkInterfaceStatus;
   disabled: boolean;
   colors: ReturnType<typeof useColors>;
+  options: NetworkInterfaceOptions;
   onSave: (value: NetworkInterfaceSettings) => void;
   onRestart: () => void;
   onDelete: () => void;
 }) {
   const [draft, setDraft] = useState(item);
   const [editing, setEditing] = useState(false);
+  const [editTab, setEditTab] = useState<"general" | "advanced" | "firewall">(
+    "general",
+  );
   const update = (
     key: keyof NetworkInterfaceSettings,
     value: string | boolean,
@@ -2255,49 +2529,216 @@ function NetworkInterfaceCard({
               contentContainerStyle={styles.modalContent}
               keyboardShouldPersistTaps="handled"
             >
-              <TextField
-                label="协议（dhcp / static / pppoe）"
-                value={draft.proto}
-                onChangeText={(value) => update("proto", value)}
+              <ChoiceChips
+                values={["general", "advanced", "firewall"]}
+                selected={editTab}
+                onSelect={(value) =>
+                  setEditTab(value as "general" | "advanced" | "firewall")
+                }
+                labels={{
+                  general: "常规设置",
+                  advanced: "高级设置",
+                  firewall: "防火墙设置",
+                }}
                 colors={colors}
               />
-              <TextField
-                label="设备"
-                value={draft.device}
-                onChangeText={(value) => update("device", value)}
-                placeholder="eth0.2"
-                colors={colors}
-              />
-              <TextField
-                label="IPv4 地址"
-                value={draft.ipaddr}
-                onChangeText={(value) => update("ipaddr", value)}
-                colors={colors}
-              />
-              <TextField
-                label="子网掩码"
-                value={draft.netmask}
-                onChangeText={(value) => update("netmask", value)}
-                colors={colors}
-              />
-              <TextField
-                label="网关"
-                value={draft.gateway}
-                onChangeText={(value) => update("gateway", value)}
-                colors={colors}
-              />
-              <TextField
-                label="DNS（以空格分隔）"
-                value={draft.dns}
-                onChangeText={(value) => update("dns", value)}
-                colors={colors}
-              />
-              <SettingSwitch
-                label="随系统启动"
-                value={draft.auto}
-                onValueChange={(value) => update("auto", value)}
-                colors={colors}
-              />
+              {editTab === "general" ? (
+                <>
+                  <Text
+                    style={[styles.fieldLabel, { color: colors.foreground }]}
+                  >
+                    协议
+                  </Text>
+                  <ChoiceChips
+                    values={[
+                      ...new Set([...options.protocols, draft.proto]),
+                    ].filter(Boolean)}
+                    selected={draft.proto}
+                    onSelect={(value) => update("proto", value)}
+                    colors={colors}
+                  />
+                  <Text
+                    style={[styles.fieldLabel, { color: colors.foreground }]}
+                  >
+                    设备
+                  </Text>
+                  <ChoiceChips
+                    values={[
+                      "",
+                      ...new Set([...options.devices, draft.device]),
+                    ].filter(
+                      (value, index, list) => index === list.indexOf(value),
+                    )}
+                    selected={draft.device}
+                    onSelect={(value) => update("device", value)}
+                    emptyLabel="未指定"
+                    colors={colors}
+                  />
+                  <TextField
+                    label="IPv4 地址"
+                    value={draft.ipaddr}
+                    onChangeText={(value) => update("ipaddr", value)}
+                    colors={colors}
+                  />
+                  <TextField
+                    label="子网掩码"
+                    value={draft.netmask}
+                    onChangeText={(value) => update("netmask", value)}
+                    colors={colors}
+                  />
+                  <TextField
+                    label="网关"
+                    value={draft.gateway}
+                    onChangeText={(value) => update("gateway", value)}
+                    colors={colors}
+                  />
+                  <SettingSwitch
+                    label="随系统启动"
+                    value={draft.auto}
+                    onValueChange={(value) => update("auto", value)}
+                    colors={colors}
+                  />
+                </>
+              ) : editTab === "advanced" ? (
+                <>
+                  <SettingSwitch
+                    label="强制连接"
+                    value={draft.forceLink}
+                    onValueChange={(value) => update("forceLink", value)}
+                    colors={colors}
+                  />
+                  <Text style={[styles.help, { color: colors.muted }]}>
+                    无论链路状态如何，保持接口处于连接状态。
+                  </Text>
+                  <SettingSwitch
+                    label="使用此接口网关作为默认网关"
+                    value={draft.defaultRoute}
+                    onValueChange={(value) => update("defaultRoute", value)}
+                    colors={colors}
+                  />
+                  <SettingSwitch
+                    label="使用自定义 DNS 服务器"
+                    value={draft.useCustomDns}
+                    onValueChange={(value) => update("useCustomDns", value)}
+                    colors={colors}
+                  />
+                  {draft.useCustomDns ? (
+                    <TextField
+                      label="DNS（以空格分隔）"
+                      value={draft.dns}
+                      onChangeText={(value) => update("dns", value)}
+                      colors={colors}
+                    />
+                  ) : null}
+                  <TextField
+                    label="DNS 权重"
+                    value={draft.dnsMetric}
+                    onChangeText={(value) => update("dnsMetric", value)}
+                    keyboardType="number-pad"
+                    colors={colors}
+                  />
+                  <TextField
+                    label="网关跃点"
+                    value={draft.metric}
+                    onChangeText={(value) => update("metric", value)}
+                    keyboardType="number-pad"
+                    colors={colors}
+                  />
+                  <Text
+                    style={[styles.fieldLabel, { color: colors.foreground }]}
+                  >
+                    多路 TCP（MPTCP）
+                  </Text>
+                  <ChoiceChips
+                    values={["off", "on", "backup", "master"]}
+                    selected={draft.mptcp}
+                    onSelect={(value) => update("mptcp", value)}
+                    labels={{
+                      off: "关",
+                      on: "开",
+                      backup: "备用",
+                      master: "主链路",
+                    }}
+                    colors={colors}
+                  />
+                  <TextField
+                    label="覆盖 IPv4 路由表"
+                    value={draft.ip4Table}
+                    onChangeText={(value) => update("ip4Table", value)}
+                    placeholder="未指定"
+                    colors={colors}
+                  />
+                  <TextField
+                    label="覆盖 IPv6 路由表"
+                    value={draft.ip6Table}
+                    onChangeText={(value) => update("ip6Table", value)}
+                    placeholder="未指定"
+                    colors={colors}
+                  />
+                  <SettingSwitch
+                    label="委派 IPv6 前缀"
+                    value={draft.delegate}
+                    onValueChange={(value) => update("delegate", value)}
+                    colors={colors}
+                  />
+                  <TextField
+                    label="IPv6 前缀分配长度"
+                    value={draft.ip6Assign}
+                    onChangeText={(value) => update("ip6Assign", value)}
+                    placeholder="已禁用"
+                    keyboardType="number-pad"
+                    colors={colors}
+                  />
+                  <TextField
+                    label="IPv6 前缀过滤器"
+                    value={draft.ip6Class}
+                    onChangeText={(value) => update("ip6Class", value)}
+                    placeholder="-- 请选择 --"
+                    colors={colors}
+                  />
+                  <TextField
+                    label="IPv6 后缀"
+                    value={draft.ip6IfaceId}
+                    onChangeText={(value) => update("ip6IfaceId", value)}
+                    placeholder="::1"
+                    colors={colors}
+                  />
+                  <TextField
+                    label="IPv6 优先级"
+                    value={draft.ip6Weight}
+                    onChangeText={(value) => update("ip6Weight", value)}
+                    keyboardType="number-pad"
+                    colors={colors}
+                  />
+                </>
+              ) : (
+                <>
+                  <Text
+                    style={[styles.fieldLabel, { color: colors.foreground }]}
+                  >
+                    创建/分配防火墙区域
+                  </Text>
+                  <ChoiceChips
+                    values={[
+                      "",
+                      ...options.firewallZones.map((zone) => zone.section),
+                    ]}
+                    selected={draft.firewallZone}
+                    onSelect={(value) => update("firewallZone", value)}
+                    emptyLabel="未指定"
+                    labels={Object.fromEntries(
+                      options.firewallZones.map((zone) => [
+                        zone.section,
+                        zone.name,
+                      ]),
+                    )}
+                    colors={colors}
+                  />
+                  <Text style={[styles.help, { color: colors.muted }]}>
+                    保存时会将此接口从其他区域移除，再加入所选区域。
+                  </Text>
+                </>
+              )}
               <PrimaryButton
                 label={`保存 ${item.section}`}
                 disabled={disabled}
@@ -2469,25 +2910,39 @@ function SmallButton({
   label,
   disabled,
   color,
+  filled = false,
   onPress,
 }: {
   label: string;
   disabled: boolean;
   color: string;
+  filled?: boolean;
   onPress: () => void;
 }) {
+  const emphasized = filled || label === "关闭" || label === "删除";
+  const actionColor = label === "关闭" ? "#D92D20" : color;
   return (
     <Pressable
       disabled={disabled}
       onPress={onPress}
       style={({ pressed }) => [
         styles.smallButton,
-        { borderColor: color },
+        {
+          borderColor: actionColor,
+          backgroundColor: emphasized ? actionColor : "transparent",
+        },
         pressed && styles.pressed,
         disabled && styles.disabled,
       ]}
     >
-      <Text style={[styles.smallButtonText, { color }]}>{label}</Text>
+      <Text
+        style={[
+          styles.smallButtonText,
+          { color: emphasized ? "#FFFFFF" : actionColor },
+        ]}
+      >
+        {label}
+      </Text>
     </Pressable>
   );
 }

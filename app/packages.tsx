@@ -36,6 +36,7 @@ import {
   buildApkUpdateCommand,
   buildApkRepositoriesSnapshotCommand,
   buildApkSaveRepositoriesCommand,
+  APK_CUSTOM_FEEDS_SOURCE,
   parseInstalledPackages,
   parseUpgradablePackages,
   parseAvailablePackages,
@@ -257,7 +258,7 @@ export default function PackagesScreen() {
       setNotice(
         parsed.length
           ? `已读取 ${parsed.length} 个 APK 仓库配置。`
-          : "未在 /etc/apk/repositories 或 repositories.d 中找到仓库条目。",
+          : "未在 customfeeds.list、distfeeds.list 或其他 APK 仓库文件中找到条目。",
       );
     } catch (error) {
       Alert.alert(
@@ -287,7 +288,12 @@ export default function PackagesScreen() {
     }
     setRepositories((current) => [
       ...current,
-      { line: Date.now(), url, enabled: true },
+      {
+        line: Date.now(),
+        url,
+        enabled: true,
+        source: APK_CUSTOM_FEEDS_SOURCE,
+      },
     ]);
     setNewRepositoryUrl("");
   }
@@ -906,7 +912,7 @@ export default function PackagesScreen() {
               {!repositories.some((repository) => !repository.deleted) ? (
                 <Text style={styles.repositoriesEmpty}>
                   未读取到仓库条目。请确认路由器使用 apk，并检查
-                  /etc/apk/repositories 与 /etc/apk/repositories.d 目录。
+                  customfeeds.list 与 distfeeds.list。
                 </Text>
               ) : null}
             </ScrollView>

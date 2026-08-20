@@ -19,6 +19,7 @@ import { useManagedSsh } from "@/hooks/use-managed-ssh";
 import {
   buildPluginSettingsApplyCommand,
   buildPluginSettingsSnapshotCommand,
+  getPluginSettingDefinitions,
   getProxyServiceDefinition,
   parsePluginSettingsSnapshot,
   type PluginSettingsSection,
@@ -50,8 +51,55 @@ function isBooleanOption(key: string, value: string) {
   );
 }
 
-function optionLabel(key: string) {
-  return key.replace(/_/g, " ");
+const COMMON_OPTION_LABELS: Record<string, string> = {
+  enabled: "启用服务",
+  config: "配置文件",
+  proxy_port: "代理端口",
+  tproxy_port: "透明代理端口",
+  mixed_port: "混合代理端口",
+  socks_port: "SOCKS 端口",
+  http_port: "HTTP 端口",
+  dns_port: "DNS 端口",
+  service_name: "服务商",
+  interface: "检测接口",
+  ip_source: "IP 获取方式",
+  ip_url: "公网 IP 查询地址",
+  lookup_host: "解析检查主机",
+  check_interval: "检查间隔（分钟）",
+  force_interval: "强制更新间隔（小时）",
+  ddns_dateformat: "DDNS 日期格式",
+  ddns_loglines: "DDNS 日志行数",
+  ddns_rundir: "DDNS 运行目录",
+  ddns_logdir: "DDNS 日志目录",
+};
+
+function optionLabel(serviceId: ProxyServiceId, key: string) {
+  const known = getPluginSettingDefinitions(serviceId).find(
+    (definition) => definition.key === key,
+  );
+  return known?.label ?? COMMON_OPTION_LABELS[key] ?? `设置项：${key}`;
+}
+
+function sectionTypeLabel(type: string) {
+  const labels: Record<string, string> = {
+    ddns: "DDNS 全局设置",
+    service: "DDNS 服务",
+    openclash: "OpenClash 设置",
+    global: "全局设置",
+    config: "通用设置",
+  };
+  return labels[type] ?? `配置类型：${type}`;
+}
+
+function sectionLabel(serviceId: ProxyServiceId, section: string) {
+  const common: Record<string, string> = {
+    global: "全局设置",
+    config: "主要设置",
+    default: "默认设置",
+  };
+  if (common[section]) return common[section];
+  if (serviceId === "ddns") return `DDNS 服务 ${section}`;
+  return `设置段 ${section}`;
 }
 
 export default function ServiceConfigScreen() {
@@ -183,9 +231,11 @@ export default function ServiceConfigScreen() {
           返回服务
         </Text>
       </Pressable>
-      <SectionCard
-        title="完整服务设置"
-        action={
+      <View style={styles.settingsGroup}>
+        <View style={styles.groupHeader}>
+          <Text style={[styles.groupTitle, { color: colors.foreground }]}>
+            完整服务设置
+          </Text>
           <Pressable
             disabled={disabled || saving !== null}
             onPress={() => void refresh()}
@@ -200,8 +250,7 @@ export default function ServiceConfigScreen() {
               {loading ? "读取中" : "重新读取"}
             </Text>
           </Pressable>
-        }
-      >
+        </View>
         {exists === false ? (
           <View style={[styles.missing, { backgroundColor: colors.surface }]}>
             <StatusPill label="未找到服务设置" tone="warning" />
@@ -231,12 +280,10 @@ export default function ServiceConfigScreen() {
               ]}
             >
               <Text style={[styles.sectionTitle, { color: colors.foreground }]}>
-                {serviceId === "ddns"
-                  ? `DDNS 服务：${section.section}`
-                  : `设置段：${section.section}`}
+                {sectionLabel(serviceId, section.section)}
               </Text>
               <Text style={[styles.sectionType, { color: colors.muted }]}>
-                类型：{section.type}
+                {sectionTypeLabel(section.type)}
               </Text>
               {Object.entries(drafts[section.section] ?? {}).map(
                 ([key, value]) => {
@@ -249,7 +296,7 @@ export default function ServiceConfigScreen() {
                             { color: colors.foreground, flex: 1 },
                           ]}
                         >
-                          {optionLabel(key)}
+                          {optionLabel(serviceId, key)}
                         </Text>
                         <Switch
                           value={isEnabled(value)}
@@ -272,7 +319,7 @@ export default function ServiceConfigScreen() {
                           { color: colors.foreground },
                         ]}
                       >
-                        {optionLabel(key)}
+                        {optionLabel(serviceId, key)}
                       </Text>
                       <TextInput
                         value={value}
@@ -321,7 +368,7 @@ export default function ServiceConfigScreen() {
             </View>
           );
         })}
-      </SectionCard>
+      </View>
       {notice ? (
         <ToolNotice>
           <Text style={[styles.noticeText, { color: colors.foreground }]}>
@@ -358,6 +405,15 @@ const styles = StyleSheet.create({
     justifyContent: "center",
   },
   actionText: { fontSize: 12, fontWeight: "800" },
+  settingsGroup: { gap: 14 },
+  groupHeader: {
+    minHeight: 40,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: 12,
+  },
+  groupTitle: { flex: 1, fontSize: 22, fontWeight: "900" },
   missing: { borderRadius: 12, padding: 12, gap: 7, marginBottom: 12 },
   missingText: { fontSize: 12, lineHeight: 18 },
   section: { paddingTop: 14, gap: 12 },

@@ -558,8 +558,10 @@ export function buildPluginLogCommand(id: ProxyServiceId, limit = 100) {
   const service = serviceDefinition(id);
   const safeLimit = safeLogLimit(limit);
   const systemLog = `(logread) 2>&1 | grep -Ei ${shellQuote(service.logPattern)} | tail -n ${safeLimit}`;
-  if (!service.logFile) return systemLog;
-  return `if [ -r ${shellQuote(service.logFile)} ]; then tail -n ${safeLimit} ${shellQuote(service.logFile)}; else ${systemLog}; fi`;
+  const readLog = service.logFile
+    ? `if [ -r ${shellQuote(service.logFile)} ]; then tail -n ${safeLimit} ${shellQuote(service.logFile)}; else ${systemLog}; fi`
+    : systemLog;
+  return `__service_log=$(${readLog}); if [ -n "$__service_log" ]; then printf '%s\n' "$__service_log"; else printf '${service.label} 暂未找到可读取的日志。请先启动服务、执行一次更新或稍后重试。\n'; fi`;
 }
 
 /** 仅读取内置服务明确允许的 UCI 配置文件，并用固定标记封装返回内容。 */

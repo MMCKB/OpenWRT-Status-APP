@@ -63,6 +63,9 @@ interface RouterContextValue {
   updateRefreshInterval: (seconds: number) => Promise<void>;
   updateTrafficInterfaceIds: (interfaceIds: string[]) => Promise<void>;
   updateStatusTrafficView: (view: "full" | "compact") => Promise<void>;
+  updateDiagnosticOutputDisplay: (
+    display: "page" | "dialog" | "both",
+  ) => Promise<void>;
   getSelectedCredentials: () => Promise<{
     luciPassword: string | null;
     sshPassword: string;
@@ -82,6 +85,7 @@ export function RouterProvider({ children }: { children: ReactNode }) {
     refreshIntervalSeconds: 60,
     trafficInterfaceIds: [],
     statusTrafficView: "full",
+    diagnosticOutputDisplay: "both",
   });
   const [selectedStatus, setSelectedStatus] = useState<RouterStatus | null>(
     null,
@@ -364,6 +368,15 @@ export function RouterProvider({ children }: { children: ReactNode }) {
     [settings],
   );
 
+  const updateDiagnosticOutputDisplay = useCallback(
+    async (display: "page" | "dialog" | "both") => {
+      const next = { ...settings, diagnosticOutputDisplay: display };
+      setSettings(next);
+      await saveSettings(next);
+    },
+    [settings],
+  );
+
   const getSelectedCredentials = useCallback(async () => {
     if (!selectedProfile) return null;
     const [luciPassword, sshPassword] = await Promise.all([
@@ -392,6 +405,7 @@ export function RouterProvider({ children }: { children: ReactNode }) {
       updateRefreshInterval,
       updateTrafficInterfaceIds,
       updateStatusTrafficView,
+      updateDiagnosticOutputDisplay,
       getSelectedCredentials,
     }),
     [
@@ -410,6 +424,7 @@ export function RouterProvider({ children }: { children: ReactNode }) {
       updateRefreshInterval,
       updateTrafficInterfaceIds,
       updateStatusTrafficView,
+      updateDiagnosticOutputDisplay,
       getSelectedCredentials,
     ],
   );

@@ -127,6 +127,12 @@ describe("高级 OpenWrt 服务与网络管理", () => {
     expect(buildPluginLogCommand("openclash", Number.NaN)).toContain(
       "tail -n 100",
     );
+    expect(buildPluginLogCommand("openclash", 80)).toContain(
+      "OpenClash 暂未找到可读取的日志",
+    );
+    expect(buildPluginLogCommand("openclash", 80)).toContain(
+      'if [ -n "$__service_log" ]',
+    );
     expect(() => buildPluginLogCommand("ddns\nreboot" as never)).toThrow(
       "不支持的服务",
     );

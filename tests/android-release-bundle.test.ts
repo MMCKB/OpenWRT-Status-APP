@@ -27,6 +27,12 @@ const mainActivityPath = resolve(
   "android/app/src/main/java/com/app/openwrtstatusapp/MainActivity.kt",
 );
 const routerProviderPath = resolve(projectRoot, "lib/router-provider.tsx");
+const packagesPath = resolve(projectRoot, "app/packages.tsx");
+const diagnosticsPath = resolve(projectRoot, "app/diagnostics.tsx");
+const performanceBenchmarkPath = resolve(
+  projectRoot,
+  "app/performance-benchmark.tsx",
+);
 
 describe("Android Release JavaScript bundle", () => {
   it("保持 Expo 与 Gradle 的 Android 发布版本一致", () => {
@@ -37,9 +43,9 @@ describe("Android Release JavaScript bundle", () => {
     const gradleVersion = gradle.match(/versionName\s+"([0-9.]+)"/)?.[1];
     const gradleVersionCode = gradle.match(/versionCode\s+(\d+)/)?.[1];
 
-    expect(expoVersion).toBe("1.0.25");
+    expect(expoVersion).toBe("1.0.26");
     expect(expoVersion).toBe(gradleVersion);
-    expect(expoVersionCode).toBe("21");
+    expect(expoVersionCode).toBe("22");
     expect(expoVersionCode).toBe(gradleVersionCode);
   });
 
@@ -131,5 +137,27 @@ describe("Android Release JavaScript bundle", () => {
     expect(mainActivity).not.toContain("setPredictiveBackEnabled");
     expect(routerProvider).not.toContain("predictiveBackEnabled");
     expect(routerProvider).toContain("已有同名路由器，请使用不同的名称。");
+  });
+
+  it("保留 v1.0.26 的 LuCI 兼容配置与诊断可用性修复", () => {
+    const packages = readFileSync(packagesPath, "utf8");
+    const diagnostics = readFileSync(diagnosticsPath, "utf8");
+    const performance = readFileSync(performanceBenchmarkPath, "utf8");
+    const serviceHealth = readFileSync(serviceHealthPath, "utf8");
+    const systemAdmin = readFileSync(systemAdminPath, "utf8");
+    const wirelessManager = readFileSync(wirelessManagerPath, "utf8");
+
+    expect(packages).toContain("customfeeds.list");
+    expect(packages).toContain("distfeeds.list");
+    expect(wirelessManager).toContain("绑定网络");
+    expect(wirelessManager).toContain("加密方式");
+    expect(systemAdmin).toContain("netdevDevice");
+    expect(systemAdmin).toContain("自定义闪烁间隔");
+    expect(systemAdmin).toContain("防火墙设置");
+    expect(systemAdmin).toContain("forceLink");
+    expect(diagnostics).toContain("diagnosticOutputDisplay");
+    expect(diagnostics).toContain("NAT 类型检测");
+    expect(performance).toContain("直接读取路由器本机 CPU");
+    expect(serviceHealth).toContain("最近 100 行内未找到可显示的日志。");
   });
 });

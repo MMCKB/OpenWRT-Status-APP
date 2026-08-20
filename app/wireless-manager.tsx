@@ -27,6 +27,8 @@ import {
   buildWifiToggleCommand,
   parseWifiClients,
   parseWifiConfigs,
+  parseWifiNetworkBindings,
+  WIFI_ENCRYPTION_OPTIONS,
   type WifiClient,
   type WifiConfigEntry,
 } from "@/lib/openwrt-admin";
@@ -43,6 +45,7 @@ export default function WirelessManagerScreen() {
   const colors = useColors();
   const { execute, error, hasRouter, isRunning, isSupported } = useManagedSsh();
   const [networks, setNetworks] = useState<WifiConfigEntry[]>([]);
+  const [networkBindings, setNetworkBindings] = useState<string[]>([]);
   const [clients, setClients] = useState<WifiClient[]>([]);
   const [draftSsids, setDraftSsids] = useState<Record<string, string>>({});
   const [draftNetworks, setDraftNetworks] = useState<
@@ -67,6 +70,23 @@ export default function WirelessManagerScreen() {
     }
   }, [guestPassword, guestSsid]);
 
+  const availableNetworkBindings = useMemo(
+    () =>
+      [
+        ...new Set([
+          "lan",
+          "wan",
+          "wan6",
+          "guest",
+          ...networkBindings,
+          ...networks.flatMap((item) =>
+            item.network.split(/\s+/).filter(Boolean),
+          ),
+        ]),
+      ].sort((left, right) => left.localeCompare(right)),
+    [networkBindings, networks],
+  );
+
   const refresh = useCallback(async () => {
     if (!hasRouter || !isSupported) return;
     setIsLoading(true);
@@ -77,6 +97,7 @@ export default function WirelessManagerScreen() {
       ]);
       const nextNetworks = parseWifiConfigs(configOutput);
       setNetworks(nextNetworks);
+      setNetworkBindings(parseWifiNetworkBindings(configOutput));
       setClients(parseWifiClients(clientOutput));
       setDraftSsids(
         Object.fromEntries(
@@ -370,7 +391,7 @@ export default function WirelessManagerScreen() {
                             { color: colors.primary },
                           ]}
                         >
-                          高级设置
+                          编辑
                         </Text>
                       </Pressable>
                       <Pressable
@@ -406,6 +427,7 @@ export default function WirelessManagerScreen() {
                       }
                       colors={colors}
                       disabled={disabled}
+                      networkBindings={availableNetworkBindings}
                       onChange={(key, value) =>
                         setDraftNetworks((current) => ({
                           ...current,
@@ -608,6 +630,7 @@ function WirelessSettingsForm({
   isPasswordVisible,
   colors,
   disabled,
+  networkBindings,
   onChange,
   onTogglePassword,
   onSave,
@@ -616,6 +639,7 @@ function WirelessSettingsForm({
   isPasswordVisible: boolean;
   colors: ReturnType<typeof useColors>;
   disabled: boolean;
+  networkBindings: string[];
   onChange: (
     key: "encryption" | "key" | "network" | "hidden" | "isolate",
     value: string | boolean,
@@ -631,29 +655,44 @@ function WirelessSettingsForm({
       ]}
     >
       <Text style={[styles.advancedTitle, { color: colors.foreground }]}>
-        LuCI 常用无线设置
+        编辑无线设置
       </Text>
       <Text style={[styles.helper, { color: colors.muted }]}>
-        支持常用 WPA2/WPA3 加密、SSID
-        隐藏、客户端隔离和绑定网络接口。保存前自动备份无线配置。
+        可选择常用 WPA2/WPA3 加密、SSID 隐藏、客户端隔离和绑定网络接口。
       </Text>
       <Text style={[styles.label, { color: colors.foreground }]}>加密方式</Text>
-      <TextInput
-        value={network.encryption}
-        onChangeText={(value) => onChange("encryption", value)}
-        editable={!disabled}
-        autoCapitalize="none"
-        placeholder="psk2 / sae / sae-mixed / none"
-        placeholderTextColor={colors.muted}
-        style={[
-          styles.input,
-          {
-            color: colors.foreground,
-            borderColor: colors.border,
-            backgroundColor: colors.surface,
-          },
-        ]}
-      />
+      <View style={styles.choiceGrid}>
+        {WIFI_ENCRYPTION_OPTIONS.map((option) => {
+          const selected = network.encryption === option.value;
+          return (
+            <Pressable
+              key={option.value}
+              accessibilityRole="radio"
+              accessibilityState={{ selected }}
+              disabled={disabled}
+              onPress={() => onChange("encryption", option.value)}
+              style={({ pressed }) => [
+                styles.choicePill,
+                {
+                  borderColor: selected ? colors.primary : colors.border,
+                  backgroundColor: selected ? colors.primary : colors.surface,
+                },
+                pressed && styles.pressed,
+                disabled && styles.disabled,
+              ]}
+            >
+              <Text
+                style={[
+                  styles.choiceText,
+                  { color: selected ? "#FFFFFF" : colors.foreground },
+                ]}
+              >
+                {option.label}
+              </Text>
+            </Pressable>
+          );
+        })}
+      </View>
       <Text style={[styles.label, { color: colors.foreground }]}>无线密码</Text>
       <View style={styles.passwordField}>
         <TextInput
@@ -690,22 +729,48 @@ function WirelessSettingsForm({
         </Pressable>
       </View>
       <Text style={[styles.label, { color: colors.foreground }]}>绑定网络</Text>
-      <TextInput
-        value={network.network}
-        onChangeText={(value) => onChange("network", value)}
-        editable={!disabled}
-        autoCapitalize="none"
-        placeholder="lan 或 guest"
-        placeholderTextColor={colors.muted}
-        style={[
-          styles.input,
-          {
-            color: colors.foreground,
-            borderColor: colors.border,
-            backgroundColor: colors.surface,
-          },
-        ]}
-      />
+      <Text style={[styles.helper, { color: colors.muted }]}>
+        可同时选择多个接口。
+      </Text>
+      <View style={styles.choiceGrid}>
+        {networkBindings.map((binding) => {
+          const selected = network.network.split(/\s+/).includes(binding);
+          return (
+            <Pressable
+              key={binding}
+              accessibilityRole="checkbox"
+              accessibilityState={{ checked: selected }}
+              disabled={disabled}
+              onPress={() => {
+                const next = new Set(
+                  network.network.split(/\s+/).filter(Boolean),
+                );
+                if (next.has(binding)) next.delete(binding);
+                else next.add(binding);
+                onChange("network", [...next].join(" "));
+              }}
+              style={({ pressed }) => [
+                styles.choicePill,
+                {
+                  borderColor: selected ? colors.primary : colors.border,
+                  backgroundColor: selected ? colors.primary : colors.surface,
+                },
+                pressed && styles.pressed,
+                disabled && styles.disabled,
+              ]}
+            >
+              <Text
+                style={[
+                  styles.choiceText,
+                  { color: selected ? "#FFFFFF" : colors.foreground },
+                ]}
+              >
+                {binding}
+              </Text>
+            </Pressable>
+          );
+        })}
+      </View>
       <View style={styles.optionRow}>
         <Text style={[styles.label, { color: colors.foreground }]}>
           隐藏 SSID
@@ -739,7 +804,7 @@ function WirelessSettingsForm({
           disabled && styles.disabled,
         ]}
       >
-        <Text style={styles.guestButtonText}>保存无线高级设置</Text>
+        <Text style={styles.guestButtonText}>保存</Text>
       </Pressable>
     </View>
   );
@@ -803,6 +868,16 @@ const styles = StyleSheet.create({
   deleteText: { fontSize: 12, fontWeight: "800" },
   advancedForm: { borderWidth: 1, borderRadius: 12, padding: 12, gap: 9 },
   advancedTitle: { fontSize: 14, fontWeight: "800" },
+  choiceGrid: { flexDirection: "row", flexWrap: "wrap", gap: 8 },
+  choicePill: {
+    minHeight: 34,
+    borderWidth: 1,
+    borderRadius: 17,
+    paddingHorizontal: 11,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  choiceText: { fontSize: 12, fontWeight: "800" },
   label: { fontSize: 13, fontWeight: "800" },
   optionRow: {
     flexDirection: "row",

@@ -17,6 +17,8 @@ import {
   buildWakeOnLanCommand,
   buildWirelessChannelApplyCommand,
   buildWifiDeleteCommand,
+  buildWifiSettingsSaveCommand,
+  buildWifiSnapshotCommand,
   buildUnblockClientCommand,
   parseDhcpLeaseSnapshot,
   parseDockerSnapshot,
@@ -28,7 +30,9 @@ import {
   parseWirelessOptimizationSnapshot,
   parseWeakSignalClients,
   parseWifiConfigs,
+  parseWifiNetworkBindings,
   recommendWirelessChannel,
+  WIFI_ENCRYPTION_OPTIONS,
 } from "../lib/openwrt-admin";
 
 describe("OpenWrt 管理命令与解析", () => {
@@ -150,27 +154,18 @@ describe("OpenWrt 管理命令与解析", () => {
 
   it("解析性能基准数据和路由器本机固件信息", () => {
     const benchmark = parsePerformanceBenchmark(
-      "TARGET|1.1.1.1\n__BENCHMARK_PING__\n8 packets transmitted, 7 packets received, 12.5% packet loss\nrtt min/avg/max/mdev = 10.000/20.500/31.000/2.000 ms\n__BENCHMARK_DNS__\nName: openwrt.org\nAddress: 1.2.3.4\n__BENCHMARK_SYSTEM__\nLOAD|0.25\nMEM|128000|64000",
+      "__BENCHMARK_SYSTEM__\nCPU|Qualcomm IPQ8074|4\nLOAD|0.25\nMEM|128000|64000\nSTORAGE|256000|64000|192000",
     );
     expect(benchmark).toMatchObject({
-      target: "1.1.1.1",
-      packetsSent: 8,
-      packetsReceived: 7,
-      packetLossPercent: 12.5,
-      latencyAvgMs: 20.5,
-      dnsReachable: true,
+      cpuModel: "Qualcomm IPQ8074",
+      cpuCores: 4,
       loadAverage: 0.25,
       memoryAvailableKb: 64000,
+      storageUsedKb: 64000,
     });
-    expect(buildPerformanceBenchmarkCommand("1.1.1.1")).toContain(
-      "ping -c 8 -W 2 1.1.1.1",
-    );
-    expect(buildPerformanceBenchmarkCommand("openwrt.org")).toContain(
-      "ping -c 8 -W 2 openwrt.org",
-    );
-    expect(() => buildPerformanceBenchmarkCommand("1.1.1.1; reboot")).toThrow(
-      "测速目标格式无效",
-    );
+    expect(buildPerformanceBenchmarkCommand()).toContain("/proc/cpuinfo");
+    expect(buildPerformanceBenchmarkCommand()).toContain("df -k /overlay");
+    expect(buildPerformanceBenchmarkCommand()).not.toContain("ping -c");
     expect(
       parseFirmwareDeviceInfo(
         '{"model":"Example Router","board_name":"example,router","release":{"distribution":"OpenWrt","version":"25.12.0","revision":"r123","target":"ath79/generic"}}',
@@ -242,6 +237,27 @@ describe("OpenWrt 管理命令与解析", () => {
       },
     ]);
     expect(
+      parseWifiNetworkBindings(
+        "__WIFI_NETWORK__|lan\n__WIFI_NETWORK__|docker\n__WIFI_NETWORK__|lan",
+      ),
+    ).toEqual(["docker", "lan"]);
+    expect(buildWifiSnapshotCommand()).toContain("__WIFI_NETWORK__");
+    expect(WIFI_ENCRYPTION_OPTIONS).toContainEqual({
+      value: "psk2",
+      label: "WPA2-PSK",
+    });
+    expect(
+      buildWifiSettingsSaveCommand({
+        section: "home",
+        ssid: "Home WiFi",
+        encryption: "sae-mixed",
+        key: "correct-horse-battery-staple",
+        hidden: false,
+        isolate: false,
+        network: "lan docker",
+      }),
+    ).toContain("uci set wireless.home.network='lan docker'");
+    expect(
       parseServiceStates("OPENWRT|dnsmasq|running\nDOCKER|adguard|Up 2 hours"),
     ).toEqual([
       {
@@ -268,7 +284,7 @@ describe("OpenWrt 管理命令与解析", () => {
     ).toThrow("WAN 接口格式无效");
   });
 
-  it("支持经指定 WAN 发起 IPv4/IPv6 DNS 延迟测试和 NAT 连通性检测", () => {
+  it("支持经指定 WAN 发起 IPv4/IPv6 DNS 延迟测试和仅 NAT 类型检测", () => {
     expect(
       buildDnsLatencyCommand("wan", "1.1.1.1", "ipv4", "openwrt.org"),
     ).toContain("nslookup -4 openwrt.org 1.1.1.1");
@@ -276,7 +292,9 @@ describe("OpenWrt 管理命令与解析", () => {
       buildDnsLatencyCommand("wan6", "2606:4700:4700::1111", "ipv6"),
     ).toContain("nslookup -6 openwrt.org 2606:4700:4700::1111");
     expect(buildNatDiagnosticCommand("wan")).toContain("stunclient");
-    expect(buildNatDiagnosticCommand("wan")).toContain("IPv6 连通性");
+    expect(buildNatDiagnosticCommand("wan")).toContain("NAT 类型与公网映射");
+    expect(buildNatDiagnosticCommand("wan")).not.toContain("IPv6 连通性");
+    expect(buildNatDiagnosticCommand("wan")).not.toContain("ping -I");
     expect(() => buildDnsLatencyCommand("wan", "dns; reboot", "ipv4")).toThrow(
       "DNS 服务器仅支持 IPv4 或 IPv6 地址",
     );

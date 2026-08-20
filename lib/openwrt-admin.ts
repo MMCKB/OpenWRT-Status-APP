@@ -43,6 +43,17 @@ export interface WifiConfigEntry {
   network: string;
 }
 
+/** 与 LuCI 常用名称一致的受控无线加密方式。 */
+export const WIFI_ENCRYPTION_OPTIONS = [
+  { value: "psk", label: "WPA-PSK" },
+  { value: "psk2", label: "WPA2-PSK" },
+  { value: "psk-mixed", label: "WPA/WPA2 混合" },
+  { value: "sae", label: "WPA3-SAE" },
+  { value: "sae-mixed", label: "WPA2/WPA3 混合" },
+  { value: "owe", label: "OWE 增强开放" },
+  { value: "none", label: "不加密" },
+] as const;
+
 export interface WifiClient {
   mac: string;
   interfaceName: string | null;
@@ -101,17 +112,14 @@ export interface DockerSnapshot {
 }
 
 export interface PerformanceBenchmark {
-  target: string;
-  packetsSent: number | null;
-  packetsReceived: number | null;
-  packetLossPercent: number | null;
-  latencyMinMs: number | null;
-  latencyAvgMs: number | null;
-  latencyMaxMs: number | null;
-  dnsReachable: boolean | null;
+  cpuModel: string | null;
+  cpuCores: number | null;
   loadAverage: number | null;
   memoryTotalKb: number | null;
   memoryAvailableKb: number | null;
+  storageTotalKb: number | null;
+  storageUsedKb: number | null;
+  storageAvailableKb: number | null;
 }
 
 export interface FirmwareDeviceInfo {
@@ -441,6 +449,16 @@ export function parseWifiConfigs(output: string): WifiConfigEntry[] {
     }));
 }
 
+/** 从无线快照标记中提取可绑定的命名网络接口。 */
+export function parseWifiNetworkBindings(output: string): string[] {
+  const bindings = new Set<string>();
+  for (const line of output.split(/\r?\n/)) {
+    const match = line.match(/^__WIFI_NETWORK__\|([A-Za-z0-9_.-]{1,32})$/);
+    if (match) bindings.add(match[1]);
+  }
+  return [...bindings].sort((left, right) => left.localeCompare(right));
+}
+
 export function buildWifiToggleCommand(section: string, enabled: boolean) {
   const safeSection = requireIdentifier(section, "无线配置段");
   return `uci set wireless.${safeSection}.disabled='${enabled ? "0" : "1"}'; uci commit wireless; wifi reload`;
@@ -537,7 +555,7 @@ export function parseBlockedClientMacs(output: string) {
 }
 
 export function buildWifiSnapshotCommand() {
-  return "uci show wireless 2>/dev/null";
+  return `uci -q show network 2>/dev/null | sed -n 's/^network\\.\\([A-Za-z0-9_][A-Za-z0-9_.-]*\\)=interface$/__WIFI_NETWORK__|\\1/p'; uci show wireless 2>/dev/null`;
 }
 
 export function buildWifiClientSnapshotCommand() {
@@ -870,7 +888,7 @@ export function buildDnsLatencyCommand(
 
 export function buildNatDiagnosticCommand(interfaceName: string) {
   const wan = requireIdentifier(interfaceName, "WAN 接口");
-  return `echo 'OPENWRT_NAT|wan=${wan}'; echo '--- 本地出口 ---'; ifstatus ${wan} 2>/dev/null; echo '--- 防火墙 NAT ---'; uci -q show firewall | grep -E "=zone|\.name='wan|\.masq='1" || true; echo '--- IPv4 公网映射 ---'; if command -v stunclient >/dev/null 2>&1; then stunclient -i ${wan} stun.l.google.com 19302 2>&1 || stunclient stun.l.google.com 19302 2>&1; else echo '未安装 stunclient：可安装 stunclient 获取 STUN 映射地址。'; fi; echo '--- IPv4 连通性 ---'; ping -I ${wan} -c 1 -W 3 1.1.1.1 2>&1; echo '--- IPv6 连通性 ---'; ping6 -I ${wan} -c 1 -W 3 2606:4700:4700::1111 2>&1 || ping -6 -I ${wan} -c 1 -W 3 2606:4700:4700::1111 2>&1`;
+  return `echo 'OPENWRT_NAT|wan=${wan}'; echo '--- NAT 类型与公网映射 ---'; if command -v stunclient >/dev/null 2>&1; then stunclient -i ${wan} stun.l.google.com 19302 2>&1 || stunclient stun.l.google.com 19302 2>&1; else echo '未安装 stunclient：可安装 stunclient 获取 NAT 类型和 STUN 公网映射。'; fi`;
 }
 
 export function buildWanReconnectCommand(interfaceName: string) {
@@ -979,13 +997,8 @@ export function buildDockerContainerLogsCommand(id: string) {
   return `docker logs --tail 200 ${safeId} 2>&1`;
 }
 
-export function buildPerformanceBenchmarkCommand(
-  target = "1.1.1.1",
-  dnsTarget = "openwrt.org",
-) {
-  const safeTarget = requireIdentifier(target, "测速目标");
-  const safeDnsTarget = requireIdentifier(dnsTarget, "DNS 测试域名");
-  return `printf 'TARGET|%s\\n' ${safeTarget}; printf '__BENCHMARK_PING__\\n'; ping -c 8 -W 2 ${safeTarget} 2>&1; printf '__BENCHMARK_DNS__\\n'; nslookup ${safeDnsTarget} 127.0.0.1 2>&1; printf '__BENCHMARK_SYSTEM__\\n'; awk '{printf "LOAD|%s\\n", $1}' /proc/loadavg; awk '/^MemTotal:/{total=$2}/^MemAvailable:/{available=$2}END{printf "MEM|%s|%s\\n", total, available}' /proc/meminfo`;
+export function buildPerformanceBenchmarkCommand() {
+  return `printf '__BENCHMARK_SYSTEM__\\n'; awk -F: '/^(model name|system type|machine|Processor)[[:space:]]*:/{gsub(/^[[:space:]]+/, "", $2); printf "CPU|%s|", $2; found=1; exit} END{if(!found) printf "CPU|未知 CPU|"}' /proc/cpuinfo; awk '/^processor[[:space:]]*:/ {count++} END{if(count<1) count=1; printf "%s\\n", count}' /proc/cpuinfo; awk '{printf "LOAD|%s\\n", $1}' /proc/loadavg; awk '/^MemTotal:/{total=$2}/^MemAvailable:/{available=$2}END{printf "MEM|%s|%s\\n", total, available}' /proc/meminfo; df -k /overlay 2>/dev/null | awk 'NR==2{printf "STORAGE|%s|%s|%s\\n", $2, $3, $4; found=1} END{if(!found) print "STORAGE|||"}'`;
 }
 
 function nullableNumber(value: string | undefined) {
@@ -997,40 +1010,20 @@ function nullableNumber(value: string | undefined) {
 export function parsePerformanceBenchmark(
   output: string,
 ): PerformanceBenchmark {
-  let target = "未报告";
-  let packetsSent: number | null = null;
-  let packetsReceived: number | null = null;
-  let packetLossPercent: number | null = null;
-  let latencyMinMs: number | null = null;
-  let latencyAvgMs: number | null = null;
-  let latencyMaxMs: number | null = null;
-  let dnsReachable: boolean | null = null;
+  let cpuModel: string | null = null;
+  let cpuCores: number | null = null;
   let loadAverage: number | null = null;
   let memoryTotalKb: number | null = null;
   let memoryAvailableKb: number | null = null;
+  let storageTotalKb: number | null = null;
+  let storageUsedKb: number | null = null;
+  let storageAvailableKb: number | null = null;
   for (const rawLine of output.split(/\r?\n/)) {
     const line = rawLine.trim();
-    const targetMatch = line.match(/^TARGET\|(.+)$/);
-    if (targetMatch) {
-      target = targetMatch[1];
-      continue;
-    }
-    const packetMatch = line.match(
-      /(\d+) packets transmitted, (\d+) (?:packets )?received.*?(\d+(?:\.\d+)?)% packet loss/i,
-    );
-    if (packetMatch) {
-      packetsSent = Number(packetMatch[1]);
-      packetsReceived = Number(packetMatch[2]);
-      packetLossPercent = Number(packetMatch[3]);
-      continue;
-    }
-    const latencyMatch = line.match(
-      /(?:rtt|round-trip) min\/avg\/max(?:\/mdev)?\s*=\s*([\d.]+)\/([\d.]+)\/([\d.]+)/i,
-    );
-    if (latencyMatch) {
-      latencyMinMs = Number(latencyMatch[1]);
-      latencyAvgMs = Number(latencyMatch[2]);
-      latencyMaxMs = Number(latencyMatch[3]);
+    const cpuMatch = line.match(/^CPU\|(.+)\|(\d+)$/);
+    if (cpuMatch) {
+      cpuModel = cpuMatch[1] || null;
+      cpuCores = nullableNumber(cpuMatch[2]);
       continue;
     }
     const loadMatch = line.match(/^LOAD\|(.+)$/);
@@ -1044,31 +1037,22 @@ export function parsePerformanceBenchmark(
       memoryAvailableKb = nullableNumber(memoryMatch[2]);
       continue;
     }
-  }
-  const dnsStart = output.indexOf("__BENCHMARK_DNS__");
-  const systemStart = output.indexOf("__BENCHMARK_SYSTEM__");
-  if (dnsStart >= 0) {
-    const dnsOutput = output.slice(
-      dnsStart,
-      systemStart >= 0 ? systemStart : undefined,
-    );
-    dnsReachable =
-      !/(?:connection timed out|network unreachable|can't find|not found|server failure)/i.test(
-        dnsOutput,
-      ) && /(?:Name:|Address:|answer)/i.test(dnsOutput);
+    const storageMatch = line.match(/^STORAGE\|(\d*)\|(\d*)\|(\d*)$/);
+    if (storageMatch) {
+      storageTotalKb = nullableNumber(storageMatch[1]);
+      storageUsedKb = nullableNumber(storageMatch[2]);
+      storageAvailableKb = nullableNumber(storageMatch[3]);
+    }
   }
   return {
-    target,
-    packetsSent,
-    packetsReceived,
-    packetLossPercent,
-    latencyMinMs,
-    latencyAvgMs,
-    latencyMaxMs,
-    dnsReachable,
+    cpuModel,
+    cpuCores,
     loadAverage,
     memoryTotalKb,
     memoryAvailableKb,
+    storageTotalKb,
+    storageUsedKb,
+    storageAvailableKb,
   };
 }
 

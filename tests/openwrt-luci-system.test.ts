@@ -52,6 +52,8 @@ describe("LuCI 系统管理命令", () => {
         trigger: "netdev",
         delayOn: "",
         delayOff: "",
+        netdevDevice: "",
+        netdevMode: "link",
       },
     ]);
     expect(
@@ -82,6 +84,21 @@ describe("LuCI 系统管理命令", () => {
         gateway: "",
         dns: "",
         auto: true,
+        forceLink: false,
+        defaultRoute: true,
+        useCustomDns: false,
+        dnsMetric: "",
+        metric: "",
+        mptcp: "off",
+        ip4Table: "",
+        ip6Table: "",
+        delegate: true,
+        ip6Assign: "",
+        ip6Class: "",
+        ip6Hint: "",
+        ip6IfaceId: "",
+        ip6Weight: "",
+        firewallZone: "",
       },
     ]);
     expect(
@@ -146,6 +163,21 @@ describe("LuCI 系统管理命令", () => {
         gateway: "",
         dns: "1.1.1.1",
         auto: true,
+        forceLink: false,
+        defaultRoute: true,
+        useCustomDns: true,
+        dnsMetric: "",
+        metric: "",
+        mptcp: "off",
+        ip4Table: "",
+        ip6Table: "",
+        delegate: true,
+        ip6Assign: "",
+        ip6Class: "",
+        ip6Hint: "",
+        ip6IfaceId: "",
+        ip6Weight: "",
+        firewallZone: "lan",
       }),
     ).toContain("/etc/init.d/network reload");
     expect(
@@ -175,6 +207,21 @@ describe("LuCI 系统管理命令", () => {
         gateway: "",
         dns: "",
         auto: true,
+        forceLink: false,
+        defaultRoute: true,
+        useCustomDns: false,
+        dnsMetric: "",
+        metric: "",
+        mptcp: "off",
+        ip4Table: "",
+        ip6Table: "",
+        delegate: true,
+        ip6Assign: "",
+        ip6Class: "",
+        ip6Hint: "",
+        ip6IfaceId: "",
+        ip6Weight: "",
+        firewallZone: "",
       }),
     ).toThrow("配置段标识");
     expect(() =>
@@ -227,6 +274,8 @@ describe("LuCI 系统管理命令", () => {
         trigger: "netdev",
         delayOn: "",
         delayOff: "",
+        netdevDevice: "",
+        netdevMode: "link",
       },
     ]);
     expect(
@@ -244,6 +293,8 @@ describe("LuCI 系统管理命令", () => {
         trigger: "netdev",
         delayOn: "1000",
         delayOff: "1000",
+        netdevDevice: "eth0",
+        netdevMode: "link",
       }),
     ).toContain("'system.@led[0].trigger=netdev'");
     expect(

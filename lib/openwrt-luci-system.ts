@@ -7,16 +7,25 @@ export type LedSetting = {
   trigger: string;
   delayOn: string;
   delayOff: string;
+  netdevDevice: string;
+  netdevMode: string;
 };
 
 export type NewLedSettings = Pick<
   LedSetting,
-  "name" | "sysfs" | "trigger" | "delayOn" | "delayOff"
+  | "name"
+  | "sysfs"
+  | "trigger"
+  | "delayOn"
+  | "delayOff"
+  | "netdevDevice"
+  | "netdevMode"
 >;
 
 export type LedCapabilities = {
   devices: string[];
   triggers: string[];
+  networkDevices: string[];
 };
 
 export type MountPoint = {
@@ -89,6 +98,27 @@ export type NetworkInterfaceSettings = {
   gateway: string;
   dns: string;
   auto: boolean;
+  forceLink: boolean;
+  defaultRoute: boolean;
+  useCustomDns: boolean;
+  dnsMetric: string;
+  metric: string;
+  mptcp: string;
+  ip4Table: string;
+  ip6Table: string;
+  delegate: boolean;
+  ip6Assign: string;
+  ip6Class: string;
+  ip6Hint: string;
+  ip6IfaceId: string;
+  ip6Weight: string;
+  firewallZone: string;
+};
+
+export type NetworkInterfaceOptions = {
+  protocols: string[];
+  devices: string[];
+  firewallZones: Array<{ section: string; name: string }>;
 };
 
 export type NetworkInterfaceStatus = {
@@ -215,7 +245,7 @@ export function buildStartupActionCommand(
 }
 
 export function buildLedSnapshotCommand(): string {
-  return `uci -q show system | awk -F= '/=led$/{section=$1; sub(/^system\\./,"",section); print "LED|" section "|name|" section} /^system\\.[^.]+\\.(name|sysfs|trigger|delayon|delayoff)=/{key=$1; sub(/^system\\.[^.]+\\./,"",key); value=$2; gsub(/\\047/,"",value); split($1,p,"."); print "LED|" p[2] "|" key "|" value}'`;
+  return `uci -q show system | awk -F= '/=led$/{section=$1; sub(/^system\\./,"",section); print "LED|" section "|name|" section} /^system\\.[^.]+\\.(name|sysfs|trigger|delayon|delayoff|dev|mode)=/{key=$1; sub(/^system\\.[^.]+\\./,"",key); value=$2; gsub(/\\047/,"",value); split($1,p,"."); print "LED|" p[2] "|" key "|" value}'`;
 }
 
 export function parseLedSettings(output: string): LedSetting[] {
@@ -228,21 +258,25 @@ export function parseLedSettings(output: string): LedSetting[] {
       trigger,
       delayOn: trigger === "timer" ? (value.delayon ?? "1000") : "",
       delayOff: trigger === "timer" ? (value.delayoff ?? "1000") : "",
+      netdevDevice: trigger === "netdev" ? (value.dev ?? "") : "",
+      netdevMode: trigger === "netdev" ? (value.mode ?? "link") : "",
     };
   });
 }
 
 export function buildLedCapabilitiesSnapshotCommand(): string {
-  return `for led in /sys/class/leds/*; do [ -d "$led" ] || continue; name=$(basename "$led"); printf 'LEDCAP|device|%s\\n' "$name"; [ -r "$led/trigger" ] || continue; tr ' ' '\\n' < "$led/trigger" | tr -d '[]' | awk '/^[A-Za-z0-9_.:-]+$/ { print "LEDCAP|trigger|" $0 }'; done | sort -u`;
+  return `for led in /sys/class/leds/*; do [ -d "$led" ] || continue; name=$(basename "$led"); printf 'LEDCAP|device|%s\\n' "$name"; [ -r "$led/trigger" ] || continue; tr ' ' '\\n' < "$led/trigger" | tr -d '[]' | awk '/^[A-Za-z0-9_.:-]+$/ { print "LEDCAP|trigger|" $0 }'; done; ip -o link 2>/dev/null | awk -F': ' '{name=$2; sub(/@.*/, "", name); if (name ~ /^[A-Za-z0-9_.:-]+$/) print "LEDCAP|netdev|" name}' | sort -u`;
 }
 
 export function parseLedCapabilities(output: string): LedCapabilities {
   const devices = new Set<string>();
   const triggers = new Set<string>();
+  const networkDevices = new Set<string>();
   for (const line of output.split(/\r?\n/)) {
-    const match = line.match(/^LEDCAP\|(device|trigger)\|([^|]+)$/);
+    const match = line.match(/^LEDCAP\|(device|trigger|netdev)\|([^|]+)$/);
     if (!match || !SAFE_LED_OPTION.test(match[2])) continue;
     if (match[1] === "device") devices.add(match[2]);
+    else if (match[1] === "netdev") networkDevices.add(match[2]);
     else if (
       ["default-on", "heartbeat", "netdev", "none", "timer"].includes(match[2])
     )
@@ -251,13 +285,21 @@ export function parseLedCapabilities(output: string): LedCapabilities {
   return {
     devices: [...devices].sort((a, b) => a.localeCompare(b)),
     triggers: [...triggers].sort((a, b) => a.localeCompare(b)),
+    networkDevices: [...networkDevices].sort((a, b) => a.localeCompare(b)),
   };
 }
 
 export function buildSaveLedCommand(
   settings: Pick<
     LedSetting,
-    "section" | "name" | "sysfs" | "trigger" | "delayOn" | "delayOff"
+    | "section"
+    | "name"
+    | "sysfs"
+    | "trigger"
+    | "delayOn"
+    | "delayOff"
+    | "netdevDevice"
+    | "netdevMode"
   >,
 ): string {
   assertSection(settings.section);
@@ -265,12 +307,17 @@ export function buildSaveLedCommand(
   assertValue(settings.sysfs, "LED 设备");
   assertValue(settings.trigger, "LED 触发器");
   assertLedIntervals(settings.trigger, settings.delayOn, settings.delayOff);
+  assertLedNetdev(settings.trigger, settings.netdevDevice, settings.netdevMode);
   const base = `system.${settings.section}`;
   const timerWrites =
     settings.trigger === "timer"
       ? `${uciSet(`${base}.delayon`, settings.delayOn)}; ${uciSet(`${base}.delayoff`, settings.delayOff)};`
       : `${uciDelete(`${base}.delayon`)}; ${uciDelete(`${base}.delayoff`)};`;
-  return `uci -q get ${quote(base)} >/dev/null || { echo 'LED 配置不存在。'; exit 2; }; existing=$(uci -q get ${quote(`${base}.name`)}); if uci -q show system | sed -n "s/^system\\.[^.]*\\.name='\\(.*\\)'$/\\1/p" | grep -Fx ${quote(settings.name)} | grep -Fvx "$existing" >/dev/null; then echo 'LED 名称已存在。'; exit 2; fi; ${uciSet(`${base}.name`, settings.name)}; ${uciSet(`${base}.sysfs`, settings.sysfs)}; ${uciSet(`${base}.trigger`, settings.trigger)}; ${timerWrites} ${uciDelete(`${base}.color`)}; ${uciDelete(`${base}.default`)}; uci commit system; /etc/init.d/system reload; echo 'LED 设置已保存。'`;
+  const netdevWrites =
+    settings.trigger === "netdev"
+      ? `${uciSet(`${base}.dev`, settings.netdevDevice)}; ${uciSet(`${base}.mode`, settings.netdevMode)};`
+      : `${uciDelete(`${base}.dev`)}; ${uciDelete(`${base}.mode`)};`;
+  return `uci -q get ${quote(base)} >/dev/null || { echo 'LED 配置不存在。'; exit 2; }; existing=$(uci -q get ${quote(`${base}.name`)}); if uci -q show system | sed -n "s/^system\\.[^.]*\\.name='\\(.*\\)'$/\\1/p" | grep -Fx ${quote(settings.name)} | grep -Fvx "$existing" >/dev/null; then echo 'LED 名称已存在。'; exit 2; fi; ${uciSet(`${base}.name`, settings.name)}; ${uciSet(`${base}.sysfs`, settings.sysfs)}; ${uciSet(`${base}.trigger`, settings.trigger)}; ${timerWrites} ${netdevWrites} ${uciDelete(`${base}.color`)}; ${uciDelete(`${base}.default`)}; uci commit system; ([ -x /etc/init.d/led ] && /etc/init.d/led restart) || /etc/init.d/system reload; echo 'LED 设置已保存并重新加载。'`;
 }
 
 export function buildAddLedCommand(settings: NewLedSettings): string {
@@ -278,11 +325,16 @@ export function buildAddLedCommand(settings: NewLedSettings): string {
   assertValue(settings.sysfs, "LED 设备");
   assertValue(settings.trigger, "LED 触发器");
   assertLedIntervals(settings.trigger, settings.delayOn, settings.delayOff);
+  assertLedNetdev(settings.trigger, settings.netdevDevice, settings.netdevMode);
   const timerWrites =
     settings.trigger === "timer"
       ? `uci set "system.$section.delayon=${settings.delayOn}"; uci set "system.$section.delayoff=${settings.delayOff}";`
       : "";
-  return `if uci -q show system | sed -n "s/^system\\.[^.]*\\.name='\\(.*\\)'$/\\1/p" | grep -Fx ${quote(settings.name)} >/dev/null; then echo 'LED 名称已存在。'; exit 2; fi; section=$(uci add system led); uci set "system.$section.name=${settings.name}"; uci set "system.$section.sysfs=${settings.sysfs}"; uci set "system.$section.trigger=${settings.trigger}"; ${timerWrites} uci commit system; /etc/init.d/system reload; echo 'LED 已新增。'`;
+  const netdevWrites =
+    settings.trigger === "netdev"
+      ? `uci set "system.$section.dev=${settings.netdevDevice}"; uci set "system.$section.mode=${settings.netdevMode}";`
+      : "";
+  return `if uci -q show system | sed -n "s/^system\\.[^.]*\\.name='\\(.*\\)'$/\\1/p" | grep -Fx ${quote(settings.name)} >/dev/null; then echo 'LED 名称已存在。'; exit 2; fi; section=$(uci add system led); uci set "system.$section.name=${settings.name}"; uci set "system.$section.sysfs=${settings.sysfs}"; uci set "system.$section.trigger=${settings.trigger}"; ${timerWrites} ${netdevWrites} uci commit system; ([ -x /etc/init.d/led ] && /etc/init.d/led restart) || /etc/init.d/system reload; echo 'LED 已新增并重新加载。'`;
 }
 
 function assertLedIntervals(
@@ -300,10 +352,18 @@ function assertLedIntervals(
   }
 }
 
+function assertLedNetdev(trigger: string, device: string, mode: string): void {
+  if (trigger !== "netdev") return;
+  if (!SAFE_LED_OPTION.test(device))
+    throw new Error("网络设备活动必须选择有效的网络设备。");
+  if (!/^(link|tx|rx|link tx|link rx|tx rx|link tx rx)$/.test(mode))
+    throw new Error("网络设备活动触发方式不合法。");
+}
+
 export function buildDeleteLedCommand(section: string): string {
   assertSection(section);
   const base = `system.${section}`;
-  return `uci -q get ${quote(base)} >/dev/null || { echo 'LED 配置不存在。'; exit 2; }; ${uciDelete(base)}; uci commit system; /etc/init.d/system reload; echo 'LED 已删除。'`;
+  return `uci -q get ${quote(base)} >/dev/null || { echo 'LED 配置不存在。'; exit 2; }; ${uciDelete(base)}; uci commit system; ([ -x /etc/init.d/led ] && /etc/init.d/led restart) || /etc/init.d/system reload; echo 'LED 已删除。'`;
 }
 
 export function buildMountSnapshotCommand(): string {
@@ -669,7 +729,7 @@ export function buildSetLuciThemeCommand(theme: string): string {
 }
 
 export function buildNetworkInterfaceSnapshotCommand(): string {
-  return `uci -q show network | awk -F= '/=interface$/{section=$1; sub(/^network\\./,"",section); print "IFACE|" section "|section|" section} /^network\\.[^.]+\\.(proto|device|ifname|ipaddr|netmask|gateway|dns|auto)=/{key=$1; sub(/^network\\.[^.]+\\./,"",key); value=$2; gsub(/\\047/,"",value); split($1,p,"."); print "IFACE|" p[2] "|" key "|" value}'`;
+  return `uci -q show network | awk -F= '/=interface$/{section=$1; sub(/^network\\./,"",section); print "IFACE|" section "|section|" section} /^network\\.[^.]+\\.(proto|device|ifname|ipaddr|netmask|gateway|dns|auto|force_link|defaultroute|peerdns|dns_metric|metric|mptcp|ip4table|ip6table|delegate|ip6assign|ip6class|ip6hint|ip6ifaceid|ip6weight)=/{key=$1; sub(/^network\\.[^.]+\\./,"",key); value=$2; gsub(/\\047/,"",value); split($1,p,"."); print "IFACE|" p[2] "|" key "|" value}'`;
 }
 
 export function parseNetworkInterfaceSettings(
@@ -685,8 +745,54 @@ export function parseNetworkInterfaceSettings(
       gateway: value.gateway ?? "",
       dns: value.dns ?? "",
       auto: value.auto !== "0",
+      forceLink: enabled(value.force_link),
+      defaultRoute: value.defaultroute !== "0",
+      useCustomDns: value.peerdns === "0",
+      dnsMetric: value.dns_metric ?? "",
+      metric: value.metric ?? "",
+      mptcp: value.mptcp ?? "off",
+      ip4Table: value.ip4table ?? "",
+      ip6Table: value.ip6table ?? "",
+      delegate: value.delegate !== "0",
+      ip6Assign: value.ip6assign ?? "",
+      ip6Class: value.ip6class ?? "",
+      ip6Hint: value.ip6hint ?? "",
+      ip6IfaceId: value.ip6ifaceid ?? "",
+      ip6Weight: value.ip6weight ?? "",
+      firewallZone: "",
     }),
   );
+}
+
+export function buildNetworkInterfaceOptionsSnapshotCommand(): string {
+  return `for proto in /lib/netifd/proto/*.sh; do [ -f "$proto" ] || continue; name=$(basename "$proto" .sh); case "$name" in *[!A-Za-z0-9_-]*|'') continue;; esac; printf 'IFOPTION|protocol|%s\\n' "$name"; done; uci -q show network | sed -n "s/^network\\.[^.]*\\.\\(device\\|ifname\\)='\\([^']*\\)'$/\\2/p" | tr ' ' '\\n' | awk '/^[A-Za-z0-9_.:@-]+$/ {print "IFOPTION|device|" $0}'; ip -o link 2>/dev/null | awk -F': ' '{name=$2; sub(/@.*/, "", name); if (name ~ /^[A-Za-z0-9_.:@-]+$/) print "IFOPTION|device|" name}'; uci -q show firewall | awk -F= '/=zone$/{section=$1; sub(/^firewall\\./,"",section); name=section; if (section ~ /^[A-Za-z0-9_.-]+$/) print "IFZONE|" section "|" name} /^firewall\\.[^.]+\\.name=/{section=$1; sub(/^firewall\\./,"",section); sub(/\\.name$/,"",section); name=$2; gsub(/\\047/,"",name); print "IFZONE|" section "|" name}' | sort -u`;
+}
+
+export function parseNetworkInterfaceOptions(
+  output: string,
+): NetworkInterfaceOptions {
+  const protocols = new Set(["dhcp", "static", "pppoe", "none", "unmanaged"]);
+  const devices = new Set<string>();
+  const zones = new Map<string, string>();
+  for (const line of output.split(/\r?\n/)) {
+    const option = line.match(/^IFOPTION\|(protocol|device)\|([^|]+)$/);
+    if (option && SAFE_LED_OPTION.test(option[2])) {
+      if (option[1] === "protocol") protocols.add(option[2]);
+      else devices.add(option[2]);
+      continue;
+    }
+    const zone = line.match(/^IFZONE\|([^|]+)\|([^|]+)$/);
+    if (zone && SAFE_SECTION.test(zone[1]) && SAFE_VALUE.test(zone[2])) {
+      zones.set(zone[1], zone[2]);
+    }
+  }
+  return {
+    protocols: [...protocols].sort((left, right) => left.localeCompare(right)),
+    devices: [...devices].sort((left, right) => left.localeCompare(right)),
+    firewallZones: [...zones.entries()]
+      .map(([section, name]) => ({ section, name }))
+      .sort((left, right) => left.name.localeCompare(right.name)),
+  };
 }
 
 export function buildNetworkInterfaceStatusCommand(): string {
@@ -748,22 +854,30 @@ export function buildSaveNetworkInterfaceCommand(
   settings: NetworkInterfaceSettings,
 ): string {
   assertSection(settings.section);
-  if (
-    !["dhcp", "static", "pppoe", "none", "unmanaged"].includes(settings.proto)
-  )
-    throw new Error("不支持的接口协议。");
+  if (!SAFE_LED_OPTION.test(settings.proto))
+    throw new Error("接口协议不合法。");
+  if (settings.firewallZone) assertSection(settings.firewallZone);
   for (const [label, value] of Object.entries({
     设备: settings.device,
     "IPv4 地址": settings.ipaddr,
     掩码: settings.netmask,
     网关: settings.gateway,
     DNS: settings.dns,
+    "DNS 权重": settings.dnsMetric,
+    网关跃点: settings.metric,
+    "IPv4 路由表": settings.ip4Table,
+    "IPv6 路由表": settings.ip6Table,
+    "IPv6 前缀长度": settings.ip6Assign,
+    "IPv6 前缀过滤器": settings.ip6Class,
+    "IPv6 后缀": settings.ip6IfaceId,
+    "IPv6 优先级": settings.ip6Weight,
   }))
     assertValue(value, label);
   const base = `network.${settings.section}`;
   const setOrDelete = (key: string, value: string) =>
     value ? uciSet(`${base}.${key}`, value) : uciDelete(`${base}.${key}`);
-  return `uci -q get ${quote(base)} >/dev/null || { echo '接口配置不存在。'; exit 2; }; cp /etc/config/network /etc/config/network.app-backup.$(date +%s); ${uciSet(`${base}.proto`, settings.proto)}; ${setOrDelete("device", settings.device)}; ${setOrDelete("ipaddr", settings.ipaddr)}; ${setOrDelete("netmask", settings.netmask)}; ${setOrDelete("gateway", settings.gateway)}; ${setOrDelete("dns", settings.dns)}; ${uciSet(`${base}.auto`, settings.auto ? "1" : "0")}; uci commit network; /etc/init.d/network reload; echo '接口设置已保存，网络可能短暂重连。'`;
+  const firewallWrites = `for zone in $(uci -q show firewall | sed -n "s/^firewall\\.\\([^.]*\\)=zone$/\\1/p"); do networks=$(uci -q get "firewall.$zone.network"); uci -q delete "firewall.$zone.network"; for network in $networks; do [ "$network" = ${quote(settings.section)} ] || uci add_list "firewall.$zone.network=$network"; done; done; ${settings.firewallZone ? `uci -q get ${quote(`firewall.${settings.firewallZone}`)} >/dev/null || { echo '防火墙区域不存在。'; exit 2; }; uci add_list ${quote(`firewall.${settings.firewallZone}.network=${settings.section}`)};` : ""} uci commit firewall; /etc/init.d/firewall reload 2>/dev/null || true;`;
+  return `uci -q get ${quote(base)} >/dev/null || { echo '接口配置不存在。'; exit 2; }; cp /etc/config/network /etc/config/network.app-backup.$(date +%s); ${uciSet(`${base}.proto`, settings.proto)}; ${setOrDelete("device", settings.device)}; ${setOrDelete("ipaddr", settings.ipaddr)}; ${setOrDelete("netmask", settings.netmask)}; ${setOrDelete("gateway", settings.gateway)}; ${setOrDelete("dns", settings.dns)}; ${uciSet(`${base}.auto`, settings.auto ? "1" : "0")}; ${uciSet(`${base}.force_link`, settings.forceLink ? "1" : "0")}; ${uciSet(`${base}.defaultroute`, settings.defaultRoute ? "1" : "0")}; ${uciSet(`${base}.peerdns`, settings.useCustomDns ? "0" : "1")}; ${setOrDelete("dns_metric", settings.dnsMetric)}; ${setOrDelete("metric", settings.metric)}; ${setOrDelete("mptcp", settings.mptcp === "off" ? "" : settings.mptcp)}; ${setOrDelete("ip4table", settings.ip4Table)}; ${setOrDelete("ip6table", settings.ip6Table)}; ${uciSet(`${base}.delegate`, settings.delegate ? "1" : "0")}; ${setOrDelete("ip6assign", settings.ip6Assign)}; ${setOrDelete("ip6class", settings.ip6Class)}; ${setOrDelete("ip6hint", settings.ip6Hint)}; ${setOrDelete("ip6ifaceid", settings.ip6IfaceId)}; ${setOrDelete("ip6weight", settings.ip6Weight)}; uci commit network; ${firewallWrites} /etc/init.d/network reload; echo '接口设置已保存，网络可能短暂重连。'`;
 }
 
 export function buildNetworkInterfaceRestartCommand(section: string): string {

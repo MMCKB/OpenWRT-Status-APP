@@ -16,6 +16,8 @@ export interface RouterSettings {
   trafficInterfaceIds: string[];
   /** Full includes rate charts; compact keeps only concise throughput values. */
   statusTrafficView: "full" | "compact";
+  /** Where manually executed diagnostic command results are shown. */
+  diagnosticOutputDisplay: "page" | "dialog" | "both";
 }
 
 export interface SystemStatus {

@@ -11,6 +11,8 @@ import {
   buildApkRemoveCommand,
   buildApkRepositoriesSnapshotCommand,
   buildApkSaveRepositoriesCommand,
+  APK_CUSTOM_FEEDS_SOURCE,
+  APK_DIST_FEEDS_SOURCE,
   parseInstalledPackages,
   parseUpgradablePackages,
   parseAvailablePackages,
@@ -82,7 +84,7 @@ describe("router-package-commands (apk)", () => {
 
   it("should build a safe APK repositories snapshot and save command", () => {
     expect(buildApkRepositoriesSnapshotCommand()).toContain(
-      "for file in /etc/apk/repositories /etc/apk/repositories.d/*",
+      `${APK_CUSTOM_FEEDS_SOURCE} ${APK_DIST_FEEDS_SOURCE}`,
     );
     expect(buildApkRepositoriesSnapshotCommand()).toContain("REPO|%s|%d|%d|%s");
 
@@ -99,6 +101,7 @@ describe("router-package-commands (apk)", () => {
     expect(command).toContain("umask 077");
     expect(command).toContain('cp "$target" "$target.openwrt-status.bak"');
     expect(command).toContain('mv "$temp" "$target" && apk update');
+    expect(command).toContain(`target='${APK_CUSTOM_FEEDS_SOURCE}'`);
     expect(command).toContain(
       "'# https://downloads.openwrt.org/releases/25.12/packages/aarch64_cortex-a53/luci'",
     );

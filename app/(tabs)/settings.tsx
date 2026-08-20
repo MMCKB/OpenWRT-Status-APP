@@ -30,12 +30,19 @@ const themeOptions: {
   { label: "深色", value: "dark", icon: "dark-mode" },
 ];
 
+const diagnosticOutputOptions = [
+  { label: "命令输出", value: "page" as const },
+  { label: "弹窗", value: "dialog" as const },
+  { label: "两者都显示", value: "both" as const },
+];
+
 export default function SettingsScreen() {
   const {
     settings,
     updateRefreshInterval,
     updateTrafficInterfaceIds,
     updateStatusTrafficView,
+    updateDiagnosticOutputDisplay,
     selectedStatus,
   } = useRouterStore();
   const { colorScheme, themePreference, setThemePreference } =
@@ -261,6 +268,47 @@ export default function SettingsScreen() {
                     ]}
                   >
                     {label}
+                  </Text>
+                </Pressable>
+              );
+            })}
+          </View>
+        </SectionCard>
+        <SectionCard title="诊断结果展示">
+          <Text style={[styles.cardDescription, { color: colors.muted }]}>
+            执行 Ping、DNS、NAT
+            和端口等命令后，选择将路由器返回结果显示在页面中、应用内弹窗中，或同时显示。
+          </Text>
+          <View style={styles.viewModeRow}>
+            {diagnosticOutputOptions.map((option) => {
+              const selected =
+                settings.diagnosticOutputDisplay === option.value;
+              return (
+                <Pressable
+                  key={option.value}
+                  accessibilityRole="button"
+                  accessibilityState={{ selected }}
+                  onPress={() =>
+                    void updateDiagnosticOutputDisplay(option.value)
+                  }
+                  style={({ pressed }) => [
+                    styles.viewModeOption,
+                    {
+                      borderColor: selected ? colors.primary : colors.border,
+                      backgroundColor: selected
+                        ? colors.primary
+                        : colors.surface,
+                    },
+                    pressed && styles.pressed,
+                  ]}
+                >
+                  <Text
+                    style={[
+                      styles.viewModeText,
+                      { color: selected ? "#FFFFFF" : colors.foreground },
+                    ]}
+                  >
+                    {option.label}
                   </Text>
                 </Pressable>
               );

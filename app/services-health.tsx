@@ -319,6 +319,21 @@ export default function ServicesHealthScreen() {
           />
         )}
       </SectionCard>
+      {output ? (
+        <View style={styles.outputSection}>
+          <Text style={[styles.outputTitle, { color: colors.foreground }]}>
+            日志与命令输出
+          </Text>
+          <View style={[styles.output, { backgroundColor: colors.surface }]}>
+            <Text
+              selectable
+              style={[styles.outputText, { color: colors.foreground }]}
+            >
+              {output.trim()}
+            </Text>
+          </View>
+        </View>
+      ) : null}
 
       <SectionCard
         title="路由器健康报告"
@@ -467,18 +482,6 @@ export default function ServicesHealthScreen() {
           </Text>
         </ToolNotice>
       ) : null}
-      {output ? (
-        <SectionCard title="日志与命令输出">
-          <View style={[styles.output, { backgroundColor: colors.background }]}>
-            <Text
-              selectable
-              style={[styles.outputText, { color: colors.foreground }]}
-            >
-              {output.trim()}
-            </Text>
-          </View>
-        </SectionCard>
-      ) : null}
       {!isSupported ? (
         <ToolNotice>
           <Text style={[styles.notice, { color: colors.warning }]}>
@@ -537,7 +540,9 @@ const styles = StyleSheet.create({
   primaryText: { color: "#fff", fontSize: 13, fontWeight: "800" },
   running: { flexDirection: "row", gap: 10, alignItems: "center" },
   notice: { fontSize: 13, lineHeight: 19 },
-  output: { margin: 14, padding: 12, borderRadius: 12 },
+  outputSection: { gap: 8 },
+  outputTitle: { fontSize: 17, fontWeight: "900" },
+  output: { padding: 12, borderRadius: 12 },
   outputText: { fontFamily: "monospace", fontSize: 12, lineHeight: 18 },
   pressed: { opacity: 0.72 },
   disabled: { opacity: 0.46 },
