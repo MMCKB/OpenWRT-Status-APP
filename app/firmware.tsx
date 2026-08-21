@@ -6,6 +6,7 @@ import { ActivityIndicator, KeyboardAvoidingView, Platform, Pressable, ScrollVie
 import { AppDialog as Alert } from "@/components/app-dialog";
 
 import { connectInAppSsh, getInAppSshTarget, isInAppSshSupported, runInAppSshCommand, uploadInAppSshFile } from "@/lib/native-ssh";
+import { buildFirmwareUpgradeCommand, buildFirmwareVerifyCommand } from "@/lib/openwrt-admin";
 import { useRouterStore } from "@/lib/router-provider";
 import { useThemedStyles } from "@/lib/use-themed-styles";
 import { useColorScheme } from "@/hooks/use-color-scheme";
@@ -22,6 +23,16 @@ function safeFileName(value: string) {
   return value.replace(/[^a-zA-Z0-9._-]/g, "_").slice(-72) || "firmware.bin";
 }
 
+function isSupportedFirmwareName(value: string) {
+  return /\.(?:bin|img)$/i.test(value.trim());
+}
+
+function verificationDetail(output: string) {
+  return output
+    .replace(/__FIRMWARE_(?:VALID|INVALID)__\s*/g, "")
+    .trim();
+}
+
 export default function FirmwareScreen() {
   const styles = useThemedStyles(baseStyles);
   const colorScheme = useColorScheme();
@@ -30,7 +41,7 @@ export default function FirmwareScreen() {
   const [asset, setAsset] = useState<FirmwareAsset | null>(null);
   const [remotePath, setRemotePath] = useState<string | null>(null);
   const [step, setStep] = useState<FirmwareStep>("select");
-  const [message, setMessage] = useState("选择与当前设备型号匹配的 OpenWrt sysupgrade 镜像。");
+  const [message, setMessage] = useState("仅可选择与当前设备型号匹配的 BIN 或 IMG 格式 OpenWrt sysupgrade 镜像。");
 
   if (!selectedProfile) {
     return <View style={styles.blank}><Text style={styles.blankTitle}>没有可升级的路由器</Text><Text style={styles.blankText}>请先保存并选择一台 OpenWrt 路由器。</Text></View>;
@@ -45,45 +56,65 @@ export default function FirmwareScreen() {
 
   async function chooseFirmware() {
     try {
-      const result = await DocumentPicker.getDocumentAsync({ type: ["application/octet-stream", "application/x-sysupgrade", "*/*"], copyToCacheDirectory: true, multiple: false });
+      const result = await DocumentPicker.getDocumentAsync({ type: ["application/octet-stream", "application/x-sysupgrade"], copyToCacheDirectory: true, multiple: false });
       if (result.canceled || !result.assets?.[0]) return;
       const file = result.assets[0];
+      if (!isSupportedFirmwareName(file.name)) {
+        setAsset(null);
+        setRemotePath(null);
+        setStep("error");
+        setMessage("仅支持 .bin 或 .img 格式的固件镜像。请选择当前设备对应的 sysupgrade 固件。");
+        return;
+      }
       setAsset({ name: file.name, uri: file.uri, size: file.size, mimeType: file.mimeType });
       setRemotePath(null); setStep("select");
-      setMessage("已选择固件。上传完成后，请在最后一步确认是否执行升级。");
+      setMessage("已选择 BIN/IMG 固件。上传后会先由路由器执行 sysupgrade 镜像校验，不会立即升级。");
     } catch (error) {
       setStep("error"); setMessage(error instanceof Error ? error.message : "无法选择固件文件。");
     }
   }
 
   async function uploadFirmware() {
-    if (!asset) { setStep("error"); setMessage("请先选择固件文件。 "); return; }
-    setStep("uploading"); setMessage("正在通过 SSH 上传固件至路由器临时目录…");
+    if (!asset || !isSupportedFirmwareName(asset.name)) { setStep("error"); setMessage("请先选择 BIN 或 IMG 格式的固件文件。"); return; }
+    setStep("uploading"); setMessage("正在通过 SSH 上传固件至路由器临时目录，随后将由路由器校验镜像…");
     try {
       const credentials = await getSelectedCredentials();
       if (!credentials) throw new Error("未找到本机保存的 SSH 密码，请编辑路由器资料后再试。");
       await connectInAppSsh(profile, credentials.sshPassword);
       const targetPath = `/tmp/manus-${Date.now()}-${safeFileName(asset.name)}`;
       await uploadInAppSshFile(asset.uri, targetPath);
+      const verification = await runInAppSshCommand(
+        buildFirmwareVerifyCommand(targetPath),
+      );
+      if (!verification.includes("__FIRMWARE_VALID__")) {
+        await runInAppSshCommand(`rm -f '${targetPath}'`).catch(() => undefined);
+        setRemotePath(null);
+        setStep("error");
+        setMessage(
+          `路由器未通过固件校验。${verificationDetail(verification) || "请确认镜像型号、目标平台和文件完整性。"}`,
+        );
+        return;
+      }
       setRemotePath(targetPath);
-      setStep("ready"); setMessage("上传完成。请仔细确认设备和固件镜像后，再开始不可逆的升级。 ");
+      setStep("ready"); setMessage(`路由器已通过 sysupgrade 镜像校验。${verificationDetail(verification) || "请在下一步选择是否保留当前配置。"}`);
     } catch (error) {
       setStep("error"); setMessage(error instanceof Error ? error.message : "固件上传失败。 ");
     }
   }
 
   function confirmUpgrade() {
-    Alert.alert("确认执行固件升级？", `将对 ${target} 执行 sysupgrade。路由器会断开连接并重启；操作中断或镜像错误可能导致设备不可用。`, [
+    Alert.alert("选择升级方式", `镜像已由路由器通过 sysupgrade 校验。将对 ${target} 执行升级并重启；操作中断可能导致设备不可用。请选择是否保留现有配置。`, [
       { text: "取消", style: "cancel" },
-      { text: "确认升级", style: "destructive", onPress: () => void performUpgrade() },
+      { text: "不保留配置并升级", style: "destructive", onPress: () => void performUpgrade(false) },
+      { text: "保留配置并升级", onPress: () => void performUpgrade(true) },
     ]);
   }
 
-  async function performUpgrade() {
+  async function performUpgrade(preserveConfig: boolean) {
     if (!remotePath || !canUpgrade) return;
-    setStep("upgrading"); setMessage("升级命令已提交。路由器将断开连接并重启，请勿关闭电源或离开当前网络。 ");
+    setStep("upgrading"); setMessage(`升级命令已提交（${preserveConfig ? "保留当前配置" : "不保留当前配置"}）。路由器将断开连接并重启，请勿关闭电源或离开当前网络。`);
     try {
-      await runInAppSshCommand(`sysupgrade '${remotePath}'`);
+      await runInAppSshCommand(buildFirmwareUpgradeCommand(remotePath, preserveConfig));
     } catch {
       // sysupgrade typically ends the SSH transport during reboot; the submitted command is the success signal.
     }
@@ -93,16 +124,16 @@ export default function FirmwareScreen() {
     <KeyboardAvoidingView style={styles.screen} behavior={Platform.OS === "ios" ? "padding" : undefined}>
       <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
         <View style={styles.nav}><Pressable accessibilityRole="button" accessibilityLabel="返回设置" onPress={() => router.back()} style={styles.back}><MaterialIcons name="arrow-back" size={22} color="#203B55" /></Pressable><Text style={styles.navTitle}>固件升级</Text><View style={styles.navSpacer} /></View>
-        <View style={[styles.warning, { backgroundColor: warningColors.background, borderColor: warningColors.border }]}><MaterialIcons name="warning-amber" size={23} color={warningColors.icon} /><View style={styles.warningText}><Text style={[styles.warningTitle, { color: warningColors.title }]}>高风险操作</Text><Text style={[styles.warningBody, { color: warningColors.body }]}>升级会替换路由器系统。仅使用与当前型号完全匹配的 sysupgrade 镜像，并在持续供电的可信网络中操作。</Text></View></View>
+        <View style={[styles.warning, { backgroundColor: warningColors.background, borderColor: warningColors.border }]}><MaterialIcons name="warning-amber" size={23} color={warningColors.icon} /><View style={styles.warningText}><Text style={[styles.warningTitle, { color: warningColors.title }]}>高风险操作</Text><Text style={[styles.warningBody, { color: warningColors.body }]}>仅支持 BIN、IMG 格式的 sysupgrade 镜像。应用会在上传后先由路由器校验，校验通过后才允许选择保留或清除配置并升级。</Text></View></View>
         <View style={styles.deviceCard}><Text style={styles.eyebrow}>升级目标</Text><Text style={styles.deviceTarget}>{target}</Text><Text style={styles.deviceHint}>仅在新版 Android APK 中可上传和升级</Text></View>
         {!isInAppSshSupported() ? <View style={styles.error}><Text style={styles.errorText}>此功能仅在 Android APK 中可用，Web 与 iOS 预览无法使用内嵌 SSH 文件传输。</Text></View> : null}
         <Text style={styles.sectionTitle}>1. 选择固件</Text>
-        <Pressable accessibilityRole="button" onPress={() => void chooseFirmware()} disabled={step === "uploading" || step === "upgrading"} style={({ pressed }) => [styles.filePicker, pressed && styles.pressed]}><MaterialIcons name="upload-file" size={24} color="#007E7A" /><View style={styles.fileCopy}><Text style={styles.fileTitle}>{asset?.name ?? "选择 sysupgrade 镜像"}</Text><Text style={styles.fileMeta}>{asset ? formatFileSize(asset.size) : "文件仅临时保存在本机以供上传"}</Text></View><MaterialIcons name="chevron-right" size={22} color="#718398" /></Pressable>
+        <Pressable accessibilityRole="button" onPress={() => void chooseFirmware()} disabled={step === "uploading" || step === "upgrading"} style={({ pressed }) => [styles.filePicker, pressed && styles.pressed]}><MaterialIcons name="upload-file" size={24} color="#007E7A" /><View style={styles.fileCopy}><Text style={styles.fileTitle}>{asset?.name ?? "选择 BIN 或 IMG 固件"}</Text><Text style={styles.fileMeta}>{asset ? formatFileSize(asset.size) : "仅支持 .bin、.img；文件仅临时保存在本机以供上传"}</Text></View><MaterialIcons name="chevron-right" size={22} color="#718398" /></Pressable>
         <Text style={styles.sectionTitle}>2. 上传固件</Text>
         <Pressable accessibilityRole="button" disabled={!asset || step === "uploading" || step === "upgrading" || !isInAppSshSupported()} onPress={() => void uploadFirmware()} style={({ pressed }) => [styles.verifyButton, (!asset || step === "uploading" || step === "upgrading" || !isInAppSshSupported()) && styles.disabled, pressed && styles.pressed]}>{step === "uploading" ? <ActivityIndicator color="#FFFFFF" /> : <Text style={styles.verifyText}>上传到路由器</Text>}</Pressable>
         <View style={[styles.statusBox, step === "error" && styles.statusError, step === "ready" && styles.statusReady]}><Text style={styles.statusTitle}>{step === "ready" ? "上传完成" : step === "error" ? "需要处理" : step === "upgrading" ? "升级进行中" : "升级状态"}</Text><Text style={styles.statusText}>{message}</Text></View>
-        <Text style={styles.sectionTitle}>3. 确认升级</Text>
-        <Pressable accessibilityRole="button" disabled={!canUpgrade} onPress={confirmUpgrade} style={({ pressed }) => [styles.upgradeButton, !canUpgrade && styles.disabled, pressed && styles.pressed]}>{step === "upgrading" ? <ActivityIndicator color="#FFFFFF" /> : <><MaterialIcons name="system-update" size={19} color="#FFFFFF" /><Text style={styles.upgradeText}>确认并升级固件</Text></>}</Pressable>
+        <Text style={styles.sectionTitle}>3. 选择配置保留方式并升级</Text>
+        <Pressable accessibilityRole="button" disabled={!canUpgrade} onPress={confirmUpgrade} style={({ pressed }) => [styles.upgradeButton, !canUpgrade && styles.disabled, pressed && styles.pressed]}>{step === "upgrading" ? <ActivityIndicator color="#FFFFFF" /> : <><MaterialIcons name="system-update" size={19} color="#FFFFFF" /><Text style={styles.upgradeText}>选择升级方式</Text></>}</Pressable>
         <Text style={styles.footer}>升级命令提交后，应用无法确认重启过程。请等待路由器重新上线后，再回到状态页手动刷新。</Text>
       </ScrollView>
     </KeyboardAvoidingView>

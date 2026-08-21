@@ -378,7 +378,7 @@ export default function SystemAdminScreen() {
           </Pressable>
         ))}
       </ScrollView>
-      <SectionCard title={title}>
+      <SectionCard title={title} frameless={panel === "led" || panel === "mount"}>
         {panel === "startup" ? (
           <View>
             {services.length ? (
@@ -597,10 +597,7 @@ export default function SystemAdminScreen() {
                   key={`${item.target}-${item.device}`}
                   style={[
                     styles.mountDeviceRow,
-                    {
-                      backgroundColor: colors.background,
-                      borderColor: colors.border,
-                    },
+                    { borderColor: colors.border },
                   ]}
                 >
                   <View style={styles.rowCopy}>
@@ -629,10 +626,7 @@ export default function SystemAdminScreen() {
                   key={item.device}
                   style={[
                     styles.mountDeviceRow,
-                    {
-                      backgroundColor: colors.background,
-                      borderColor: colors.border,
-                    },
+                    { borderColor: colors.border },
                   ]}
                 >
                   <Text style={[styles.rowTitle, { color: colors.foreground }]}>

@@ -882,11 +882,11 @@ export default function PackagesScreen() {
                     >
                       {repository.url}
                     </Text>
-                    {repository.source ? (
-                      <Text style={styles.repositorySource} numberOfLines={1}>
-                        {repository.source}
-                      </Text>
-                    ) : null}
+                    <Text style={styles.repositorySource} selectable>
+                      {repository.source
+                        ? `来源：${repository.source} · 第 ${repository.line} 行`
+                        : `来源：主仓库配置 · 第 ${repository.line} 行`}
+                    </Text>
                     <Pressable
                       accessibilityRole="button"
                       accessibilityLabel={`删除仓库 ${repository.url}`}
@@ -911,6 +911,11 @@ export default function PackagesScreen() {
                     </Pressable>
                   </View>
                 ))}
+              {repositories.some((repository) => !repository.deleted) ? (
+                <Text style={styles.repositoriesSummary}>
+                  已完整显示 {repositories.filter((repository) => !repository.deleted).length} 条读取到的仓库配置；禁用条目会保留并以灰色显示。
+                </Text>
+              ) : null}
               {!repositories.some((repository) => !repository.deleted) ? (
                 <Text style={styles.repositoriesEmpty}>
                   未读取到仓库条目。请确认路由器使用 apk，并检查
@@ -1338,11 +1343,19 @@ const baseStyles = StyleSheet.create({
     bottom: 5,
     color: "#8B9AA8",
     fontSize: 9,
+    lineHeight: 13,
     fontFamily: Platform.select({
       ios: "Menlo",
       android: "monospace",
       default: "monospace",
     }),
+  },
+  repositoriesSummary: {
+    color: "#60758B",
+    fontSize: 12,
+    lineHeight: 17,
+    marginTop: 4,
+    paddingHorizontal: 2,
   },
   repositoryDelete: {
     minWidth: 52,
