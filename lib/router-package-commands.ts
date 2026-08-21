@@ -19,6 +19,9 @@ export interface ApkRepository {
 export const APK_CUSTOM_FEEDS_SOURCE =
   "/etc/apk/repositories.d/customfeeds.list";
 export const APK_DIST_FEEDS_SOURCE = "/etc/apk/repositories.d/distfeed";
+/** 部分 OpenWrt 构建仍使用该 LuCI 可识别的历史文件名；仅用于读取兼容。 */
+export const APK_DIST_FEEDS_FALLBACK_SOURCE =
+  "/etc/apk/repositories.d/distfeeds.list";
 
 function quotePackageName(name: string): string {
   const sanitized = name.trim().replace(/[^a-zA-Z0-9+._:@/-]/g, "");
@@ -90,14 +93,17 @@ export function buildApkRemoveCommand(packageName: string): string {
  * customfeeds.list。其余 repositories.d 文件不应在此界面中被意外修改。
  */
 export function buildApkRepositoriesSnapshotCommand(): string {
-  return `if ! command -v apk >/dev/null 2>&1; then echo 'ERROR|apk_missing'; exit 2; fi; found=0; for file in ${APK_CUSTOM_FEEDS_SOURCE} ${APK_DIST_FEEDS_SOURCE}; do [ -f "$file" ] || continue; found=1; awk -v source="$file" '{ raw=$0; sub(/\r$/, "", raw); if (raw ~ /^[[:space:]]*$/) next; enabled=1; if (raw ~ /^[[:space:]]*#/) { enabled=0; sub(/^[[:space:]]*#[[:space:]]*/, "", raw); } if (raw != "") printf "REPO|%s|%d|%d|%s\n", source, NR, enabled, raw; }' "$file"; done; [ "$found" -eq 1 ] || { echo 'ERROR|repositories_missing'; exit 2; }`;
+  return `if ! command -v apk >/dev/null 2>&1; then echo 'ERROR|apk_missing'; exit 2; fi; found=0; for file in ${APK_CUSTOM_FEEDS_SOURCE} ${APK_DIST_FEEDS_SOURCE} ${APK_DIST_FEEDS_FALLBACK_SOURCE}; do [ -f "$file" ] || continue; found=1; awk -v source="$file" '{ raw=$0; sub(/\r$/, "", raw); if (raw ~ /^[[:space:]]*$/) next; enabled=1; if (raw ~ /^[[:space:]]*#/) { enabled=0; sub(/^[[:space:]]*#[[:space:]]*/, "", raw); } if (raw != "") printf "REPO|%s|%d|%d|%s\n", source, NR, enabled, raw; }' "$file"; done; [ "$found" -eq 1 ] || { echo 'ERROR|repositories_missing'; exit 2; }`;
 }
 
 /**
  * 受控保存 APK 仓库列表。仅接受 HTTP(S) 地址，保存前备份，并原子替换后更新索引。
  */
 function normalizeRepositorySource(source: string | undefined) {
-  const resolved = source || APK_CUSTOM_FEEDS_SOURCE;
+  const resolved =
+    source === APK_DIST_FEEDS_FALLBACK_SOURCE
+      ? APK_DIST_FEEDS_SOURCE
+      : source || APK_CUSTOM_FEEDS_SOURCE;
   if (
     resolved !== APK_CUSTOM_FEEDS_SOURCE &&
     resolved !== APK_DIST_FEEDS_SOURCE

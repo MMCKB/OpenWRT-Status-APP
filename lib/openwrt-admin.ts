@@ -129,6 +129,15 @@ export interface PerformanceBenchmark {
   storageAvailableKb: number | null;
 }
 
+export interface DiskSpeedResult {
+  writeSpeedMBps: number | null;
+  readSpeedMBps: number | null;
+  directory: string;
+  fileSizeMB: number;
+  writeDurationMs: number | null;
+  readDurationMs: number | null;
+}
+
 export interface RouterHardwareDetails {
   cpuModel: string | null;
   cpuCores: number | null;
@@ -1140,6 +1149,67 @@ export function parsePerformanceBenchmark(
     storageTotalKb,
     storageUsedKb,
     storageAvailableKb,
+  };
+}
+
+function requireDiskSpeedDirectory(value: string) {
+  const directory = value.trim().replace(/\/+$/, "") || "/";
+  if (
+    !directory.startsWith("/") ||
+    /[\r\n\0]/.test(directory) ||
+    directory.split("/").some((segment) => segment === "..")
+  ) {
+    throw new Error("测速目录必须为不包含上级路径的绝对路径。");
+  }
+  return directory;
+}
+
+function requireDiskSpeedSize(value: number) {
+  if (!Number.isInteger(value) || value < 1 || value > 2048) {
+    throw new Error("测速文件大小应为 1–2048 MB 的整数。");
+  }
+  return value;
+}
+
+/**
+ * 在指定目录中顺序写入、读取并自动删除临时文件。仅允许绝对目录和受控大小，
+ * 以避免将文本输入拼接为可执行的 shell 片段。
+ */
+export function buildDiskSpeedCommand(directory: string, fileSizeMB: number) {
+  const safeDirectory = requireDiskSpeedDirectory(directory);
+  const safeSize = requireDiskSpeedSize(fileSizeMB);
+  return `dir=${shellQuote(safeDirectory)}; [ -d "$dir" ] && [ -w "$dir" ] || { echo 'DISK_SPEED_ERROR|测速目录不存在或不可写'; exit 2; }; test_file="$dir/.openwrt-status-speed-test-$$.bin"; cleanup() { rm -f "$test_file"; }; trap cleanup EXIT HUP INT TERM; now_ms() { awk '{printf "%d", $1 * 1000}' /proc/uptime; }; write_start=$(now_ms); dd if=/dev/zero of="$test_file" bs=1M count=${safeSize} conv=fsync 2>&1; write_code=$?; write_end=$(now_ms); [ "$write_code" -eq 0 ] || { echo 'DISK_SPEED_ERROR|写入测试失败'; exit "$write_code"; }; read_start=$(now_ms); dd if="$test_file" of=/dev/null bs=1M 2>&1; read_code=$?; read_end=$(now_ms); [ "$read_code" -eq 0 ] || { echo 'DISK_SPEED_ERROR|读取测试失败'; exit "$read_code"; }; echo "DISK_SPEED_RESULT|$dir|${safeSize}|$((write_end-write_start))|$((read_end-read_start))"`;
+}
+
+export function parseDiskSpeedResult(output: string): DiskSpeedResult {
+  const match = output.match(
+    /^DISK_SPEED_RESULT\|([^|]+)\|(\d+)\|(\d+)\|(\d+)$/m,
+  );
+  if (!match) {
+    return {
+      writeSpeedMBps: null,
+      readSpeedMBps: null,
+      directory: "",
+      fileSizeMB: 0,
+      writeDurationMs: null,
+      readDurationMs: null,
+    };
+  }
+  const [, directory, rawSize, rawWriteDuration, rawReadDuration] = match;
+  const fileSizeMB = Number(rawSize);
+  const writeDurationMs = Number(rawWriteDuration);
+  const readDurationMs = Number(rawReadDuration);
+  const speed = (durationMs: number) =>
+    Number.isFinite(durationMs) && durationMs > 0
+      ? Number(((fileSizeMB * 1000) / durationMs).toFixed(2))
+      : null;
+  return {
+    directory,
+    fileSizeMB,
+    writeDurationMs: Number.isFinite(writeDurationMs) ? writeDurationMs : null,
+    readDurationMs: Number.isFinite(readDurationMs) ? readDurationMs : null,
+    writeSpeedMBps: speed(writeDurationMs),
+    readSpeedMBps: speed(readDurationMs),
   };
 }
 

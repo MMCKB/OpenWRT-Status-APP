@@ -52,6 +52,18 @@ const tools = [
     target: "/diagnostics",
   },
   {
+    title: "NAT 类型检测",
+    description: "检测手机当前网络的 NAT 类型与公网映射，不依赖路由器 SSH。",
+    icon: "cell-tower",
+    target: "/nat-detection",
+  },
+  {
+    title: "硬盘读写测速",
+    description: "在选定目录写入、读取测试文件并自动删除，查看路由器存储速度。",
+    icon: "storage",
+    target: "/disk-speed",
+  },
+  {
     title: "无线管理",
     description: "管理 SSID、无线开关及访客网络二维码。",
     icon: "wifi",

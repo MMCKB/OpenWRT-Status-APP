@@ -165,6 +165,8 @@ function RootNavigator() {
       <Stack.Screen name="dhcp-leases" />
       <Stack.Screen name="wake-on-lan" />
       <Stack.Screen name="diagnostics" />
+      <Stack.Screen name="nat-detection" />
+      <Stack.Screen name="disk-speed" />
       <Stack.Screen name="wireless-manager" />
       <Stack.Screen name="wireless-optimizer" />
       <Stack.Screen name="weak-signal" />

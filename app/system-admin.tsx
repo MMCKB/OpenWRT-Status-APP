@@ -2132,7 +2132,23 @@ function MountPointFields({
         onSelect={(next) => update("target", next)}
         colors={colors}
       />
-      <Text style={[styles.fieldLabel, { color: colors.foreground }]}>
+      <TextInput
+        value={value.target}
+        onChangeText={(next) => update("target", next)}
+        placeholder="自定义挂载路径，例如 /mnt/data"
+        placeholderTextColor={colors.muted}
+        autoCapitalize="none"
+        autoCorrect={false}
+        style={[
+          styles.mountCustomInput,
+          {
+            color: colors.foreground,
+            borderColor: colors.border,
+            backgroundColor: colors.background,
+          },
+        ]}
+      />
+      <Text style={[styles.fieldLabel, { color: colors.foreground }]}> 
         设备路径（UUID）
       </Text>
       <ChoiceChips
@@ -2175,6 +2191,22 @@ function MountPointFields({
         selected={value.fstype}
         onSelect={(next) => update("fstype", next)}
         colors={colors}
+      />
+      <TextInput
+        value={value.fstype}
+        onChangeText={(next) => update("fstype", next)}
+        placeholder="自定义文件系统类型，例如 btrfs"
+        placeholderTextColor={colors.muted}
+        autoCapitalize="none"
+        autoCorrect={false}
+        style={[
+          styles.mountCustomInput,
+          {
+            color: colors.foreground,
+            borderColor: colors.border,
+            backgroundColor: colors.background,
+          },
+        ]}
       />
       <SettingSwitch
         label="开机自动挂载"
@@ -3013,6 +3045,13 @@ function formatUptime(seconds: number): string {
 
 const styles = StyleSheet.create({
   tabRow: { gap: 8, paddingBottom: 12 },
+  mountCustomInput: {
+    minHeight: 43,
+    borderWidth: 1,
+    borderRadius: 10,
+    paddingHorizontal: 12,
+    fontSize: 14,
+  },
   tab: {
     borderWidth: 1,
     borderRadius: 99,

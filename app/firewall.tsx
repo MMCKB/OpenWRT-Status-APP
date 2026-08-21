@@ -21,10 +21,12 @@ import {
   buildFirewallRuleCreateCommand,
   buildFirewallRuleDeleteCommand,
   buildFirewallRuleToggleCommand,
+  buildFirewallRuleUpdateCommand,
   buildFirewallSnapshotCommand,
   buildPortForwardCreateCommand,
   buildPortForwardDeleteCommand,
   buildPortForwardToggleCommand,
+  buildPortForwardUpdateCommand,
   buildUpnpActionCommand,
   parseFirewallSnapshot,
   type FirewallSnapshot,
@@ -64,7 +66,9 @@ export default function FirewallScreen() {
   const [isLoading, setIsLoading] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
   const [trafficModalVisible, setTrafficModalVisible] = useState(false);
+  const [editingTrafficSection, setEditingTrafficSection] = useState<string | null>(null);
   const [portForwardModalVisible, setPortForwardModalVisible] = useState(false);
+  const [editingPortForwardSection, setEditingPortForwardSection] = useState<string | null>(null);
 
   const refresh = useCallback(async () => {
     if (!hasRouter || !isSupported) return;
@@ -143,15 +147,34 @@ export default function FirewallScreen() {
     );
   }
 
-  function confirmCreate() {
+  function openPortForwardEditor(rule: PortForwardRule) {
+    setEditingPortForwardSection(rule.section);
+    setDraft({
+      name: rule.name,
+      sourceZone: rule.sourceZone,
+      destinationZone: rule.destinationZone,
+      destinationIp: rule.destinationIp,
+      sourcePort: rule.sourcePort,
+      destinationPort: rule.destinationPort,
+      protocol: rule.protocol === "udp" || rule.protocol === "tcp udp" ? rule.protocol : "tcp",
+    });
+    setPortForwardModalVisible(true);
+  }
+
+  function confirmPortForwardSave() {
     try {
-      const command = buildPortForwardCreateCommand(draft);
+      const isEditing = editingPortForwardSection !== null;
+      const command = isEditing
+        ? buildPortForwardUpdateCommand(editingPortForwardSection, draft)
+        : buildPortForwardCreateCommand(draft);
       setPortForwardModalVisible(false);
       runConfirmed(
-        "新增端口转发",
-        `将把外网 ${draft.sourcePort || "—"} 转发到 ${draft.destinationIp || "—"}:${draft.destinationPort || "—"}，并立即重载防火墙。是否继续？`,
+        isEditing ? "保存端口转发" : "新增端口转发",
+        isEditing
+          ? `将更新“${draft.name || "未命名规则"}”并立即重载防火墙。错误规则可能影响联网，请确认参数。`
+          : `将把外网 ${draft.sourcePort || "—"} 转发到 ${draft.destinationIp || "—"}:${draft.destinationPort || "—"}，并立即重载防火墙。是否继续？`,
         command,
-        "端口转发规则已新增。",
+        isEditing ? "端口转发规则已更新。" : "端口转发规则已新增。",
       );
     } catch (reason) {
       setNotice(
@@ -160,15 +183,36 @@ export default function FirewallScreen() {
     }
   }
 
-  function confirmTrafficCreate() {
+  function openTrafficEditor(rule: FirewallSnapshot["trafficRules"][number]) {
+    setEditingTrafficSection(rule.section);
+    setTrafficDraft({
+      name: rule.name,
+      sourceZone: rule.sourceZone,
+      destinationZone: rule.destinationZone,
+      protocol: rule.protocol === "udp" || rule.protocol === "tcp udp" ? rule.protocol : "tcp",
+      sourceIp: rule.sourceIp,
+      destinationIp: rule.destinationIp,
+      sourcePort: rule.sourcePort,
+      destinationPort: rule.destinationPort,
+      target: rule.target,
+    });
+    setTrafficModalVisible(true);
+  }
+
+  function confirmTrafficSave() {
     try {
-      const command = buildFirewallRuleCreateCommand(trafficDraft);
+      const isEditing = editingTrafficSection !== null;
+      const command = isEditing
+        ? buildFirewallRuleUpdateCommand(editingTrafficSection, trafficDraft)
+        : buildFirewallRuleCreateCommand(trafficDraft);
       setTrafficModalVisible(false);
       runConfirmed(
-        "新增通信规则",
-        `将创建“${trafficDraft.name || "未命名规则"}”并立即重载防火墙。错误规则可能影响联网，请确认参数。`,
+        isEditing ? "保存通信规则" : "新增通信规则",
+        isEditing
+          ? `将更新“${trafficDraft.name || "未命名规则"}”并立即重载防火墙。错误规则可能影响联网，请确认参数。`
+          : `将创建“${trafficDraft.name || "未命名规则"}”并立即重载防火墙。错误规则可能影响联网，请确认参数。`,
         command,
-        "通信规则已新增。",
+        isEditing ? "通信规则已更新。" : "通信规则已新增。",
         trafficDraft.target !== "ACCEPT",
       );
     } catch (reason) {
@@ -340,28 +384,40 @@ export default function FirewallScreen() {
                   trackColor={{ false: colors.border, true: colors.primary }}
                 />
               </View>
-              <Pressable
-                disabled={disabled}
-                onPress={() =>
-                  runConfirmed(
-                    "删除通信规则",
-                    `删除“${rule.name}”会立即重载防火墙，且无法自动恢复。是否继续？`,
-                    buildFirewallRuleDeleteCommand(rule.section),
-                    `规则“${rule.name}”已删除。`,
-                    true,
-                  )
-                }
-                style={({ pressed }) => [
-                  styles.delete,
-                  { borderColor: colors.error },
-                  pressed && styles.pressed,
-                  disabled && styles.disabled,
-                ]}
-              >
-                <Text style={[styles.deleteText, { color: colors.error }]}>
-                  删除规则
-                </Text>
-              </Pressable>
+              <View style={styles.ruleActions}>
+                <Pressable
+                  disabled={disabled}
+                  onPress={() => openTrafficEditor(rule)}
+                  style={({ pressed }) => [
+                    styles.edit,
+                    { borderColor: colors.primary },
+                    pressed && styles.pressed,
+                    disabled && styles.disabled,
+                  ]}
+                >
+                  <Text style={[styles.editText, { color: colors.primary }]}>编辑规则</Text>
+                </Pressable>
+                <Pressable
+                  disabled={disabled}
+                  onPress={() =>
+                    runConfirmed(
+                      "删除通信规则",
+                      `删除“${rule.name}”会立即重载防火墙，且无法自动恢复。是否继续？`,
+                      buildFirewallRuleDeleteCommand(rule.section),
+                      `规则“${rule.name}”已删除。`,
+                      true,
+                    )
+                  }
+                  style={({ pressed }) => [
+                    styles.delete,
+                    { borderColor: colors.error },
+                    pressed && styles.pressed,
+                    disabled && styles.disabled,
+                  ]}
+                >
+                  <Text style={[styles.deleteText, { color: colors.error }]}>删除规则</Text>
+                </Pressable>
+              </View>
             </View>
           ))
         ) : (
@@ -376,7 +432,11 @@ export default function FirewallScreen() {
       <SectionCard title="新增通信规则">
         <Pressable
           disabled={disabled}
-          onPress={() => setTrafficModalVisible(true)}
+          onPress={() => {
+            setEditingTrafficSection(null);
+            setTrafficDraft(emptyTrafficDraft);
+            setTrafficModalVisible(true);
+          }}
           style={({ pressed }) => [
             styles.primary,
             { backgroundColor: colors.primary },
@@ -400,8 +460,8 @@ export default function FirewallScreen() {
             <View
               style={[styles.modalHeader, { borderBottomColor: colors.border }]}
             >
-              <Text style={[styles.modalTitle, { color: colors.foreground }]}>
-                新增通信规则
+              <Text style={[styles.modalTitle, { color: colors.foreground }]}> 
+                {editingTrafficSection ? "编辑通信规则" : "新增通信规则"}
               </Text>
               <Pressable
                 accessibilityRole="button"
@@ -608,7 +668,7 @@ export default function FirewallScreen() {
                 </View>
                 <Pressable
                   disabled={disabled}
-                  onPress={confirmTrafficCreate}
+                  onPress={confirmTrafficSave}
                   style={({ pressed }) => [
                     styles.primary,
                     { backgroundColor: colors.primary },
@@ -616,7 +676,9 @@ export default function FirewallScreen() {
                     disabled && styles.disabled,
                   ]}
                 >
-                  <Text style={styles.primaryText}>检查后新增通信规则</Text>
+                  <Text style={styles.primaryText}>
+                    {editingTrafficSection ? "检查后保存通信规则" : "检查后新增通信规则"}
+                  </Text>
                 </Pressable>
               </View>
             </ScrollView>
@@ -656,20 +718,32 @@ export default function FirewallScreen() {
                   trackColor={{ false: colors.border, true: colors.primary }}
                 />
               </View>
-              <Pressable
-                disabled={disabled}
-                onPress={() => deleteRule(rule)}
-                style={({ pressed }) => [
-                  styles.delete,
-                  { borderColor: colors.error },
-                  pressed && styles.pressed,
-                  disabled && styles.disabled,
-                ]}
-              >
-                <Text style={[styles.deleteText, { color: colors.error }]}>
-                  删除规则
-                </Text>
-              </Pressable>
+              <View style={styles.ruleActions}>
+                <Pressable
+                  disabled={disabled}
+                  onPress={() => openPortForwardEditor(rule)}
+                  style={({ pressed }) => [
+                    styles.edit,
+                    { borderColor: colors.primary },
+                    pressed && styles.pressed,
+                    disabled && styles.disabled,
+                  ]}
+                >
+                  <Text style={[styles.editText, { color: colors.primary }]}>编辑规则</Text>
+                </Pressable>
+                <Pressable
+                  disabled={disabled}
+                  onPress={() => deleteRule(rule)}
+                  style={({ pressed }) => [
+                    styles.delete,
+                    { borderColor: colors.error },
+                    pressed && styles.pressed,
+                    disabled && styles.disabled,
+                  ]}
+                >
+                  <Text style={[styles.deleteText, { color: colors.error }]}>删除规则</Text>
+                </Pressable>
+              </View>
             </View>
           ))
         ) : (
@@ -684,7 +758,11 @@ export default function FirewallScreen() {
       <SectionCard title="新增端口转发">
         <Pressable
           disabled={disabled}
-          onPress={() => setPortForwardModalVisible(true)}
+          onPress={() => {
+            setEditingPortForwardSection(null);
+            setDraft(emptyDraft);
+            setPortForwardModalVisible(true);
+          }}
           style={({ pressed }) => [
             styles.primary,
             { backgroundColor: colors.primary },
@@ -708,8 +786,8 @@ export default function FirewallScreen() {
             <View
               style={[styles.modalHeader, { borderBottomColor: colors.border }]}
             >
-              <Text style={[styles.modalTitle, { color: colors.foreground }]}>
-                新增端口转发
+              <Text style={[styles.modalTitle, { color: colors.foreground }]}> 
+                {editingPortForwardSection ? "编辑端口转发" : "新增端口转发"}
               </Text>
               <Pressable
                 accessibilityRole="button"
@@ -894,7 +972,7 @@ export default function FirewallScreen() {
                 </View>
                 <Pressable
                   disabled={disabled}
-                  onPress={confirmCreate}
+                  onPress={confirmPortForwardSave}
                   style={({ pressed }) => [
                     styles.primary,
                     { backgroundColor: colors.primary },
@@ -902,7 +980,9 @@ export default function FirewallScreen() {
                     disabled && styles.disabled,
                   ]}
                 >
-                  <Text style={styles.primaryText}>检查后新增规则</Text>
+                  <Text style={styles.primaryText}>
+                    {editingPortForwardSection ? "检查后保存规则" : "检查后新增规则"}
+                  </Text>
                 </Pressable>
               </View>
             </ScrollView>
@@ -1027,7 +1107,18 @@ const styles = StyleSheet.create({
   ruleHead: { flexDirection: "row", alignItems: "center", gap: 8 },
   ruleCopy: { flex: 1, minWidth: 0, gap: 4 },
   ruleName: { fontSize: 15, fontWeight: "800" },
+  ruleActions: { flexDirection: "row", gap: 8 },
+  edit: {
+    flex: 1,
+    height: 36,
+    borderWidth: 1,
+    borderRadius: 9,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  editText: { fontSize: 12, fontWeight: "800" },
   delete: {
+    flex: 1,
     height: 36,
     borderWidth: 1,
     borderRadius: 9,

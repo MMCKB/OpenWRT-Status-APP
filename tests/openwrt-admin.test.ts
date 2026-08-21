@@ -6,6 +6,7 @@ import {
   buildBackupCommand,
   buildDhcpStaticLeaseDeleteCommand,
   buildDhcpStaticLeaseSaveCommand,
+  buildDiskSpeedCommand,
   buildDnsLatencyCommand,
   buildDockerContainerCommand,
   buildDockerContainerLogsCommand,
@@ -21,6 +22,7 @@ import {
   buildWifiSnapshotCommand,
   buildUnblockClientCommand,
   parseDhcpLeaseSnapshot,
+  parseDiskSpeedResult,
   parseDockerSnapshot,
   parseFirmwareDeviceInfo,
   parsePerformanceBenchmark,
@@ -176,6 +178,26 @@ describe("OpenWrt 管理命令与解析", () => {
       version: "25.12.0",
       target: "ath79/generic",
     });
+  });
+
+  it("生成受控目录的硬盘读写测速命令，并解析测速结果", () => {
+    const command = buildDiskSpeedCommand("/mnt/data", 128);
+    expect(command).toContain('test_file="$dir/.openwrt-status-speed-test-$$.bin"');
+    expect(command).toContain("dd if=/dev/zero");
+    expect(command).toContain("rm -f \"$test_file\"");
+    expect(
+      parseDiskSpeedResult("DISK_SPEED_RESULT|/mnt/data|128|1600|800"),
+    ).toEqual({
+      directory: "/mnt/data",
+      fileSizeMB: 128,
+      writeDurationMs: 1600,
+      readDurationMs: 800,
+      writeSpeedMBps: 80,
+      readSpeedMBps: 160,
+    });
+    expect(() => buildDiskSpeedCommand("/mnt/data/../tmp", 128)).toThrow(
+      "测速目录必须为不包含上级路径的绝对路径。",
+    );
   });
 
   it("仅为有效 MAC 生成防火墙拉黑命令", () => {

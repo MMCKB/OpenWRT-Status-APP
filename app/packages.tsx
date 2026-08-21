@@ -49,6 +49,8 @@ import { useThemedStyles } from "@/lib/use-themed-styles";
 
 type ConnectionState = "idle" | "connecting" | "connected" | "error";
 type TabFilter = "installed" | "updates" | "available";
+const APK_REPOSITORIES_HELP =
+  "需读取 /etc/apk/repositories.d/customfeeds.list 和 /etc/apk/repositories.d/distfeed。";
 
 export default function PackagesScreen() {
   const styles = useThemedStyles(baseStyles);
@@ -258,14 +260,14 @@ export default function PackagesScreen() {
       setNotice(
         parsed.length
           ? `已读取 ${parsed.length} 个 APK 仓库配置。`
-          : "未在 customfeeds.list、distfeeds.list 或其他 APK 仓库文件中找到条目。",
+          : `读取不到 APK 仓库配置。${APK_REPOSITORIES_HELP}`,
       );
     } catch (error) {
       Alert.alert(
         "读取仓库配置失败",
         error instanceof Error
-          ? error.message
-          : "无法读取 /etc/apk/repositories。",
+          ? `${error.message}\n\n${APK_REPOSITORIES_HELP}`
+          : `读取不到 APK 仓库配置。${APK_REPOSITORIES_HELP}`,
       );
       setIsRepositoriesModalVisible(false);
     } finally {

@@ -20,7 +20,6 @@ import {
   buildWanReconnectCommand,
   isWanInterface,
 } from "@/lib/openwrt-admin";
-import { detectPhoneNat } from "@/lib/native-nat";
 import { useRouterStore } from "@/lib/router-provider";
 
 type DiagnosticKind = "ping" | "dns" | "trace" | "port";
@@ -50,7 +49,6 @@ export default function DiagnosticsScreen() {
   const [dnsIpv4, setDnsIpv4] = useState("1.1.1.1");
   const [dnsIpv6, setDnsIpv6] = useState("2606:4700:4700::1111");
   const [output, setOutput] = useState<string | null>(null);
-  const [isNatRunning, setNatRunning] = useState(false);
   const activeWan = wan || wanInterfaces[0]?.name || "";
 
   function showResult(result: string) {
@@ -85,31 +83,6 @@ export default function DiagnosticsScreen() {
       );
     } catch {}
   }
-  async function runNat() {
-    setNatRunning(true);
-    try {
-      const result = await detectPhoneNat();
-      const comparison = result.comparisonAddress
-        ? `\n对比端点：${result.comparisonAddress}:${result.comparisonPort}（${result.comparisonServer}）`
-        : "\n第二 STUN 端点未返回结果，因此未完成完整端点映射对比。";
-      showResult(
-        [
-          "手机本地 NAT 检测",
-          `检测网络：手机当前默认网络（不使用路由器 SSH）`,
-          `NAT 判断：${result.typeLabel}`,
-          `公网映射：${result.publicAddress}:${result.publicPort}`,
-          `主 STUN：${result.primaryServer}`,
-          comparison.trim(),
-        ].join("\n"),
-      );
-    } catch (reason) {
-      showResult(
-        reason instanceof Error ? reason.message : "手机网络 NAT 检测失败。",
-      );
-    } finally {
-      setNatRunning(false);
-    }
-  }
   function reconnect() {
     Alert.alert(
       "重连 WAN",
@@ -131,7 +104,7 @@ export default function DiagnosticsScreen() {
   return (
     <ManagementShell
       title="网络诊断"
-      description="常规与 DNS 诊断在路由器指定接口上执行；NAT 检测只通过手机当前网络运行。"
+      description="在路由器指定接口上执行 Ping、DNS、路由追踪和端口连通性检查。手机 NAT 类型检测已移动到工具页。"
     >
       {!wanInterfaces.length ? (
         <EmptyState
@@ -374,40 +347,12 @@ export default function DiagnosticsScreen() {
           </View>
         </>
       )}
-      <SectionCard title="手机网络 NAT 类型检测">
-        <Text style={[styles.sectionDescription, { color: colors.muted }]}>
-          通过手机当前默认网络向公共 STUN 服务发送 UDP
-          请求，不连接路由器、不使用 SSH，也无需在路由器安装 stunclient。
-        </Text>
-        <Pressable
-          accessibilityRole="button"
-          disabled={isNatRunning}
-          onPress={() => void runNat()}
-          style={({ pressed }) => [
-            styles.natButton,
-            { backgroundColor: colors.primary },
-            pressed && styles.pressed,
-            isNatRunning && styles.disabled,
-          ]}
-        >
-          {isNatRunning ? (
-            <ActivityIndicator color="#FFFFFF" />
-          ) : (
-            <MaterialIcons name="network-check" size={19} color="#FFFFFF" />
-          )}
-          <Text style={styles.natButtonText}>
-            {isNatRunning ? "正在检测手机网络…" : "开始手机 NAT 检测"}
-          </Text>
-        </Pressable>
-      </SectionCard>
-      {isRunning || isNatRunning ? (
+      {isRunning ? (
         <ToolNotice>
           <View style={styles.running}>
             <ActivityIndicator color={colors.primary} />
-            <Text style={[styles.runningText, { color: colors.muted }]}>
-              {isNatRunning
-                ? "正在从手机当前网络执行 NAT 检测…"
-                : `正在从 ${activeWan} 执行诊断…`}
+            <Text style={[styles.runningText, { color: colors.muted }]}> 
+              {`正在从 ${activeWan} 执行诊断…`}
             </Text>
           </View>
         </ToolNotice>
@@ -430,9 +375,8 @@ export default function DiagnosticsScreen() {
         </SectionCard>
       ) : null}
       <ToolNotice>
-        <Text style={[styles.note, { color: colors.muted }]}>
-          诊断仅在页面打开并手动触发时运行；手机 NAT 检测会连接公共 STUN
-          服务，其他测试由路由器直接使用您填入的 DNS 或诊断目标。
+        <Text style={[styles.note, { color: colors.muted }]}> 
+          诊断仅在页面打开并手动触发时运行，所有测试均由路由器直接使用您填入的 DNS 或诊断目标。
         </Text>
       </ToolNotice>
     </ManagementShell>
@@ -477,24 +421,6 @@ const styles = StyleSheet.create({
     gap: 7,
   },
   actionText: { fontSize: 13, fontWeight: "800" },
-  sectionDescription: {
-    paddingHorizontal: 15,
-    paddingTop: 14,
-    paddingBottom: 9,
-    fontSize: 13,
-    lineHeight: 19,
-  },
-  natButton: {
-    marginHorizontal: 15,
-    marginBottom: 15,
-    minHeight: 44,
-    borderRadius: 11,
-    flexDirection: "row",
-    justifyContent: "center",
-    alignItems: "center",
-    gap: 7,
-  },
-  natButtonText: { color: "#FFFFFF", fontSize: 13, fontWeight: "800" },
   reconnect: {
     alignSelf: "flex-start",
     minHeight: 42,
