@@ -46,7 +46,9 @@ function isEnabled(value: string | undefined) {
 
 function isBooleanOption(key: string, value: string) {
   return (
-    /^(enabled|enable|disabled|disable)$/i.test(key) &&
+    /^(?:enabled|enable|disabled|disable|[a-z0-9]+_(?:enabled|enable|disabled|disable)|(?:enabled|enable|disabled|disable)_[a-z0-9]+|ipv6|ipv6_enable|udp|tcp|dnsmasq|redirect|proxy|filter|sniffer|auto_update|auto_restart)$/i.test(
+      key,
+    ) &&
     /^(0|1|true|false|on|off|yes|no|enabled|disabled)$/i.test(value.trim())
   );
 }
@@ -94,6 +96,65 @@ const COMMON_OPTION_LABELS: Record<string, string> = {
   ipv6_dns: "IPv6 DNS 设置",
   stream_auto_select: "自动选择流媒体节点",
   sniffer: "启用流量嗅探",
+  sniffing: "启用流量嗅探",
+  allow_lan: "允许局域网访问",
+  allow_remote: "允许远程访问",
+  bind_address: "监听地址",
+  bind_interface: "绑定接口",
+  listen_port: "监听端口",
+  dashboard_port: "控制面板端口",
+  external_controller: "外部控制器地址",
+  external_ui: "外部控制面板",
+  secret: "控制器密钥",
+  token: "访问令牌",
+  rule_mode: "规则模式",
+  default_mode: "默认代理模式",
+  operation_mode: "运行模式",
+  routing_mark: "路由标记",
+  firewall_mode: "防火墙模式",
+  proxy_ipv6: "代理 IPv6 流量",
+  enable_ipv6: "启用 IPv6",
+  ipv6: "启用 IPv6",
+  udp: "代理 UDP 流量",
+  tcp: "代理 TCP 流量",
+  local_port: "本地代理端口",
+  redir_port: "REDIR 端口",
+  tun: "启用 TUN 模式",
+  tun_mode: "TUN 运行模式",
+  dnsmasq: "接管 DNSMasq",
+  disable_masq_cache: "禁用 DNS 缓存",
+  respect_rules: "遵循规则集",
+  rule_provider: "规则提供商",
+  geodata_loader: "Geo 数据加载方式",
+  geosite_url: "GeoSite 下载地址",
+  geoip_url: "GeoIP 下载地址",
+  geoip_dat_url: "GeoIP 数据地址",
+  geosite_dat_url: "GeoSite 数据地址",
+  update_interval: "更新间隔",
+  subscription: "订阅地址",
+  subscribe_url: "订阅地址",
+  config_path: "配置文件路径",
+  config_file: "配置文件",
+  log_file: "日志文件",
+  start_delay: "启动延迟（秒）",
+  retry_count: "失败重试次数",
+  retry_interval: "重试间隔（秒）",
+  health_check: "启用健康检查",
+  health_check_url: "健康检查地址",
+  server: "服务地址",
+  server_url: "服务地址",
+  hostname: "主机名",
+  zone: "防火墙区域",
+  use_https: "使用 HTTPS",
+  use_proxy: "使用代理",
+  proxy: "启用代理",
+  insecure: "允许不安全证书",
+  force: "强制更新",
+  verbose: "详细日志",
+  debug: "调试日志",
+  family: "IP 地址族",
+  ip_network: "IP 网络",
+  source: "更新来源",
   domain: "域名",
   username: "用户名或 API 标识",
   password: "密码或 API Token",
@@ -103,7 +164,7 @@ function optionLabel(serviceId: ProxyServiceId, key: string) {
   const known = getPluginSettingDefinitions(serviceId).find(
     (definition) => definition.key === key,
   );
-  return known?.label ?? COMMON_OPTION_LABELS[key] ?? `设置项：${key}`;
+  return known?.label ?? COMMON_OPTION_LABELS[key] ?? `未翻译设置项：${key}`;
 }
 
 function sectionTypeLabel(type: string) {
@@ -111,6 +172,18 @@ function sectionTypeLabel(type: string) {
     ddns: "DDNS 全局设置",
     service: "DDNS 服务",
     openclash: "OpenClash 设置",
+    openclash_config: "OpenClash 配置",
+    openclash_group: "OpenClash 策略组",
+    openclash_rule: "OpenClash 规则",
+    openclash_server: "OpenClash 节点",
+    passwall: "PassWall 设置",
+    passwall2: "PassWall2 设置",
+    global_forwarding: "全局转发设置",
+    nodes: "节点设置",
+    rules: "规则设置",
+    socks: "SOCKS 服务设置",
+    acl: "访问控制设置",
+    server: "服务设置",
     global: "全局设置",
     config: "通用设置",
   };
@@ -125,7 +198,11 @@ function sectionLabel(serviceId: ProxyServiceId, section: string) {
   };
   if (common[section]) return common[section];
   if (serviceId === "ddns") return `DDNS 服务 ${section}`;
-  return `设置段 ${section}`;
+  if (serviceId === "openclash") return `OpenClash 配置段 ${section}`;
+  if (serviceId === "passwall" || serviceId === "passwall2") {
+    return `${serviceId === "passwall" ? "PassWall" : "PassWall2"} 配置段 ${section}`;
+  }
+  return `配置段 ${section}`;
 }
 
 export default function ServiceConfigScreen() {

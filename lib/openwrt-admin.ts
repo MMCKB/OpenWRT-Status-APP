@@ -143,6 +143,7 @@ export interface RouterHardwareDetails {
   cpuCores: number | null;
   kernelVersion: string | null;
   wifiTemperaturesC: number[];
+  sensorTemperaturesC: number[];
 }
 
 export interface FirmwareDeviceInfo {
@@ -153,6 +154,14 @@ export interface FirmwareDeviceInfo {
   revision: string | null;
   target: string | null;
   description: string | null;
+}
+
+function requireFirmwareRemotePath(value: string) {
+  const path = value.trim();
+  if (!/^\/tmp\/manus-[A-Za-z0-9._-]+\.(?:bin|img)$/i.test(path)) {
+    throw new Error("固件临时路径无效。");
+  }
+  return path;
 }
 
 export interface ServiceState {
@@ -443,6 +452,46 @@ export function buildWakeOnLanCommand(mac: string) {
  */
 export function buildWolDevicesSnapshotCommand() {
   return "printf '__WOL_CONFIG__\\n'; uci -q show wol 2>/dev/null; printf '__WOL_DHCP__\\n'; cat /tmp/dhcp.leases 2>/dev/null; printf '__WOL_STATIC__\\n'; uci -q show dhcp 2>/dev/null";
+}
+
+/** 读取 DHCP 租约、静态租约与邻居缓存中的已知客户端，供用户手动加入 LuCI 唤醒目标。 */
+export function buildWolCandidatesSnapshotCommand() {
+  return "printf '__LEASES__\\n'; cat /tmp/dhcp.leases 2>/dev/null; printf '__NEIGH__\\n'; ip neigh show 2>/dev/null; printf '__DHCP_LEASES__\\n'; cat /tmp/dhcp.leases 2>/dev/null; printf '__DHCP_STATIC__\\n'; uci -q show dhcp 2>/dev/null";
+}
+
+export function parseWolCandidates(output: string): WolDevice[] {
+  const candidates = new Map<string, WolDevice>();
+  for (const client of parseConnectedClients(output)) {
+    candidates.set(client.mac, {
+      mac: client.mac,
+      hostname: client.hostname,
+      ipv4: client.ipv4,
+    });
+  }
+  const snapshot = parseDhcpLeaseSnapshot(output);
+  for (const lease of [...snapshot.dynamic, ...snapshot.static]) {
+    const previous = candidates.get(lease.mac);
+    candidates.set(lease.mac, {
+      mac: lease.mac,
+      hostname: previous?.hostname ?? lease.hostname,
+      ipv4: previous?.ipv4 ?? lease.ipv4,
+    });
+  }
+  return [...candidates.values()].sort((a, b) =>
+    (a.hostname ?? a.mac).localeCompare(b.hostname ?? b.mac),
+  );
+}
+
+/** 将一个已知客户端保存为 LuCI /etc/config/wol 中的持久化唤醒目标。 */
+export function buildWolTargetSaveCommand(device: WolDevice) {
+  const mac = requireMac(device.mac);
+  const section = `openwrt_app_wol_${mac.replace(/:/g, "_").toLowerCase()}`;
+  const name = (device.hostname ?? "").trim().replace(/[\r\n]/g, " ").slice(0, 63) || `OpenWrt App ${mac}`;
+  const ipv4 = device.ipv4 ? requireIpv4(device.ipv4) : null;
+  const ipv4Command = ipv4
+    ? `; uci set wol.${section}.ip=${shellQuote(ipv4)}`
+    : `; uci -q delete wol.${section}.ip`;
+  return `uci -q delete wol.${section}; uci set wol.${section}='wol'; uci set wol.${section}.name=${shellQuote(name)}; uci set wol.${section}.mac=${shellQuote(mac)}${ipv4Command}; uci commit wol; /etc/init.d/wol reload >/dev/null 2>&1 || true; printf '__WOL_SAVED__\\n'`;
 }
 
 export function parseWolDevices(output: string): WolDevice[] {
@@ -1213,9 +1262,9 @@ export function parseDiskSpeedResult(output: string): DiskSpeedResult {
   };
 }
 
-/** 读取路由器内核与硬件信息；Wi‑Fi 温度仅在驱动公开对应 sysfs 节点时返回。 */
+/** 读取路由器内核与硬件信息，并兼容 thermal、hwmon 及无线芯片公开的温度节点。 */
 export function buildRouterHardwareDetailsCommand() {
-  return `printf '__DETAIL_CPU__\\n'; awk -F: '/^(model name|system type|machine|Processor)[[:space:]]*:/{gsub(/^[[:space:]]+/, "", $2); printf "CPU|%s|", $2; found=1; exit} END{if(!found) printf "CPU|未知 CPU|"}' /proc/cpuinfo; awk '/^processor[[:space:]]*:/ {count++} END{if(count<1) count=1; printf "%s\\n", count}' /proc/cpuinfo; printf '__DETAIL_KERNEL__\\n'; uname -r 2>/dev/null; printf '__DETAIL_WIFI_TEMPERATURES__\\n'; for path in /sys/class/ieee80211/phy*/device/hwmon/hwmon*/temp*_input /sys/class/ieee80211/phy*/device/temp*_input /sys/class/ieee80211/phy*/device/temperature /sys/class/ieee80211/phy*/temperature; do [ -r "$path" ] && printf 'WIFI_TEMP|%s\\n' "$(cat "$path" 2>/dev/null)"; done`;
+  return `printf '__DETAIL_CPU__\n'; awk -F: '/^(model name|system type|machine|Processor)[[:space:]]*:/{gsub(/^[[:space:]]+/, "", $2); printf "CPU|%s|", $2; found=1; exit} END{if(!found) printf "CPU|未知 CPU|"}' /proc/cpuinfo; awk '/^processor[[:space:]]*:/ {count++} END{if(count<1) count=1; printf "%s\n", count}' /proc/cpuinfo; printf '__DETAIL_KERNEL__\n'; uname -r 2>/dev/null; printf '__DETAIL_WIFI_TEMPERATURES__\n'; for path in /sys/class/ieee80211/phy*/device/hwmon/hwmon*/temp*_input /sys/class/ieee80211/phy*/device/temp*_input /sys/class/ieee80211/phy*/device/temperature /sys/class/ieee80211/phy*/temperature; do [ -r "$path" ] && printf 'WIFI_TEMP|%s\n' "$(cat "$path" 2>/dev/null)"; done; for hwmon in /sys/class/hwmon/hwmon*; do [ -r "$hwmon/name" ] || continue; name=$(tr '[:upper:]' '[:lower:]' < "$hwmon/name" 2>/dev/null); case "$name" in *wifi*|*wlan*|*ath*|*mt76*|*mt79*|*radio*) for path in "$hwmon"/temp*_input; do [ -r "$path" ] && printf 'WIFI_TEMP|%s\n' "$(cat "$path" 2>/dev/null)"; done;; esac; done; printf '__DETAIL_SENSOR_TEMPERATURES__\n'; for path in /sys/class/thermal/thermal_zone*/temp /sys/devices/virtual/thermal/thermal_zone*/temp /sys/class/hwmon/hwmon*/temp*_input; do [ -r "$path" ] && printf 'SENSOR_TEMP|%s\n' "$(cat "$path" 2>/dev/null)"; done`;
 }
 
 export function parseRouterHardwareDetails(
@@ -1225,6 +1274,7 @@ export function parseRouterHardwareDetails(
   let cpuCores: number | null = null;
   let kernelVersion: string | null = null;
   const wifiTemperaturesC: number[] = [];
+  const sensorTemperaturesC: number[] = [];
   let section = "";
   for (const rawLine of output.split(/\r?\n/)) {
     const line = rawLine.trim();
@@ -1240,6 +1290,10 @@ export function parseRouterHardwareDetails(
       section = "wifi";
       continue;
     }
+    if (line === "__DETAIL_SENSOR_TEMPERATURES__") {
+      section = "sensor";
+      continue;
+    }
     if (!line) continue;
     if (section === "cpu") {
       const match = line.match(/^CPU\|(.+)\|(\d+)$/);
@@ -1249,21 +1303,39 @@ export function parseRouterHardwareDetails(
       }
     } else if (section === "kernel") {
       kernelVersion = line || null;
-    } else if (section === "wifi") {
-      const match = line.match(/^WIFI_TEMP\|(-?\d+(?:\.\d+)?)$/);
+    } else if (section === "wifi" || section === "sensor") {
+      const match = line.match(/^(?:WIFI|SENSOR)_TEMP\|(-?\d+(?:\.\d+)?)$/);
       if (!match) continue;
       const raw = Number(match[1]);
       const celsius = Math.abs(raw) > 200 ? raw / 1000 : raw;
       if (Number.isFinite(celsius) && celsius > -50 && celsius < 150) {
-        wifiTemperaturesC.push(celsius);
+        (section === "wifi" ? wifiTemperaturesC : sensorTemperaturesC).push(celsius);
       }
     }
   }
-  return { cpuModel, cpuCores, kernelVersion, wifiTemperaturesC };
+  return { cpuModel, cpuCores, kernelVersion, wifiTemperaturesC, sensorTemperaturesC };
 }
 
 export function buildFirmwareDeviceInfoCommand() {
   return "ubus call system board 2>/dev/null";
+}
+
+/**
+ * 使用 OpenWrt 自带 sysupgrade 在路由器端检查镜像；此命令不会写入闪存。
+ * 保持零退出码，使原生 SSH 可返回完整诊断输出供界面展示。
+ */
+export function buildFirmwareVerifyCommand(remotePath: string) {
+  const safePath = requireFirmwareRemotePath(remotePath);
+  return `if sysupgrade -T ${shellQuote(safePath)} >/tmp/openwrt-app-firmware-check.log 2>&1; then printf '__FIRMWARE_VALID__\\n'; else printf '__FIRMWARE_INVALID__\\n'; fi; cat /tmp/openwrt-app-firmware-check.log 2>/dev/null; rm -f /tmp/openwrt-app-firmware-check.log`;
+}
+
+/** 提交已通过路由器校验的镜像；-n 明确表示不保留现有配置。 */
+export function buildFirmwareUpgradeCommand(
+  remotePath: string,
+  preserveConfig: boolean,
+) {
+  const safePath = requireFirmwareRemotePath(remotePath);
+  return `sysupgrade${preserveConfig ? "" : " -n"} ${shellQuote(safePath)}`;
 }
 
 export function parseFirmwareDeviceInfo(output: string): FirmwareDeviceInfo {

@@ -10,12 +10,16 @@ import {
   buildDnsLatencyCommand,
   buildDockerContainerCommand,
   buildDockerContainerLogsCommand,
+  buildFirmwareUpgradeCommand,
+  buildFirmwareVerifyCommand,
   buildPerformanceBenchmarkCommand,
   buildRestoreCommand,
   buildServiceCommand,
   buildWanDiagnosticCommand,
   buildWakeOnLanCommand,
+  buildWolCandidatesSnapshotCommand,
   buildWolDevicesSnapshotCommand,
+  buildWolTargetSaveCommand,
   buildWirelessChannelApplyCommand,
   buildWifiDeleteCommand,
   buildWifiSettingsSaveCommand,
@@ -28,6 +32,8 @@ import {
   parsePerformanceBenchmark,
   parseBlockedClientMacs,
   parseConnectedClients,
+  parseRouterHardwareDetails,
+  parseWolCandidates,
   parseWolDevices,
   parseServiceStates,
   parseWirelessOptimizationSnapshot,
@@ -177,6 +183,52 @@ describe("OpenWrt 管理命令与解析", () => {
       model: "Example Router",
       version: "25.12.0",
       target: "ath79/generic",
+    });
+  });
+
+  it("先在路由器端校验 BIN、IMG 固件，再按用户选择保留或清除配置升级", () => {
+    const verification = buildFirmwareVerifyCommand("/tmp/manus-router-update.bin");
+    expect(verification).toContain("sysupgrade -T '/tmp/manus-router-update.bin'");
+    expect(verification).toContain("__FIRMWARE_VALID__");
+    expect(buildFirmwareUpgradeCommand("/tmp/manus-router-update.bin", true)).toBe(
+      "sysupgrade '/tmp/manus-router-update.bin'",
+    );
+    expect(buildFirmwareUpgradeCommand("/tmp/manus-router-update.img", false)).toBe(
+      "sysupgrade -n '/tmp/manus-router-update.img'",
+    );
+    expect(() => buildFirmwareVerifyCommand("/tmp/manus-update; reboot.bin")).toThrow(
+      "固件临时路径无效",
+    );
+  });
+
+  it("从已知客户端生成网络唤醒候选项，并安全保存为 LuCI 目标", () => {
+    expect(buildWolCandidatesSnapshotCommand()).toContain("ip neigh show");
+    expect(
+      parseWolCandidates(
+        "__LEASES__\n12345 aa:bb:cc:dd:ee:ff 192.168.1.20 NAS *\n__NEIGH__\n192.168.1.20 dev br-lan lladdr aa:bb:cc:dd:ee:ff REACHABLE",
+      ),
+    ).toContainEqual({
+      mac: "AA:BB:CC:DD:EE:FF",
+      hostname: "NAS",
+      ipv4: "192.168.1.20",
+    });
+    expect(
+      buildWolTargetSaveCommand({
+        mac: "aa:bb:cc:dd:ee:ff",
+        hostname: "NAS",
+        ipv4: "192.168.1.20",
+      }),
+    ).toContain("uci commit wol");
+  });
+
+  it("区分无线芯片与通用热区温度，兼容毫摄氏度输出", () => {
+    expect(
+      parseRouterHardwareDetails(
+        "__DETAIL_CPU__\nCPU|Example CPU|2\n__DETAIL_KERNEL__\n6.6.0\n__DETAIL_WIFI_TEMPERATURES__\nWIFI_TEMP|52000\n__DETAIL_SENSOR_TEMPERATURES__\nSENSOR_TEMP|43000\nSENSOR_TEMP|47",
+      ),
+    ).toMatchObject({
+      wifiTemperaturesC: [52],
+      sensorTemperaturesC: [43, 47],
     });
   });
 

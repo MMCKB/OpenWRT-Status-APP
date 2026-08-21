@@ -2,6 +2,8 @@ import MaterialIcons from "@expo/vector-icons/MaterialIcons";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   ActivityIndicator,
+  FlatList,
+  Modal,
   Pressable,
   StyleSheet,
   Text,
@@ -14,7 +16,10 @@ import { useColors } from "@/hooks/use-colors";
 import { useManagedSsh } from "@/hooks/use-managed-ssh";
 import {
   buildWakeOnLanCommand,
+  buildWolCandidatesSnapshotCommand,
   buildWolDevicesSnapshotCommand,
+  buildWolTargetSaveCommand,
+  parseWolCandidates,
   parseWolDevices,
   type WolDevice,
 } from "@/lib/openwrt-admin";
@@ -23,11 +28,18 @@ export default function WakeOnLanScreen() {
   const colors = useColors();
   const { execute, error, hasRouter, isRunning, isSupported } = useManagedSsh();
   const [devices, setDevices] = useState<WolDevice[]>([]);
+  const [candidates, setCandidates] = useState<WolDevice[]>([]);
   const [selectedMac, setSelectedMac] = useState<string | null>(null);
+  const [candidatePickerVisible, setCandidatePickerVisible] = useState(false);
+  const [selectedCandidateMac, setSelectedCandidateMac] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const selectedDevice = useMemo(
     () => devices.find((device) => device.mac === selectedMac) ?? null,
     [devices, selectedMac],
+  );
+  const selectedCandidate = useMemo(
+    () => candidates.find((device) => device.mac === selectedCandidateMac) ?? null,
+    [candidates, selectedCandidateMac],
   );
   const disabled = !hasRouter || !isSupported || isRunning || !selectedDevice;
 
@@ -41,13 +53,38 @@ export default function WakeOnLanScreen() {
           ? current
           : null,
       );
-      if (!discovered.length) {
-        setNotice(
-          "未读取到 LuCI 已配置的唤醒目标。请先在路由器的 LuCI 网络唤醒页面保存设备后重新读取。",
-        );
-      }
+      if (!discovered.length)
+        setNotice("尚未保存唤醒目标。可通过“从已知设备添加”选择曾连接到路由器的客户端。");
     } catch {}
   }, [execute]);
+
+  const openCandidatePicker = useCallback(async () => {
+    try {
+      const output = await execute(buildWolCandidatesSnapshotCommand());
+      const discovered = parseWolCandidates(output);
+      setCandidates(discovered);
+      setSelectedCandidateMac((current) =>
+        current && discovered.some((device) => device.mac === current)
+          ? current
+          : null,
+      );
+      setCandidatePickerVisible(true);
+      if (!discovered.length)
+        setNotice("未读取到 DHCP 租约或邻居缓存中的已知设备。请先让目标设备连接到路由器网络。");
+    } catch {}
+  }, [execute]);
+
+  const saveCandidate = useCallback(async () => {
+    if (!selectedCandidate) return;
+    try {
+      await execute(buildWolTargetSaveCommand(selectedCandidate));
+      setCandidatePickerVisible(false);
+      setSelectedCandidateMac(null);
+      setSelectedMac(selectedCandidate.mac);
+      setNotice(`${selectedCandidate.hostname ?? selectedCandidate.mac} 已保存到网络唤醒目标列表。`);
+      await refreshDevices();
+    } catch {}
+  }, [execute, refreshDevices, selectedCandidate]);
 
   useEffect(() => {
     if (hasRouter && isSupported) void refreshDevices();
@@ -94,12 +131,12 @@ export default function WakeOnLanScreen() {
   return (
     <ManagementShell
       title="网络唤醒"
-      description="从 LuCI 网络唤醒页面保存的目标中选择设备，再由 OpenWrt 路由器发送广播唤醒包。"
+      description="从已知客户端中选择并保存唤醒目标，再由 OpenWrt 路由器发送广播唤醒包。"
     >
       <View style={styles.form}>
         <View style={styles.sectionHeader}>
           <Text style={[styles.label, { color: colors.foreground }]}>
-            LuCI 已配置设备
+            已保存的唤醒设备
           </Text>
           <Pressable
             accessibilityRole="button"
@@ -117,6 +154,20 @@ export default function WakeOnLanScreen() {
             </Text>
           </Pressable>
         </View>
+        <Pressable
+          accessibilityRole="button"
+          onPress={() => void openCandidatePicker()}
+          disabled={isRunning || !hasRouter || !isSupported}
+          style={({ pressed }) => [
+            styles.addButton,
+            { borderColor: colors.primary },
+            pressed && styles.pressed,
+            (isRunning || !hasRouter || !isSupported) && styles.disabled,
+          ]}
+        >
+          <MaterialIcons name="add-circle-outline" size={18} color={colors.primary} />
+          <Text style={[styles.addButtonText, { color: colors.primary }]}>从已知设备添加</Text>
+        </Pressable>
         {devices.length ? (
           <View style={[styles.clientList, { borderColor: colors.border }]}>
             {devices.map((device, index) => {
@@ -169,8 +220,7 @@ export default function WakeOnLanScreen() {
           </View>
         ) : (
           <Text style={[styles.emptyText, { color: colors.muted }]}>
-            暂未读取到 LuCI
-            已配置设备，请在路由器网络唤醒页面保存目标后重新读取。
+            尚未保存网络唤醒目标。请通过上方按钮从已连接或曾连接的 DHCP 客户端中添加。
           </Text>
         )}
         <Pressable
@@ -220,6 +270,44 @@ export default function WakeOnLanScreen() {
           </Text>
         </ToolNotice>
       ) : null}
+      <Modal visible={candidatePickerVisible} transparent animationType="fade" onRequestClose={() => setCandidatePickerVisible(false)}>
+        <View style={styles.modalRoot}>
+          <Pressable style={styles.modalBackdrop} onPress={() => setCandidatePickerVisible(false)} />
+          <View style={[styles.modalCard, { backgroundColor: colors.surface, borderColor: colors.border }]} accessibilityViewIsModal>
+            <View style={styles.modalHeader}>
+              <View style={styles.modalTitleCopy}>
+                <Text style={[styles.modalTitle, { color: colors.foreground }]}>选择唤醒设备</Text>
+                <Text style={[styles.modalDescription, { color: colors.muted }]}>来源为 DHCP 租约、静态租约和路由器邻居缓存；选择后会保存到 LuCI 唤醒目标列表。</Text>
+              </View>
+              <Pressable accessibilityRole="button" onPress={() => setCandidatePickerVisible(false)} style={({ pressed }) => [styles.closeButton, { backgroundColor: colors.background }, pressed && styles.pressed]}>
+                <MaterialIcons name="close" size={18} color={colors.foreground} />
+              </Pressable>
+            </View>
+            <FlatList
+              data={candidates}
+              keyExtractor={(item) => item.mac}
+              style={styles.candidateList}
+              ListEmptyComponent={<Text style={[styles.emptyText, { color: colors.muted }]}>暂无可添加的已知设备。</Text>}
+              renderItem={({ item, index }) => {
+                const selected = item.mac === selectedCandidateMac;
+                const alreadySaved = devices.some((device) => device.mac === item.mac);
+                return (
+                  <Pressable accessibilityRole="radio" accessibilityState={{ selected }} onPress={() => setSelectedCandidateMac(item.mac)} style={({ pressed }) => [styles.candidateRow, index > 0 && { borderTopWidth: 1, borderTopColor: colors.border }, selected && { backgroundColor: colors.background }, pressed && styles.pressed]}>
+                    <View style={styles.clientInfo}>
+                      <Text numberOfLines={1} style={[styles.clientName, { color: colors.foreground }]}>{item.hostname ?? "未命名设备"}{alreadySaved ? "（已保存）" : ""}</Text>
+                      <Text numberOfLines={1} style={[styles.clientMeta, { color: colors.muted }]}>{item.ipv4 ?? "未记录 IPv4"} · {item.mac}</Text>
+                    </View>
+                    <MaterialIcons name={selected ? "radio-button-checked" : "radio-button-unchecked"} size={22} color={selected ? colors.primary : colors.muted} />
+                  </Pressable>
+                );
+              }}
+            />
+            <Pressable accessibilityRole="button" disabled={!selectedCandidate || isRunning} onPress={() => void saveCandidate()} style={({ pressed }) => [styles.saveButton, { backgroundColor: colors.primary }, (!selectedCandidate || isRunning) && styles.disabled, pressed && styles.pressed]}>
+              <Text style={styles.buttonText}>{selectedCandidate ? `保存 ${selectedCandidate.hostname ?? selectedCandidate.mac}` : "请选择设备"}</Text>
+            </Pressable>
+          </View>
+        </View>
+      </Modal>
     </ManagementShell>
   );
 }
@@ -242,6 +330,8 @@ const styles = StyleSheet.create({
     gap: 4,
   },
   refreshText: { fontSize: 12, fontWeight: "800" },
+  addButton: { minHeight: 42, borderWidth: 1, borderRadius: 11, paddingHorizontal: 13, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 7 },
+  addButtonText: { fontSize: 13, fontWeight: "800" },
   clientList: { borderWidth: 1, borderRadius: 12, overflow: "hidden" },
   clientRow: {
     minHeight: 62,
@@ -268,4 +358,15 @@ const styles = StyleSheet.create({
   notice: { fontSize: 13, lineHeight: 19 },
   pressed: { opacity: 0.72 },
   disabled: { opacity: 0.5 },
+  modalRoot: { flex: 1, justifyContent: "center", padding: 20 },
+  modalBackdrop: { ...StyleSheet.absoluteFillObject, backgroundColor: "rgba(5, 11, 18, 0.62)" },
+  modalCard: { maxHeight: "78%", borderRadius: 22, padding: 18, borderWidth: 1 },
+  modalHeader: { flexDirection: "row", alignItems: "flex-start", gap: 12, marginBottom: 14 },
+  modalTitleCopy: { flex: 1, gap: 4 },
+  modalTitle: { fontSize: 18, fontWeight: "800", lineHeight: 24 },
+  modalDescription: { fontSize: 13, lineHeight: 19 },
+  closeButton: { width: 34, height: 34, borderRadius: 17, alignItems: "center", justifyContent: "center" },
+  candidateList: { maxHeight: 360 },
+  candidateRow: { minHeight: 62, paddingHorizontal: 12, paddingVertical: 10, flexDirection: "row", alignItems: "center", gap: 12 },
+  saveButton: { minHeight: 46, marginTop: 14, borderRadius: 12, alignItems: "center", justifyContent: "center" },
 });

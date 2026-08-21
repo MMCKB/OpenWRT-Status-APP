@@ -65,9 +65,9 @@ export function AnimatedStatusIcon({ name, color, size }: { name: React.Componen
   return <Animated.View style={animatedStyle}><MaterialIcons name={name} size={size} color={color} /></Animated.View>;
 }
 
-export function SectionCard({ title, action, children }: { title: string; action?: ReactNode; children: ReactNode }) {
+export function SectionCard({ title, action, children, frameless = false }: { title: string; action?: ReactNode; children: ReactNode; frameless?: boolean }) {
   const colors = useColors();
-  return <View style={styles.sectionWrap}><View style={styles.sectionHeader}><Text style={[styles.sectionTitle, { color: colors.foreground }]}>{title}</Text>{action}</View><View style={[styles.card, { backgroundColor: colors.surface, borderColor: colors.border }]}>{children}</View></View>;
+  return <View style={styles.sectionWrap}><View style={styles.sectionHeader}><Text style={[styles.sectionTitle, { color: colors.foreground }]}>{title}</Text>{action}</View><View style={frameless ? undefined : [styles.card, { backgroundColor: colors.surface, borderColor: colors.border }]}>{children}</View></View>;
 }
 
 export function EmptyState({ icon, title, description }: { icon: React.ComponentProps<typeof MaterialIcons>["name"]; title: string; description: string }) {

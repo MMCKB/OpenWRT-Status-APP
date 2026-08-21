@@ -90,6 +90,9 @@ export default function DetailsScreen() {
   const wifiTemperature = hardware?.wifiTemperaturesC.length
     ? `${Math.max(...hardware.wifiTemperaturesC).toFixed(1)} °C`
     : "路由器未报告";
+  const sensorTemperature = hardware?.sensorTemperaturesC.length
+    ? `${Math.max(...hardware.sensorTemperaturesC).toFixed(1)} °C · ${hardware.sensorTemperaturesC.length} 个可用`
+    : "路由器未报告";
   const refreshAll = () => {
     void refreshStatus();
     void refreshHardware();
@@ -224,11 +227,7 @@ export default function DetailsScreen() {
           <DetailRow label="Wi‑Fi 温度" value={wifiTemperature} />
           <DetailRow
             label="温度传感器"
-            value={
-              hardware?.wifiTemperaturesC.length
-                ? `${hardware.wifiTemperaturesC.length} 个可用`
-                : "路由器未报告"
-            }
+            value={sensorTemperature}
             last
           />
         </SectionCard>
