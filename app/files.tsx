@@ -771,6 +771,36 @@ export default function FilesScreen() {
               </Pressable>
             </View>
             <View style={styles.selectionActions}>
+              {!isMultiSelecting && selected?.kind === "file" ? (
+                <>
+                  <Pressable
+                    accessibilityRole="button"
+                    onPress={() => void openTextEditor(selected)}
+                    disabled={isBusy}
+                    style={({ pressed }) => [
+                      styles.actionButton,
+                      isBusy && styles.disabled,
+                      pressed && styles.pressed,
+                    ]}
+                  >
+                    <MaterialIcons name="edit" size={17} color="#007E7A" />
+                    <Text style={styles.actionText}>编辑</Text>
+                  </Pressable>
+                  <Pressable
+                    accessibilityRole="button"
+                    onPress={() => void downloadAndShare(selected)}
+                    disabled={isBusy}
+                    style={({ pressed }) => [
+                      styles.actionButton,
+                      isBusy && styles.disabled,
+                      pressed && styles.pressed,
+                    ]}
+                  >
+                    <MaterialIcons name="download" size={17} color="#007E7A" />
+                    <Text style={styles.actionText}>下载</Text>
+                  </Pressable>
+                </>
+              ) : null}
               <Pressable
                 accessibilityRole="button"
                 onPress={() => stageClipboard("copy")}
@@ -801,6 +831,40 @@ export default function FilesScreen() {
                 />
                 <Text style={styles.actionText}>移动</Text>
               </Pressable>
+              {!isMultiSelecting ? (
+                <>
+                  <Pressable
+                    accessibilityRole="button"
+                    onPress={() => showPrompt("rename")}
+                    disabled={isBusy}
+                    style={({ pressed }) => [
+                      styles.actionButton,
+                      isBusy && styles.disabled,
+                      pressed && styles.pressed,
+                    ]}
+                  >
+                    <MaterialIcons
+                      name="drive-file-rename-outline"
+                      size={17}
+                      color="#007E7A"
+                    />
+                    <Text style={styles.actionText}>重命名</Text>
+                  </Pressable>
+                  <Pressable
+                    accessibilityRole="button"
+                    onPress={() => showPrompt("permissions")}
+                    disabled={isBusy}
+                    style={({ pressed }) => [
+                      styles.actionButton,
+                      isBusy && styles.disabled,
+                      pressed && styles.pressed,
+                    ]}
+                  >
+                    <MaterialIcons name="lock-open" size={17} color="#007E7A" />
+                    <Text style={styles.actionText}>权限</Text>
+                  </Pressable>
+                </>
+              ) : null}
               <Pressable
                 accessibilityRole="button"
                 onPress={confirmDelete}

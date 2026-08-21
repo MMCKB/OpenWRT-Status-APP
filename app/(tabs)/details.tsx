@@ -89,7 +89,7 @@ export default function DetailsScreen() {
   }, [refreshHardware]);
   const wifiTemperature = hardware?.wifiTemperaturesC.length
     ? `${Math.max(...hardware.wifiTemperaturesC).toFixed(1)} °C`
-    : "未报告";
+    : "路由器未报告";
   const refreshAll = () => {
     void refreshStatus();
     void refreshHardware();
@@ -98,7 +98,7 @@ export default function DetailsScreen() {
     return (
       <View style={sharedStyles.screen}>
         <View style={styles.header}>
-          <Text style={[styles.title, { color: colors.foreground }]}>详情</Text>
+          <Text style={[styles.title, { color: colors.foreground }]}>设备名称</Text>
         </View>
         <EmptyState
           icon="analytics"
@@ -124,10 +124,7 @@ export default function DetailsScreen() {
       <ScrollView contentContainerStyle={sharedStyles.content}>
         <View style={styles.headerRow}>
           <View>
-            <Text style={[styles.title, { color: colors.foreground }]}>
-              详情
-            </Text>
-            <Text style={[styles.subtitle, { color: colors.muted }]}>
+            <Text style={[styles.title, { color: colors.foreground }]}> 
               {selectedProfile.name}
             </Text>
           </View>

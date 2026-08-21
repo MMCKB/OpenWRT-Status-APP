@@ -7,6 +7,7 @@ import {
   buildFirewallRuleCreateCommand,
   buildFirewallRuleDeleteCommand,
   buildFirewallRuleToggleCommand,
+  buildFirewallRuleUpdateCommand,
   buildPluginConfigApplyCommand,
   buildPluginConfigSnapshotCommand,
   buildPluginLogCommand,
@@ -15,6 +16,7 @@ import {
   buildPortForwardCreateCommand,
   buildPortForwardDeleteCommand,
   buildPortForwardToggleCommand,
+  buildPortForwardUpdateCommand,
   buildProxyServiceActionCommand,
   buildProxyServiceConfigUrl,
   buildProxyServiceSnapshotCommand,
@@ -322,6 +324,48 @@ describe("高级 OpenWrt 服务与网络管理", () => {
         protocol: "tcp",
       }),
     ).toThrow("来源区域格式无效");
+  });
+
+  it("仅更新已存在的防火墙通信规则和端口转发段", () => {
+    const ruleUpdate = buildFirewallRuleUpdateCommand("@rule[0]", {
+      name: "Allow DNS",
+      sourceZone: "wan",
+      destinationZone: "",
+      protocol: "udp",
+      sourceIp: "",
+      destinationIp: "192.168.1.2",
+      sourcePort: "",
+      destinationPort: "53",
+      target: "ACCEPT",
+    });
+    expect(ruleUpdate).toContain("uci get firewall.@rule[0]");
+    expect(ruleUpdate).toContain("firewall.@rule[0].dest_port='53'");
+    expect(ruleUpdate).not.toContain("firewall.@rule[0]='rule'");
+    const forwardUpdate = buildPortForwardUpdateCommand("@redirect[0]", {
+      name: "NAS HTTPS",
+      sourceZone: "wan",
+      destinationZone: "lan",
+      destinationIp: "192.168.1.20",
+      sourcePort: "443",
+      destinationPort: "8443",
+      protocol: "tcp",
+    });
+    expect(forwardUpdate).toContain("uci get firewall.@redirect[0]");
+    expect(forwardUpdate).toContain("firewall.@redirect[0].dest_port='8443'");
+    expect(forwardUpdate).not.toContain("enabled='1'");
+    expect(() =>
+      buildFirewallRuleUpdateCommand("@rule[0]; reboot", {
+        name: "Allow DNS",
+        sourceZone: "wan",
+        destinationZone: "",
+        protocol: "udp",
+        sourceIp: "",
+        destinationIp: "",
+        sourcePort: "",
+        destinationPort: "53",
+        target: "ACCEPT",
+      }),
+    ).toThrow("端口转发规则格式无效");
   });
 
   it("解析并受控管理区域转发与通信规则", () => {

@@ -898,8 +898,10 @@ export function buildFirewallRuleDeleteCommand(section: string) {
   return `uci -q delete firewall.${safeSection}; uci commit firewall; /etc/init.d/firewall reload`;
 }
 
-export function buildFirewallRuleCreateCommand(
+function buildFirewallRuleWriteCommand(
+  section: string,
   draft: FirewallTrafficRuleDraft,
+  create: boolean,
 ) {
   const name = draft.name.trim();
   if (!name || name.length > 48 || /[\r\n]/.test(name))
@@ -931,13 +933,14 @@ export function buildFirewallRuleCreateCommand(
   };
   const sourceIp = optionalIp(draft.sourceIp, "来源地址");
   const destinationIp = optionalIp(draft.destinationIp, "目标地址");
-  const section = `openwrt_app_rule_${Date.now().toString(36)}`;
   const values = [
-    `uci set firewall.${section}='rule'`,
+    create
+      ? `uci set firewall.${section}='rule'`
+      : `uci get firewall.${section} >/dev/null 2>&1 || { echo '未找到要编辑的通信规则。'; exit 2; }`,
     `uci set firewall.${section}.name=${shellQuote(name)}`,
     `uci set firewall.${section}.proto=${shellQuote(draft.protocol)}`,
     `uci set firewall.${section}.target=${shellQuote(draft.target)}`,
-    `uci set firewall.${section}.enabled='1'`,
+    ...(create ? [`uci set firewall.${section}.enabled='1'`] : []),
     sourceZone
       ? `uci set firewall.${section}.src=${shellQuote(sourceZone)}`
       : `uci -q delete firewall.${section}.src`,
@@ -962,6 +965,28 @@ export function buildFirewallRuleCreateCommand(
   return values.join("; ");
 }
 
+export function buildFirewallRuleCreateCommand(
+  draft: FirewallTrafficRuleDraft,
+) {
+  return buildFirewallRuleWriteCommand(
+    `openwrt_app_rule_${Date.now().toString(36)}`,
+    draft,
+    true,
+  );
+}
+
+/** 更新已有的 LuCI/UCI rule 配置段，并保留原有启用状态。 */
+export function buildFirewallRuleUpdateCommand(
+  section: string,
+  draft: FirewallTrafficRuleDraft,
+) {
+  return buildFirewallRuleWriteCommand(
+    requireFirewallSection(section),
+    draft,
+    false,
+  );
+}
+
 export function buildPortForwardToggleCommand(
   section: string,
   enabled: boolean,
@@ -975,7 +1000,11 @@ export function buildPortForwardDeleteCommand(section: string) {
   return `uci -q delete firewall.${safeSection}; uci commit firewall; /etc/init.d/firewall reload`;
 }
 
-export function buildPortForwardCreateCommand(draft: PortForwardDraft) {
+function buildPortForwardWriteCommand(
+  section: string,
+  draft: PortForwardDraft,
+  create: boolean,
+) {
   const name = draft.name.trim();
   if (!name || name.length > 48 || /[\r\n]/.test(name))
     throw new Error("规则名称应为 1–48 个字符，且不能包含换行。");
@@ -986,8 +1015,27 @@ export function buildPortForwardCreateCommand(draft: PortForwardDraft) {
   const destinationPort = requirePortSpec(draft.destinationPort, "内部端口");
   if (!["tcp", "udp", "tcp udp"].includes(draft.protocol))
     throw new Error("端口协议无效。");
-  const section = `openwrt_app_pf_${Date.now().toString(36)}`;
-  return `uci set firewall.${section}='redirect'; uci set firewall.${section}.name=${shellQuote(name)}; uci set firewall.${section}.src=${shellQuote(sourceZone)}; uci set firewall.${section}.dest=${shellQuote(destinationZone)}; uci set firewall.${section}.proto=${shellQuote(draft.protocol)}; uci set firewall.${section}.src_dport=${shellQuote(sourcePort)}; uci set firewall.${section}.dest_ip=${shellQuote(destinationIp)}; uci set firewall.${section}.dest_port=${shellQuote(destinationPort)}; uci set firewall.${section}.target='DNAT'; uci set firewall.${section}.enabled='1'; uci commit firewall; /etc/init.d/firewall reload`;
+  return `${create ? `uci set firewall.${section}='redirect'` : `uci get firewall.${section} >/dev/null 2>&1 || { echo '未找到要编辑的端口转发规则。'; exit 2; }`}; uci set firewall.${section}.name=${shellQuote(name)}; uci set firewall.${section}.src=${shellQuote(sourceZone)}; uci set firewall.${section}.dest=${shellQuote(destinationZone)}; uci set firewall.${section}.proto=${shellQuote(draft.protocol)}; uci set firewall.${section}.src_dport=${shellQuote(sourcePort)}; uci set firewall.${section}.dest_ip=${shellQuote(destinationIp)}; uci set firewall.${section}.dest_port=${shellQuote(destinationPort)}; uci set firewall.${section}.target='DNAT'; ${create ? `uci set firewall.${section}.enabled='1'; ` : ""}uci commit firewall; /etc/init.d/firewall reload`;
+}
+
+export function buildPortForwardCreateCommand(draft: PortForwardDraft) {
+  return buildPortForwardWriteCommand(
+    `openwrt_app_pf_${Date.now().toString(36)}`,
+    draft,
+    true,
+  );
+}
+
+/** 更新已有的 LuCI/UCI redirect 配置段，并保留原有启用状态。 */
+export function buildPortForwardUpdateCommand(
+  section: string,
+  draft: PortForwardDraft,
+) {
+  return buildPortForwardWriteCommand(
+    requireFirewallSection(section),
+    draft,
+    false,
+  );
 }
 
 export function buildUpnpActionCommand(action: ManagedAction) {
