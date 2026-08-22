@@ -88,6 +88,8 @@ pub fn App() -> Element {
     let theme = use_signal(|| ThemePreference::System);
     let draft = use_signal(ConnectionDraft::default);
     let active_connection = use_signal(ConnectionDraft::default);
+    let profiles = use_signal(|| vec![ConnectionDraft::default().profile]);
+    let profile_counter = use_signal(|| 1_u32);
     let theme_class = theme().css_class();
 
     // 该资源只依赖已提交的连接资料。用户在表单中输入密码或地址时不会反复拉取，
@@ -134,6 +136,8 @@ pub fn App() -> Element {
                         RouterList {
                             draft,
                             active_connection,
+                            profiles,
+                            profile_counter,
                             on_connect: move |_| router_status.restart(),
                         }
                     },
@@ -409,13 +413,62 @@ fn InterfaceRow(name: String, address: String, status: String, online: bool) -> 
 fn RouterList(
     draft: Signal<ConnectionDraft>,
     mut active_connection: Signal<ConnectionDraft>,
+    mut profiles: Signal<Vec<RouterProfile>>,
+    mut profile_counter: Signal<u32>,
     on_connect: EventHandler<()>,
 ) -> Element {
     let values = draft();
+    let saved_profiles = profiles();
     rsx! {
         section { class: "section-card",
+            h2 { "多路由器档案" }
+            p { class: "section-note", "档案元数据可保存为 JSON；LuCI 和 SSH 密码不会写入档案、日志或诊断报告。" }
+            div { class: "profile-list",
+                for profile in saved_profiles.iter() {
+                    div { class: "profile-row",
+                        div { strong { "{profile.name}" } p { "{profile.base_url}" } }
+                        button {
+                            class: "secondary",
+                            onclick: {
+                                let profile = profile.clone();
+                                move |_| draft.set(ConnectionDraft { profile: profile.clone(), password: String::new() })
+                            },
+                            "编辑"
+                        }
+                        button {
+                            class: "secondary danger",
+                            disabled: saved_profiles.len() <= 1,
+                            onclick: {
+                                let profile_id = profile.id.clone();
+                                move |_| profiles.write().retain(|item| item.id != profile_id)
+                            },
+                            "删除"
+                        }
+                    }
+                }
+            }
+            button {
+                class: "secondary",
+                onclick: move |_| {
+                    let next = profile_counter() + 1;
+                    profile_counter.set(next);
+                    draft.set(ConnectionDraft {
+                        profile: RouterProfile {
+                            id: format!("router-{next}"),
+                            name: format!("路由器 {next}"),
+                            base_url: "http://192.168.1.1".to_owned(),
+                            username: "root".to_owned(),
+                            ssh_port: 22,
+                        },
+                        password: String::new(),
+                    });
+                },
+                "新增路由器档案"
+            }
+        }
+        section { class: "section-card",
             h2 { "当前连接资料" }
-            p { class: "section-note", "档案元数据可保存为 JSON；LuCI 密码不会写入档案或日志。" }
+            p { class: "section-note", "使用此连接时会更新同 ID 的档案。密码仅保留在当前运行内存中。" }
             label { class: "field-label", "显示名称" }
             input {
                 class: "text-input",
@@ -459,15 +512,19 @@ fn RouterList(
             button {
                 class: "primary",
                 onclick: move |_| {
-                    active_connection.set(draft());
+                    let connection = draft();
+                    profiles.with_mut(|items| {
+                        if let Some(index) = items.iter().position(|item| item.id == connection.profile.id) {
+                            items[index] = connection.profile.clone();
+                        } else {
+                            items.push(connection.profile.clone());
+                        }
+                    });
+                    active_connection.set(connection);
                     on_connect.call(());
                 },
                 "使用此连接"
             }
-        }
-        section { class: "section-card",
-            h2 { "多路由器档案" }
-            p { "核心层已提供 JSON 档案仓库，支持新增、更新、删除和版本校验；Android 应用专属目录与安全凭据适配将在平台集成阶段接入。" }
         }
     }
 }
@@ -555,6 +612,6 @@ h1 { margin: 4px 0; font-size: 28px; } h2 { margin: 0 0 12px; font-size: 18px; }
 .progress-track { height: 4px; margin-top: 10px; overflow: hidden; border-radius: 8px; background: #e7eef2; }.progress-fill { height: 100%; border-radius: inherit; background: #007e7a; transition: width 220ms ease; }
 .interface-row { padding: 12px 0; border-top: 1px solid #e7eef2; }.interface-row > div { flex: 1; }.interface-row strong { display: block; }
 .tab-bar { position: fixed; right: 0; bottom: 0; left: 0; justify-content: space-around; padding: 10px; border-top: 1px solid #d9e5ea; background: #fff; }.tab, .refresh-button, .primary, .settings-actions button { border: 0; border-radius: 12px; padding: 10px 12px; background: transparent; color: inherit; }.tab.selected, .primary { background: #007e7a; color: white; }.refresh-button { background: #e6f5f4; color: #005f5c; }
-.field-label { display: block; margin: 14px 0 6px; color: #5d6e82; font-size: 13px; font-weight: 600; }.text-input { width: 100%; border: 1px solid #ccdbe3; border-radius: 10px; padding: 10px 12px; background: transparent; color: inherit; font: inherit; }.primary { display: inline-block; margin-top: 16px; }.state-card p, .warning-card p { line-height: 1.45; }.error-state { border-color: #c74444; }
-.theme-dark .hero-card, .theme-dark .traffic-card, .theme-dark .metric-card, .theme-dark .section-card, .theme-dark .tab-bar { background: #13212b; border-color: #294a60; }.theme-dark .metric-label, .theme-dark .metric-detail, .theme-dark .endpoint, .theme-dark .eyebrow, .theme-dark .interface-row p, .theme-dark .section-note, .theme-dark .traffic-state, .theme-dark .traffic-empty { color: #afc2d1; }.theme-dark .text-input { border-color: #466475; }
+.profile-list { display: grid; gap: 8px; margin-bottom: 12px; }.profile-row { display: grid; grid-template-columns: minmax(0, 1fr) auto auto; gap: 8px; align-items: center; padding: 10px; border: 1px solid #d9e5ea; border-radius: 12px; }.profile-row p { margin: 3px 0 0; color: #6b7c93; font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }.secondary { border: 1px solid #ccdbe3; border-radius: 10px; padding: 8px 10px; background: transparent; color: inherit; font: inherit; }.danger { color: #b12f2f; }.field-label { display: block; margin: 14px 0 6px; color: #5d6e82; font-size: 13px; font-weight: 600; }.text-input { width: 100%; border: 1px solid #ccdbe3; border-radius: 10px; padding: 10px 12px; background: transparent; color: inherit; font: inherit; }.primary { display: inline-block; margin-top: 16px; }.state-card p, .warning-card p { line-height: 1.45; }.error-state { border-color: #c74444; }
+.theme-dark .hero-card, .theme-dark .traffic-card, .theme-dark .metric-card, .theme-dark .section-card, .theme-dark .tab-bar { background: #13212b; border-color: #294a60; }.theme-dark .metric-label, .theme-dark .metric-detail, .theme-dark .endpoint, .theme-dark .eyebrow, .theme-dark .interface-row p, .theme-dark .section-note, .theme-dark .traffic-state, .theme-dark .traffic-empty { color: #afc2d1; }.theme-dark .text-input, .theme-dark .secondary, .theme-dark .profile-row { border-color: #466475; } .theme-dark .profile-row p { color: #afc2d1; }
 "#;
