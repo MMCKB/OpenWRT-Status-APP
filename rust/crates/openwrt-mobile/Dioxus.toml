@@ -1,0 +1,24 @@
+[application]
+name = "openwrt-status-rust"
+default_platform = "android"
+asset_dir = "assets"
+
+[bundle]
+identifier = "com.openwrtstatus.rust"
+publisher = "OpenWrt Status"
+short_description = "OpenWrt 路由器状态与管理客户端"
+long_description = "使用 Rust 与 Dioxus 构建的 OpenWrt 路由器状态、诊断、SSH 安全与配置管理客户端。"
+icon = ["assets/icon.png"]
+
+[android]
+identifier = "com.openwrtstatus.rust"
+icon = ["assets/icon.png"]
+
+[android.application]
+label = "OpenWrt 状态"
+
+[web.app]
+title = "OpenWrt Status Rust"
+
+[web.watcher]
+watch_path = ["src", "assets"]
