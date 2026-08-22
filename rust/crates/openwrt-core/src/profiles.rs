@@ -10,9 +10,12 @@ use std::{
     path::{Path, PathBuf},
 };
 
+use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 
-use crate::{CoreError, RouterProfile, TrustedHostStore};
+use crate::{
+    AuditEntry, AuditLog, AuditOutcome, CoreError, RouterOperation, RouterProfile, TrustedHostStore,
+};
 
 const STORAGE_VERSION: u8 = 1;
 
@@ -22,6 +25,8 @@ pub struct RouterAppState {
     pub profiles: Vec<RouterProfile>,
     #[serde(default)]
     pub trusted_hosts: TrustedHostStore,
+    #[serde(default)]
+    pub audit_log: AuditLog,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -31,6 +36,8 @@ struct ProfileDocument {
     /// 对已有 v1 JSON 文件缺失该字段时保持兼容，默认为空信任仓库。
     #[serde(default)]
     trusted_hosts: TrustedHostStore,
+    #[serde(default)]
+    audit_log: AuditLog,
 }
 
 impl From<ProfileDocument> for RouterAppState {
@@ -38,6 +45,7 @@ impl From<ProfileDocument> for RouterAppState {
         Self {
             profiles: document.profiles,
             trusted_hosts: document.trusted_hosts,
+            audit_log: document.audit_log,
         }
     }
 }
@@ -48,6 +56,7 @@ impl From<RouterAppState> for ProfileDocument {
             version: STORAGE_VERSION,
             profiles: state.profiles,
             trusted_hosts: state.trusted_hosts,
+            audit_log: state.audit_log,
         }
     }
 }
@@ -143,6 +152,25 @@ impl RouterProfileStore {
         let mut state = self.load_state()?;
         state.trusted_hosts = trusted_hosts;
         self.save_state(&state)
+    }
+
+    /// 记录不会暴露命令正文、密码或私钥的操作摘要，并与档案状态原子写入。
+    pub fn record_audit(
+        &self,
+        router_id: impl Into<String>,
+        operation: RouterOperation,
+        outcome: AuditOutcome,
+        recorded_at: DateTime<Utc>,
+        summary: impl Into<String>,
+    ) -> Result<AuditEntry, CoreError> {
+        let mut state = self.load_state()?;
+        let entry = state
+            .audit_log
+            .record(router_id, operation, outcome, recorded_at, summary)
+            .map_err(|error| CoreError::Audit(error.to_string()))?
+            .clone();
+        self.save_state(&state)?;
+        Ok(entry)
     }
 }
 

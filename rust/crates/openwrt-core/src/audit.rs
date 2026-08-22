@@ -45,6 +45,12 @@ pub struct AuditLog {
     entries: Vec<AuditEntry>,
 }
 
+impl Default for AuditLog {
+    fn default() -> Self {
+        Self::new(200)
+    }
+}
+
 impl AuditLog {
     pub fn new(capacity: usize) -> Self {
         Self {

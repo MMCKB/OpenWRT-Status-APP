@@ -324,6 +324,18 @@ fn router_profile_store_round_trips_updates_and_deletes_non_secret_metadata() {
         TrustDecision::Trusted
     );
 
+    let audit_entry = store
+        .record_audit(
+            "router-main",
+            crate::RouterOperation::ApplyFirewall,
+            AuditOutcome::Prepared,
+            Utc::now(),
+            "防火墙变更已通过确认",
+        )
+        .unwrap();
+    assert_eq!(audit_entry.router_id, "router-main");
+    assert_eq!(store.load_state().unwrap().audit_log.entries().len(), 1);
+
     let serialized = fs::read_to_string(store.path()).unwrap();
     assert!(!serialized.contains("password"));
     assert!(!serialized.contains("private_key"));
@@ -339,6 +351,7 @@ fn router_profile_store_round_trips_updates_and_deletes_non_secret_metadata() {
         ),
         TrustDecision::FirstSeen
     );
+    assert_eq!(store.load_state().unwrap().audit_log.entries().len(), 1);
     fs::remove_dir_all(directory).unwrap();
 }
 

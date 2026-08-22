@@ -44,6 +44,8 @@ pub enum CoreError {
     InvalidRouterProfile(String),
     #[error("路由器档案存储失败：{0}")]
     Persistence(String),
+    #[error("审计日志无效：{0}")]
+    Audit(String),
     #[error("采样时间必须递增")]
     NonMonotonicSample,
     #[error("无法访问路由器：{0}")]
