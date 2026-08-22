@@ -288,7 +288,7 @@ impl SshClient {
         .map_err(|error| {
             take_challenge(&observed_challenge)
                 .map(SshTransportError::from_host_key)
-                .unwrap_or_else(|| SshTransportError::from(error))
+                .unwrap_or(error)
         })?;
         let authentication = session
             .authenticate_password(request.username, request.password)

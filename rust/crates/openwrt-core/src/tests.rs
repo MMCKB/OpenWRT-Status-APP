@@ -120,7 +120,11 @@ fn interface_traffic_tracker_updates_only_after_second_sample_and_bounds_history
         tx_bytes: 400,
     };
     let start = Utc.timestamp_opt(10_000, 0).unwrap();
-    assert!(tracker.ingest(&[initial.clone()], start).is_empty());
+    assert!(
+        tracker
+            .ingest(std::slice::from_ref(&initial), start)
+            .is_empty()
+    );
 
     let mut second = initial.clone();
     second.rx_bytes = 1_600;
