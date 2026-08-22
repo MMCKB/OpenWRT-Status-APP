@@ -3,7 +3,7 @@ use std::{env, fs};
 use chrono::{Duration, TimeZone, Utc};
 
 use crate::{
-    RouterProfile, RouterProfileStore,
+    InterfaceStatus, InterfaceTrafficTracker, RouterProfile, RouterProfileStore,
     config::{ConfigSnapshot, DiffKind, SnapshotFile},
     diagnostics::{DiagnosticCheck, DiagnosticReport, DiagnosticSeverity},
     inspect_host_key,
@@ -54,6 +54,40 @@ fn traffic_history_respects_capacity() {
     }
     assert_eq!(history.values().len(), 2);
     assert_eq!(history.values()[0].rx_bytes_per_second, 2.0);
+}
+
+#[test]
+fn interface_traffic_tracker_updates_only_after_second_sample_and_bounds_history() {
+    let mut tracker = InterfaceTrafficTracker::new(2);
+    let initial = InterfaceStatus {
+        id: "wan".into(),
+        name: "WAN".into(),
+        device: Some("eth0.2".into()),
+        up: true,
+        ipv4: vec!["203.0.113.2".into()],
+        ipv6: Vec::new(),
+        rx_bytes: 1_000,
+        tx_bytes: 400,
+    };
+    let start = Utc.timestamp_opt(10_000, 0).unwrap();
+    assert!(tracker.ingest(&[initial.clone()], start).is_empty());
+
+    let mut second = initial.clone();
+    second.rx_bytes = 1_600;
+    second.tx_bytes = 700;
+    let rates = tracker.ingest(&[second.clone()], start + Duration::seconds(2));
+    assert_eq!(rates.len(), 1);
+    assert_eq!(rates[0].rate.rx_bytes_per_second, 300.0);
+    assert_eq!(rates[0].rate.tx_bytes_per_second, 150.0);
+
+    // 计数器变小（路由器重启或接口重连）时不显示虚假的峰值流量。
+    let mut reset = second.clone();
+    reset.rx_bytes = 20;
+    reset.tx_bytes = 10;
+    let reset_rates = tracker.ingest(&[reset], start + Duration::seconds(3));
+    assert_eq!(reset_rates[0].rate.rx_bytes_per_second, 0.0);
+    assert_eq!(reset_rates[0].rate.tx_bytes_per_second, 0.0);
+    assert_eq!(tracker.history("wan").unwrap().values().len(), 2);
 }
 
 #[test]

@@ -3,8 +3,13 @@
 //! Android 打包层只负责启动 Activity 与资源；所有界面状态、路由、主题和
 //! OpenWrt 领域模型都保留在 Rust 中。平台插件能力在独立适配层接入。
 
+use std::time::Duration as StdDuration;
+
 use dioxus::prelude::*;
-use openwrt_core::{LuCiClient, RouterProfile, RouterStatus};
+use openwrt_core::{
+    InterfaceTrafficRate, InterfaceTrafficTracker, LuCiClient, RouterProfile, RouterStatus,
+};
+use tokio::time::sleep;
 
 #[derive(Clone, Copy, PartialEq, Eq)]
 enum ThemePreference {
@@ -119,7 +124,12 @@ pub fn App() -> Element {
             }
             section { class: "content",
                 match selected_tab() {
-                    Tab::Status => rsx! { StatusDashboard { status: status_snapshot.clone() } },
+                    Tab::Status => rsx! {
+                        StatusDashboard {
+                            status: status_snapshot.clone(),
+                            active_connection,
+                        }
+                    },
                     Tab::Routers => rsx! {
                         RouterList {
                             draft,
@@ -162,7 +172,10 @@ async fn fetch_router_status(connection: ConnectionDraft) -> Result<RouterStatus
 }
 
 #[component]
-fn StatusDashboard(status: Option<Result<RouterStatus, String>>) -> Element {
+fn StatusDashboard(
+    status: Option<Result<RouterStatus, String>>,
+    active_connection: Signal<ConnectionDraft>,
+) -> Element {
     let Some(result) = status else {
         return rsx! {
             section { class: "section-card state-card",
@@ -256,7 +269,8 @@ fn StatusDashboard(status: Option<Result<RouterStatus, String>>) -> Element {
         }
         section { class: "traffic-card",
             h2 { "接口流量计数" }
-            p { class: "section-note", "已绑定 LuCI 设备计数器。秒级速率将在独立采样器中更新，不触发全页重绘。" }
+            p { class: "section-note", "已绑定 LuCI 设备计数器。秒级速率仅更新此卡片，不触发全页重绘或重播状态动画。" }
+            RealtimeTrafficCard { active_connection }
             div { class: "traffic-grid",
                 Metric {
                     label: "接口数",
@@ -298,6 +312,68 @@ fn StatusDashboard(status: Option<Result<RouterStatus, String>>) -> Element {
                 h2 { "状态提示" }
                 for warning in &status.warnings {
                     p { "{warning}" }
+                }
+            }
+        }
+    }
+}
+
+#[component]
+fn RealtimeTrafficCard(active_connection: Signal<ConnectionDraft>) -> Element {
+    let mut traffic_rates = use_signal(Vec::<InterfaceTrafficRate>::new);
+    let mut polling_state = use_signal(|| "等待 LuCI 连接".to_owned());
+
+    // 此 future 仅属于该卡片。Dioxus 仅在 `traffic_rates` 发生变化时重渲染卡片，
+    // 因此主状态资源不会因两秒采样而重新创建或触发首次加载动画。
+    let _traffic_poller = use_future(move || {
+        let active_connection = active_connection;
+        async move {
+            let mut tracker = InterfaceTrafficTracker::new(60);
+            loop {
+                let connection = active_connection();
+                if connection.password.trim().is_empty() {
+                    traffic_rates.set(Vec::new());
+                    polling_state.set("填写 LuCI 密码后开始实时采样".to_owned());
+                } else {
+                    match fetch_router_status(connection).await {
+                        Ok(status) if status.online => {
+                            let rates = tracker.ingest(&status.interfaces, status.fetched_at);
+                            if !rates.is_empty() {
+                                traffic_rates.set(rates);
+                                polling_state.set("每 2 秒更新一次".to_owned());
+                            } else {
+                                polling_state.set("正在建立接口流量基线".to_owned());
+                            }
+                        }
+                        Ok(_) => {
+                            traffic_rates.set(Vec::new());
+                            polling_state.set("路由器离线，已暂停速率显示".to_owned());
+                        }
+                        Err(_) => {
+                            traffic_rates.set(Vec::new());
+                            polling_state.set("实时采样连接失败，将自动重试".to_owned());
+                        }
+                    }
+                }
+                sleep(StdDuration::from_secs(2)).await;
+            }
+        }
+    });
+
+    let rates = traffic_rates();
+    let state = polling_state();
+    rsx! {
+        div { class: "realtime-traffic",
+            p { class: "traffic-state", "{state}" }
+            if rates.is_empty() {
+                p { class: "traffic-empty", "首个有效样本只建立基线；下一次采样后显示下载与上传速率。" }
+            } else {
+                for rate in rates.iter().take(6) {
+                    div { class: "traffic-rate-row",
+                        strong { "{rate.interface_name}" }
+                        span { "↓ {format_rate(rate.rate.rx_bytes_per_second)}" }
+                        span { "↑ {format_rate(rate.rate.tx_bytes_per_second)}" }
+                    }
                 }
             }
         }
@@ -435,6 +511,13 @@ fn format_bytes(bytes: u64) -> String {
     }
 }
 
+fn format_rate(bytes_per_second: f64) -> String {
+    format!(
+        "{}/s",
+        format_bytes(bytes_per_second.max(0.0).round() as u64)
+    )
+}
+
 fn format_ratio(ratio: f32) -> String {
     format!("{:.0}%", (ratio.clamp(0.0, 1.0) * 100.0).round())
 }
@@ -466,12 +549,12 @@ h1 { margin: 4px 0; font-size: 28px; } h2 { margin: 0 0 12px; font-size: 18px; }
 .hero-card, .interface-row { display: flex; align-items: center; gap: 10px; }.hero-card p { margin: 3px 0 0; color: #6b7c93; font-size: 12px; }
 .refresh-hint { margin-left: auto; color: #6b7c93; font-size: 12px; }.section-note { margin: -6px 0 14px; line-height: 1.45; }
 .status-dot { width: 9px; height: 9px; border-radius: 99px; flex: none; }.online { background: #1b9a6a; }.offline { background: #c74444; }
-.traffic-grid, .metric-grid { gap: 10px; }.traffic-grid > *, .metric-grid > * { flex: 1; min-width: 0; }
+.realtime-traffic { display: grid; gap: 8px; margin-bottom: 14px; }.traffic-state, .traffic-empty { margin: 0; color: #6b7c93; font-size: 12px; }.traffic-rate-row { display: grid; grid-template-columns: minmax(0, 1fr) auto auto; gap: 10px; align-items: center; padding: 9px 0; border-top: 1px solid #e7eef2; font-size: 13px; }.traffic-rate-row span { color: #007e7a; font-variant-numeric: tabular-nums; }.traffic-grid, .metric-grid { gap: 10px; }.traffic-grid > *, .metric-grid > * { flex: 1; min-width: 0; }
 .metric-grid { flex-wrap: wrap; }.metric-grid > * { min-width: calc(50% - 5px); }
 .metric-label { margin: 0; color: #6b7c93; font-size: 12px; }.metric-value { display: block; margin-top: 6px; font-size: 19px; }
 .progress-track { height: 4px; margin-top: 10px; overflow: hidden; border-radius: 8px; background: #e7eef2; }.progress-fill { height: 100%; border-radius: inherit; background: #007e7a; transition: width 220ms ease; }
 .interface-row { padding: 12px 0; border-top: 1px solid #e7eef2; }.interface-row > div { flex: 1; }.interface-row strong { display: block; }
 .tab-bar { position: fixed; right: 0; bottom: 0; left: 0; justify-content: space-around; padding: 10px; border-top: 1px solid #d9e5ea; background: #fff; }.tab, .refresh-button, .primary, .settings-actions button { border: 0; border-radius: 12px; padding: 10px 12px; background: transparent; color: inherit; }.tab.selected, .primary { background: #007e7a; color: white; }.refresh-button { background: #e6f5f4; color: #005f5c; }
 .field-label { display: block; margin: 14px 0 6px; color: #5d6e82; font-size: 13px; font-weight: 600; }.text-input { width: 100%; border: 1px solid #ccdbe3; border-radius: 10px; padding: 10px 12px; background: transparent; color: inherit; font: inherit; }.primary { display: inline-block; margin-top: 16px; }.state-card p, .warning-card p { line-height: 1.45; }.error-state { border-color: #c74444; }
-.theme-dark .hero-card, .theme-dark .traffic-card, .theme-dark .metric-card, .theme-dark .section-card, .theme-dark .tab-bar { background: #13212b; border-color: #294a60; }.theme-dark .metric-label, .theme-dark .metric-detail, .theme-dark .endpoint, .theme-dark .eyebrow, .theme-dark .interface-row p, .theme-dark .section-note { color: #afc2d1; }.theme-dark .text-input { border-color: #466475; }
+.theme-dark .hero-card, .theme-dark .traffic-card, .theme-dark .metric-card, .theme-dark .section-card, .theme-dark .tab-bar { background: #13212b; border-color: #294a60; }.theme-dark .metric-label, .theme-dark .metric-detail, .theme-dark .endpoint, .theme-dark .eyebrow, .theme-dark .interface-row p, .theme-dark .section-note, .theme-dark .traffic-state, .theme-dark .traffic-empty { color: #afc2d1; }.theme-dark .text-input { border-color: #466475; }
 "#;

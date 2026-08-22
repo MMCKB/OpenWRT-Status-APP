@@ -30,7 +30,9 @@ pub use ssh::{
     HostKeyChallenge, KnownHost, RemoteFileEntry, SftpClient, SshClient, SshCommandResult,
     SshConnectionRequest, SshTransportError, TrustDecision, TrustedHostStore, inspect_host_key,
 };
-pub use traffic::{TrafficRate, TrafficSample, TrafficSeries};
+pub use traffic::{
+    InterfaceTrafficRate, InterfaceTrafficTracker, TrafficRate, TrafficSample, TrafficSeries,
+};
 
 #[derive(Debug, thiserror::Error, PartialEq, Eq)]
 pub enum CoreError {
