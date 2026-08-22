@@ -21,7 +21,10 @@ pub use luci::{LuCiClient, normalize_router_endpoint};
 pub use model::{InterfaceStatus, RouterProfile, RouterStatus, SystemStatus};
 pub use operations::{ConfirmationLevel, OperationApproval, RouterOperation};
 pub use profiles::RouterProfileStore;
-pub use ssh::{KnownHost, TrustDecision, TrustedHostStore};
+pub use ssh::{
+    HostKeyChallenge, KnownHost, RemoteFileEntry, SftpClient, SshClient, SshCommandResult,
+    SshConnectionRequest, SshTransportError, TrustDecision, TrustedHostStore, inspect_host_key,
+};
 pub use traffic::{TrafficRate, TrafficSample, TrafficSeries};
 
 #[derive(Debug, thiserror::Error, PartialEq, Eq)]

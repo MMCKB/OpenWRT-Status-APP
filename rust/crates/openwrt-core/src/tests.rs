@@ -6,6 +6,7 @@ use crate::{
     RouterProfile, RouterProfileStore,
     config::{ConfigSnapshot, DiffKind, SnapshotFile},
     diagnostics::{DiagnosticCheck, DiagnosticReport, DiagnosticSeverity},
+    inspect_host_key,
     ssh::{TrustDecision, TrustedHostStore},
     traffic::{TrafficSample, TrafficSeries, calculate_rate},
 };
@@ -119,6 +120,42 @@ fn requires_explicit_trust_for_first_seen_or_changed_host_key() {
         store
             .require_trusted("router", "192.168.1.1", 22, "ssh-ed25519", b"changed")
             .is_err()
+    );
+}
+
+#[test]
+fn host_key_challenge_exposes_exact_fingerprint_without_implicit_trust() {
+    let mut store = TrustedHostStore::default();
+    let challenge = inspect_host_key(&store, "router", "192.168.1.1", 22, "ssh-ed25519", b"first");
+    assert_eq!(challenge.decision, TrustDecision::FirstSeen);
+    assert_eq!(
+        challenge.fingerprint_sha256,
+        TrustedHostStore::fingerprint(b"first")
+    );
+
+    store.trust(
+        "router".into(),
+        "192.168.1.1".into(),
+        22,
+        "ssh-ed25519".into(),
+        b"first",
+        Utc::now(),
+    );
+    assert_eq!(
+        inspect_host_key(&store, "router", "192.168.1.1", 22, "ssh-ed25519", b"first",).decision,
+        TrustDecision::Trusted
+    );
+    assert_eq!(
+        inspect_host_key(
+            &store,
+            "router",
+            "192.168.1.1",
+            22,
+            "ssh-ed25519",
+            b"replaced",
+        )
+        .decision,
+        TrustDecision::Changed
     );
 }
 
