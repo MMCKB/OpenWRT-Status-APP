@@ -6,6 +6,7 @@
 pub mod config;
 pub mod diagnostics;
 pub mod luci;
+pub mod management;
 pub mod model;
 pub mod operations;
 pub mod profiles;
@@ -18,9 +19,13 @@ mod tests;
 pub use config::{ConfigDiff, ConfigSnapshot, SnapshotFile};
 pub use diagnostics::{DiagnosticCheck, DiagnosticReport, DiagnosticSeverity};
 pub use luci::{LuCiClient, normalize_router_endpoint};
+pub use management::{
+    ConfigurationArea, DockerAction, LogCategory, ManagedCommand, ManagementError, ReadCommand,
+    ServiceAction, WriteCommand,
+};
 pub use model::{InterfaceStatus, RouterProfile, RouterStatus, SystemStatus};
 pub use operations::{ConfirmationLevel, OperationApproval, RouterOperation};
-pub use profiles::RouterProfileStore;
+pub use profiles::{RouterAppState, RouterProfileStore};
 pub use ssh::{
     HostKeyChallenge, KnownHost, RemoteFileEntry, SftpClient, SshClient, SshCommandResult,
     SshConnectionRequest, SshTransportError, TrustDecision, TrustedHostStore, inspect_host_key,

@@ -1,8 +1,8 @@
-//! 路由器档案的本地持久化。
+//! 路由器档案与 SSH 主机信任的本地持久化。
 //!
-//! 此模块只保存非机密连接元数据（名称、LuCI 地址、用户名和 SSH 端口）。
-//! 密码、私钥及令牌绝不能写入该 JSON 文件，必须交由 Android Keystore 支撑的
-//! 平台安全存储适配层处理。
+//! 此模块只保存非机密连接元数据（名称、LuCI 地址、用户名、SSH 端口）以及用户
+//! 已明确确认过的 SSH 主机公钥指纹。密码、私钥及令牌绝不能写入该 JSON 文件，
+//! 必须交由 Android Keystore 支撑的平台安全存储适配层处理。
 
 use std::{
     collections::HashSet,
@@ -12,14 +12,44 @@ use std::{
 
 use serde::{Deserialize, Serialize};
 
-use crate::{CoreError, RouterProfile};
+use crate::{CoreError, RouterProfile, TrustedHostStore};
 
 const STORAGE_VERSION: u8 = 1;
 
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+/// Android 应用专属目录中持久化的非机密状态。
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct RouterAppState {
+    pub profiles: Vec<RouterProfile>,
+    #[serde(default)]
+    pub trusted_hosts: TrustedHostStore,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 struct ProfileDocument {
     version: u8,
     profiles: Vec<RouterProfile>,
+    /// 对已有 v1 JSON 文件缺失该字段时保持兼容，默认为空信任仓库。
+    #[serde(default)]
+    trusted_hosts: TrustedHostStore,
+}
+
+impl From<ProfileDocument> for RouterAppState {
+    fn from(document: ProfileDocument) -> Self {
+        Self {
+            profiles: document.profiles,
+            trusted_hosts: document.trusted_hosts,
+        }
+    }
+}
+
+impl From<RouterAppState> for ProfileDocument {
+    fn from(state: RouterAppState) -> Self {
+        Self {
+            version: STORAGE_VERSION,
+            profiles: state.profiles,
+            trusted_hosts: state.trusted_hosts,
+        }
+    }
 }
 
 /// 基于单个 JSON 文档的路由器档案仓库。
@@ -41,9 +71,9 @@ impl RouterProfileStore {
         &self.path
     }
 
-    pub fn load(&self) -> Result<Vec<RouterProfile>, CoreError> {
+    pub fn load_state(&self) -> Result<RouterAppState, CoreError> {
         if !self.path.exists() {
-            return Ok(Vec::new());
+            return Ok(RouterAppState::default());
         }
         let bytes =
             fs::read(&self.path).map_err(|error| CoreError::Persistence(error.to_string()))?;
@@ -55,16 +85,18 @@ impl RouterProfileStore {
                 document.version
             )));
         }
-        validate_profiles(&document.profiles)?;
-        Ok(document.profiles)
+        let state = RouterAppState::from(document);
+        validate_profiles(&state.profiles)?;
+        Ok(state)
     }
 
-    pub fn save(&self, profiles: &[RouterProfile]) -> Result<(), CoreError> {
-        validate_profiles(profiles)?;
-        let document = ProfileDocument {
-            version: STORAGE_VERSION,
-            profiles: profiles.to_vec(),
-        };
+    pub fn load(&self) -> Result<Vec<RouterProfile>, CoreError> {
+        Ok(self.load_state()?.profiles)
+    }
+
+    pub fn save_state(&self, state: &RouterAppState) -> Result<(), CoreError> {
+        validate_profiles(&state.profiles)?;
+        let document = ProfileDocument::from(state.clone());
         let bytes = serde_json::to_vec_pretty(&document)
             .map_err(|error| CoreError::Persistence(error.to_string()))?;
         let parent = self
@@ -82,22 +114,35 @@ impl RouterProfileStore {
         })
     }
 
+    pub fn save(&self, profiles: &[RouterProfile]) -> Result<(), CoreError> {
+        let mut state = self.load_state()?;
+        state.profiles = profiles.to_vec();
+        self.save_state(&state)
+    }
+
     pub fn upsert(&self, profile: RouterProfile) -> Result<Vec<RouterProfile>, CoreError> {
-        let mut profiles = self.load()?;
-        if let Some(index) = profiles.iter().position(|item| item.id == profile.id) {
-            profiles[index] = profile;
+        let mut state = self.load_state()?;
+        if let Some(index) = state.profiles.iter().position(|item| item.id == profile.id) {
+            state.profiles[index] = profile;
         } else {
-            profiles.push(profile);
+            state.profiles.push(profile);
         }
-        self.save(&profiles)?;
-        Ok(profiles)
+        self.save_state(&state)?;
+        Ok(state.profiles)
     }
 
     pub fn remove(&self, router_id: &str) -> Result<Vec<RouterProfile>, CoreError> {
-        let mut profiles = self.load()?;
-        profiles.retain(|profile| profile.id != router_id);
-        self.save(&profiles)?;
-        Ok(profiles)
+        let mut state = self.load_state()?;
+        state.profiles.retain(|profile| profile.id != router_id);
+        state.trusted_hosts.forget_router(router_id);
+        self.save_state(&state)?;
+        Ok(state.profiles)
+    }
+
+    pub fn save_trusted_hosts(&self, trusted_hosts: TrustedHostStore) -> Result<(), CoreError> {
+        let mut state = self.load_state()?;
+        state.trusted_hosts = trusted_hosts;
+        self.save_state(&state)
     }
 }
 

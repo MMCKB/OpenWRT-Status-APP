@@ -7,6 +7,7 @@ use crate::{
     config::{ConfigSnapshot, DiffKind, SnapshotFile},
     diagnostics::{DiagnosticCheck, DiagnosticReport, DiagnosticSeverity},
     inspect_host_key,
+    management::{ConfigurationArea, LogCategory, ManagedCommand, ReadCommand, WriteCommand},
     ssh::{TrustDecision, TrustedHostStore},
     traffic::{TrafficSample, TrafficSeries, calculate_rate},
 };
@@ -218,11 +219,42 @@ fn router_profile_store_round_trips_updates_and_deletes_non_secret_metadata() {
     );
     assert_eq!(store.load().unwrap(), vec![updated]);
 
+    let mut state = store.load_state().unwrap();
+    state.trusted_hosts.trust(
+        "router-main".into(),
+        "192.168.1.1".into(),
+        22,
+        "ssh-ed25519".into(),
+        b"router-key",
+        Utc::now(),
+    );
+    store.save_state(&state).unwrap();
+    assert_eq!(
+        store.load_state().unwrap().trusted_hosts.evaluate(
+            "router-main",
+            "192.168.1.1",
+            22,
+            "ssh-ed25519",
+            b"router-key"
+        ),
+        TrustDecision::Trusted
+    );
+
     let serialized = fs::read_to_string(store.path()).unwrap();
     assert!(!serialized.contains("password"));
     assert!(!serialized.contains("private_key"));
     assert!(store.remove("router-main").unwrap().is_empty());
     assert!(store.load().unwrap().is_empty());
+    assert_eq!(
+        store.load_state().unwrap().trusted_hosts.evaluate(
+            "router-main",
+            "192.168.1.1",
+            22,
+            "ssh-ed25519",
+            b"router-key"
+        ),
+        TrustDecision::FirstSeen
+    );
     fs::remove_dir_all(directory).unwrap();
 }
 
@@ -255,6 +287,91 @@ fn router_profile_store_rejects_duplicate_ids_and_invalid_profiles() {
             .is_err()
     );
     assert!(!store.path().exists());
+}
+
+#[test]
+fn management_read_commands_bound_logs_and_reject_injection() {
+    let command = ReadCommand::Logs {
+        category: LogCategory::System,
+        limit: 3,
+        filter: Some("dnsmasq".into()),
+    }
+    .build()
+    .unwrap();
+    assert!(command.contains("tail -n 20"));
+    assert!(command.contains("grep -F -- 'dnsmasq'"));
+    assert!(
+        ReadCommand::Logs {
+            category: LogCategory::System,
+            limit: 100,
+            filter: Some("bad\nfilter".into()),
+        }
+        .build()
+        .is_err()
+    );
+    assert!(
+        ReadCommand::ConfigurationFile {
+            path: "/etc/config/../shadow".into(),
+        }
+        .build()
+        .is_err()
+    );
+}
+
+#[test]
+fn management_write_commands_require_matching_snapshot_and_typed_approval() {
+    use crate::{OperationApproval, RouterOperation};
+
+    let firewall_change = WriteCommand::UciOption {
+        area: ConfigurationArea::Firewall,
+        package: "firewall".into(),
+        section: "lan".into(),
+        option: "input".into(),
+        value: Some("ACCEPT".into()),
+    };
+    let missing_snapshot = OperationApproval {
+        operation: RouterOperation::ApplyFirewall,
+        router_id: "router".into(),
+        snapshot_id: None,
+        typed_phrase: Some("应用防火墙配置".into()),
+    };
+    assert!(ManagedCommand::prepare("router", &firewall_change, &missing_snapshot).is_err());
+
+    let approved = OperationApproval {
+        operation: RouterOperation::ApplyFirewall,
+        router_id: "router".into(),
+        snapshot_id: Some("snapshot-before-firewall".into()),
+        typed_phrase: Some("应用防火墙配置".into()),
+    };
+    let plan = ManagedCommand::prepare("router", &firewall_change, &approved).unwrap();
+    assert!(plan.command.contains("uci commit 'firewall'"));
+    assert!(plan.command.contains("/etc/init.d/firewall reload"));
+    assert!(plan.command.contains("openwrt-status.bak"));
+}
+
+#[test]
+fn firmware_command_allows_only_staged_bin_or_img_files() {
+    let valid = WriteCommand::FirmwareUpgrade {
+        image_path: "/tmp/openwrt-sysupgrade.bin".into(),
+        preserve_config: true,
+    };
+    assert!(valid.build().unwrap().contains("sysupgrade -T"));
+    assert!(
+        WriteCommand::FirmwareUpgrade {
+            image_path: "/etc/config/network".into(),
+            preserve_config: false,
+        }
+        .build()
+        .is_err()
+    );
+    assert!(
+        WriteCommand::Package {
+            package: "luci; reboot".into(),
+            install: true,
+        }
+        .build()
+        .is_err()
+    );
 }
 
 #[test]

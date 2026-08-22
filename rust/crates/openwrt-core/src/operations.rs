@@ -9,6 +9,7 @@ use serde::{Deserialize, Serialize};
 pub enum RouterOperation {
     ReadStatus,
     RunDiagnostics,
+    ExecuteTerminal,
     SendWakeOnLan,
     CreateConfigSnapshot,
     RestoreConfigSnapshot,
@@ -37,7 +38,8 @@ impl RouterOperation {
     pub const fn confirmation_level(self) -> ConfirmationLevel {
         match self {
             Self::ReadStatus | Self::RunDiagnostics => ConfirmationLevel::None,
-            Self::SendWakeOnLan
+            Self::ExecuteTerminal
+            | Self::SendWakeOnLan
             | Self::CreateConfigSnapshot
             | Self::RestartService
             | Self::UploadFile
@@ -70,6 +72,7 @@ impl RouterOperation {
         match self {
             Self::ReadStatus => "读取状态",
             Self::RunDiagnostics => "执行诊断",
+            Self::ExecuteTerminal => "执行 SSH 终端命令",
             Self::SendWakeOnLan => "发送网络唤醒",
             Self::CreateConfigSnapshot => "创建配置快照",
             Self::RestoreConfigSnapshot => "恢复配置快照",

@@ -21,7 +21,10 @@ use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use thiserror::Error;
 
-use crate::{CoreError, OperationApproval, RouterOperation};
+use crate::{
+    CoreError, OperationApproval, RouterOperation,
+    management::{ManagedCommand, ReadCommand},
+};
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct KnownHost {
@@ -40,7 +43,7 @@ pub enum TrustDecision {
     Changed,
 }
 
-#[derive(Debug, Default, Clone)]
+#[derive(Debug, Default, Clone, Serialize, Deserialize)]
 pub struct TrustedHostStore {
     records: BTreeMap<String, KnownHost>,
 }
@@ -94,6 +97,11 @@ impl TrustedHostStore {
             record.clone(),
         );
         record
+    }
+
+    pub fn forget_router(&mut self, router_id: &str) {
+        self.records
+            .retain(|_, record| record.router_id.as_str() != router_id);
     }
 
     pub fn require_trusted(
@@ -295,7 +303,55 @@ impl SshClient {
         })
     }
 
-    pub async fn execute(&self, command: &str) -> Result<SshCommandResult, SshTransportError> {
+    /// 执行内置只读命令目录中的查询。调用方无法提供任意 shell 文本。
+    pub async fn execute_read(
+        &self,
+        command: &ReadCommand,
+    ) -> Result<SshCommandResult, SshTransportError> {
+        let shell_command = command
+            .build()
+            .map_err(|error| SshTransportError::Transport(error.to_string()))?;
+        self.execute_raw(&shell_command).await
+    }
+
+    /// 执行已由 `ManagedCommand::prepare` 构建的变更计划，并在下发前再次验证审批单。
+    pub async fn execute_managed(
+        &self,
+        command: &ManagedCommand,
+        approval: &OperationApproval,
+    ) -> Result<SshCommandResult, SshTransportError> {
+        if command.router_id() != self.router_id {
+            return Err(SshTransportError::Approval(
+                "管理计划不属于当前路由器".to_owned(),
+            ));
+        }
+        command
+            .validate_approval(approval)
+            .map_err(|error| SshTransportError::Approval(error.to_string()))?;
+        self.execute_raw(command.command()).await
+    }
+
+    /// 执行用户显式输入的终端命令。此入口始终要求“执行 SSH 终端命令”的确认。
+    pub async fn execute_terminal(
+        &self,
+        command: &str,
+        approval: &OperationApproval,
+    ) -> Result<SshCommandResult, SshTransportError> {
+        if approval.router_id != self.router_id {
+            return Err(SshTransportError::Approval(
+                "审批单不属于当前路由器".to_owned(),
+            ));
+        }
+        if approval.operation != RouterOperation::ExecuteTerminal {
+            return Err(SshTransportError::Approval(
+                "终端命令需要专用审批单".to_owned(),
+            ));
+        }
+        approval.validate().map_err(SshTransportError::Approval)?;
+        self.execute_raw(command).await
+    }
+
+    async fn execute_raw(&self, command: &str) -> Result<SshCommandResult, SshTransportError> {
         if command.trim().is_empty() {
             return Err(SshTransportError::EmptyCommand);
         }
