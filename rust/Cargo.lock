@@ -2123,6 +2123,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "openwrt-ffi"
+version = "0.1.0"
+dependencies = [
+ "openwrt-core",
+ "serde_json",
+]
+
+[[package]]
 name = "openwrt-mobile"
 version = "0.1.0"
 dependencies = [

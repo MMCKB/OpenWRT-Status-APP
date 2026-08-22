@@ -2,6 +2,7 @@
 resolver = "3"
 members = [
   "crates/openwrt-core",
+  "crates/openwrt-ffi",
   "crates/openwrt-mobile",
   "crates/openwrt-cli",
 ]

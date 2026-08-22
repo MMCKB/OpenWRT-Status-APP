@@ -1,0 +1,21 @@
+[package]
+name = "openwrt-ffi"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+openwrt-core = { path = "../openwrt-core" }
+serde_json = { workspace = true }
+
+# C ABI 导出必须使用 `#[unsafe(no_mangle)]`；该例外仅限此极薄的桥接 crate。
+[lints.rust]
+unsafe_code = "allow"
+
+[lints.clippy]
+all = { level = "warn", priority = -1 }
+pedantic = { level = "warn", priority = -1 }
