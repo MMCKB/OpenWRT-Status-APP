@@ -8,6 +8,7 @@ pub mod diagnostics;
 pub mod luci;
 pub mod model;
 pub mod operations;
+pub mod profiles;
 pub mod ssh;
 pub mod traffic;
 
@@ -19,6 +20,7 @@ pub use diagnostics::{DiagnosticCheck, DiagnosticReport, DiagnosticSeverity};
 pub use luci::{LuCiClient, normalize_router_endpoint};
 pub use model::{InterfaceStatus, RouterProfile, RouterStatus, SystemStatus};
 pub use operations::{ConfirmationLevel, OperationApproval, RouterOperation};
+pub use profiles::RouterProfileStore;
 pub use ssh::{KnownHost, TrustDecision, TrustedHostStore};
 pub use traffic::{TrafficRate, TrafficSample, TrafficSeries};
 
@@ -26,6 +28,10 @@ pub use traffic::{TrafficRate, TrafficSample, TrafficSeries};
 pub enum CoreError {
     #[error("路由器地址无效：{0}")]
     InvalidRouterUrl(String),
+    #[error("路由器档案无效：{0}")]
+    InvalidRouterProfile(String),
+    #[error("路由器档案存储失败：{0}")]
+    Persistence(String),
     #[error("采样时间必须递增")]
     NonMonotonicSample,
     #[error("无法访问路由器：{0}")]

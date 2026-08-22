@@ -1,6 +1,9 @@
+use std::{env, fs};
+
 use chrono::{Duration, TimeZone, Utc};
 
 use crate::{
+    RouterProfile, RouterProfileStore,
     config::{ConfigSnapshot, DiffKind, SnapshotFile},
     diagnostics::{DiagnosticCheck, DiagnosticReport, DiagnosticSeverity},
     ssh::{TrustDecision, TrustedHostStore},
@@ -148,6 +151,73 @@ fn normalizes_router_endpoint_to_ubus_without_query_or_fragment() {
 #[test]
 fn rejects_empty_router_endpoint() {
     assert!(crate::normalize_router_endpoint("  ").is_err());
+}
+
+#[test]
+fn router_profile_store_round_trips_updates_and_deletes_non_secret_metadata() {
+    let directory = env::temp_dir().join(format!(
+        "openwrt-profile-store-{}-{}",
+        std::process::id(),
+        Utc::now().timestamp_nanos_opt().unwrap_or_default()
+    ));
+    let store = RouterProfileStore::new(directory.join("profiles.json"));
+    let profile = RouterProfile {
+        id: "router-main".into(),
+        name: "主路由".into(),
+        base_url: "https://192.168.1.1/luci".into(),
+        username: "root".into(),
+        ssh_port: 22,
+    };
+
+    assert_eq!(
+        store.upsert(profile.clone()).unwrap(),
+        vec![profile.clone()]
+    );
+    let mut updated = profile.clone();
+    updated.name = "客厅主路由".into();
+    assert_eq!(
+        store.upsert(updated.clone()).unwrap(),
+        vec![updated.clone()]
+    );
+    assert_eq!(store.load().unwrap(), vec![updated]);
+
+    let serialized = fs::read_to_string(store.path()).unwrap();
+    assert!(!serialized.contains("password"));
+    assert!(!serialized.contains("private_key"));
+    assert!(store.remove("router-main").unwrap().is_empty());
+    assert!(store.load().unwrap().is_empty());
+    fs::remove_dir_all(directory).unwrap();
+}
+
+#[test]
+fn router_profile_store_rejects_duplicate_ids_and_invalid_profiles() {
+    let directory = env::temp_dir().join(format!(
+        "openwrt-profile-validation-{}-{}",
+        std::process::id(),
+        Utc::now().timestamp_nanos_opt().unwrap_or_default()
+    ));
+    let store = RouterProfileStore::new(directory.join("profiles.json"));
+    let profile = RouterProfile {
+        id: "router-main".into(),
+        name: "主路由".into(),
+        base_url: "https://192.168.1.1".into(),
+        username: "root".into(),
+        ssh_port: 22,
+    };
+    assert!(store.save(&[profile.clone(), profile]).is_err());
+
+    assert!(
+        store
+            .save(&[RouterProfile {
+                id: " ".into(),
+                name: "无效".into(),
+                base_url: "not-a-router".into(),
+                username: "root".into(),
+                ssh_port: 22,
+            }])
+            .is_err()
+    );
+    assert!(!store.path().exists());
 }
 
 #[test]
