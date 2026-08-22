@@ -27,7 +27,7 @@ pub use management::{
 };
 pub use model::{InterfaceStatus, RouterProfile, RouterStatus, SystemStatus};
 pub use operations::{ConfirmationLevel, OperationApproval, RouterOperation};
-pub use profiles::{RouterAppState, RouterProfileStore};
+pub use profiles::{AppPreferences, RouterAppState, RouterProfileStore, ThemePreference};
 pub use ssh::{
     HostKeyChallenge, KnownHost, RemoteFileEntry, SftpClient, SshClient, SshCommandResult,
     SshConnectionRequest, SshTransportError, TrustDecision, TrustedHostStore, inspect_host_key,
@@ -46,6 +46,8 @@ pub enum CoreError {
     Persistence(String),
     #[error("审计日志无效：{0}")]
     Audit(String),
+    #[error("应用偏好无效：{0}")]
+    InvalidPreferences(String),
     #[error("采样时间必须递增")]
     NonMonotonicSample,
     #[error("无法访问路由器：{0}")]

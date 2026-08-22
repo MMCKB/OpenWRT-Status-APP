@@ -3,8 +3,8 @@ use std::{env, fs};
 use chrono::{Duration, TimeZone, Utc};
 
 use crate::{
-    AuditLog, AuditOutcome, InterfaceStatus, InterfaceTrafficTracker, RouterProfile,
-    RouterProfileStore,
+    AppPreferences, AuditLog, AuditOutcome, InterfaceStatus, InterfaceTrafficTracker,
+    RouterProfile, RouterProfileStore, ThemePreference,
     config::{ConfigSnapshot, DiffKind, SnapshotFile},
     diagnostics::{DiagnosticCheck, DiagnosticReport, DiagnosticSeverity},
     inspect_host_key,
@@ -356,6 +356,31 @@ fn router_profile_store_round_trips_updates_and_deletes_non_secret_metadata() {
         TrustDecision::FirstSeen
     );
     assert_eq!(store.load_state().unwrap().audit_log.entries().len(), 1);
+    fs::remove_dir_all(directory).unwrap();
+}
+
+#[test]
+fn router_preferences_persist_and_reject_unsafe_polling_intervals() {
+    let directory = env::temp_dir().join(format!(
+        "openwrt-preferences-{}-{}",
+        std::process::id(),
+        Utc::now().timestamp_nanos_opt().unwrap_or_default()
+    ));
+    let store = RouterProfileStore::new(directory.join("profiles.json"));
+    let preferences = AppPreferences {
+        theme: ThemePreference::Dark,
+        traffic_poll_seconds: 5,
+    };
+    store.save_preferences(preferences.clone()).unwrap();
+    assert_eq!(store.load_state().unwrap().preferences, preferences);
+    assert!(
+        store
+            .save_preferences(AppPreferences {
+                theme: ThemePreference::Light,
+                traffic_poll_seconds: 1,
+            })
+            .is_err()
+    );
     fs::remove_dir_all(directory).unwrap();
 }
 

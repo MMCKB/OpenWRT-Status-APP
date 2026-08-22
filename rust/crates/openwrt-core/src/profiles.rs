@@ -19,6 +19,42 @@ use crate::{
 
 const STORAGE_VERSION: u8 = 1;
 
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub enum ThemePreference {
+    #[default]
+    System,
+    Light,
+    Dark,
+}
+
+/// 不涉及凭据的界面与轮询偏好。
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct AppPreferences {
+    pub theme: ThemePreference,
+    /// 仅允许 2–60 秒，避免将路由器置于高频轮询压力之下。
+    pub traffic_poll_seconds: u8,
+}
+
+impl Default for AppPreferences {
+    fn default() -> Self {
+        Self {
+            theme: ThemePreference::System,
+            traffic_poll_seconds: 2,
+        }
+    }
+}
+
+impl AppPreferences {
+    pub fn validate(&self) -> Result<(), CoreError> {
+        if !(2..=60).contains(&self.traffic_poll_seconds) {
+            return Err(CoreError::InvalidPreferences(
+                "流量刷新间隔必须在 2 到 60 秒之间".to_owned(),
+            ));
+        }
+        Ok(())
+    }
+}
+
 /// Android 应用专属目录中持久化的非机密状态。
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct RouterAppState {
@@ -27,6 +63,8 @@ pub struct RouterAppState {
     pub trusted_hosts: TrustedHostStore,
     #[serde(default)]
     pub audit_log: AuditLog,
+    #[serde(default)]
+    pub preferences: AppPreferences,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -38,6 +76,8 @@ struct ProfileDocument {
     trusted_hosts: TrustedHostStore,
     #[serde(default)]
     audit_log: AuditLog,
+    #[serde(default)]
+    preferences: AppPreferences,
 }
 
 impl From<ProfileDocument> for RouterAppState {
@@ -46,6 +86,7 @@ impl From<ProfileDocument> for RouterAppState {
             profiles: document.profiles,
             trusted_hosts: document.trusted_hosts,
             audit_log: document.audit_log,
+            preferences: document.preferences,
         }
     }
 }
@@ -57,6 +98,7 @@ impl From<RouterAppState> for ProfileDocument {
             profiles: state.profiles,
             trusted_hosts: state.trusted_hosts,
             audit_log: state.audit_log,
+            preferences: state.preferences,
         }
     }
 }
@@ -105,6 +147,7 @@ impl RouterProfileStore {
 
     pub fn save_state(&self, state: &RouterAppState) -> Result<(), CoreError> {
         validate_profiles(&state.profiles)?;
+        state.preferences.validate()?;
         let document = ProfileDocument::from(state.clone());
         let bytes = serde_json::to_vec_pretty(&document)
             .map_err(|error| CoreError::Persistence(error.to_string()))?;
@@ -146,6 +189,12 @@ impl RouterProfileStore {
         state.trusted_hosts.forget_router(router_id);
         self.save_state(&state)?;
         Ok(state.profiles)
+    }
+
+    pub fn save_preferences(&self, preferences: AppPreferences) -> Result<(), CoreError> {
+        let mut state = self.load_state()?;
+        state.preferences = preferences;
+        self.save_state(&state)
     }
 
     pub fn save_trusted_hosts(&self, trusted_hosts: TrustedHostStore) -> Result<(), CoreError> {
