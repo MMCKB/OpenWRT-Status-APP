@@ -3,7 +3,8 @@ use std::{env, fs};
 use chrono::{Duration, TimeZone, Utc};
 
 use crate::{
-    InterfaceStatus, InterfaceTrafficTracker, RouterProfile, RouterProfileStore,
+    AuditLog, AuditOutcome, InterfaceStatus, InterfaceTrafficTracker, RouterProfile,
+    RouterProfileStore,
     config::{ConfigSnapshot, DiffKind, SnapshotFile},
     diagnostics::{DiagnosticCheck, DiagnosticReport, DiagnosticSeverity},
     inspect_host_key,
@@ -11,6 +12,55 @@ use crate::{
     ssh::{TrustDecision, TrustedHostStore},
     traffic::{TrafficSample, TrafficSeries, calculate_rate},
 };
+
+#[test]
+fn audit_log_is_bounded_and_rejects_sensitive_summaries() {
+    use crate::RouterOperation;
+
+    let now = Utc.timestamp_opt(20_000, 0).unwrap();
+    let mut audit_log = AuditLog::new(2);
+    audit_log
+        .record(
+            "router-a",
+            RouterOperation::ApplyFirewall,
+            AuditOutcome::Prepared,
+            now,
+            "防火墙变更已通过确认",
+        )
+        .unwrap();
+    audit_log
+        .record(
+            "router-b",
+            RouterOperation::RunDiagnostics,
+            AuditOutcome::Succeeded,
+            now + Duration::seconds(1),
+            "网络诊断已完成",
+        )
+        .unwrap();
+    audit_log
+        .record(
+            "router-a",
+            RouterOperation::RestartService,
+            AuditOutcome::Succeeded,
+            now + Duration::seconds(2),
+            "DDNS 服务已重启",
+        )
+        .unwrap();
+    assert_eq!(audit_log.entries().len(), 2);
+    assert_eq!(audit_log.entries()[0].router_id, "router-a");
+    assert_eq!(audit_log.for_router("router-a").count(), 1);
+    assert!(
+        audit_log
+            .record(
+                "router-a",
+                RouterOperation::ReadStatus,
+                AuditOutcome::Failed,
+                now,
+                "password=secret",
+            )
+            .is_err()
+    );
+}
 
 #[test]
 fn calculates_traffic_rate_from_monotonic_samples() {
