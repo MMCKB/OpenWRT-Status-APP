@@ -7,6 +7,7 @@ pub mod config;
 pub mod diagnostics;
 pub mod luci;
 pub mod model;
+pub mod operations;
 pub mod ssh;
 pub mod traffic;
 
@@ -17,6 +18,7 @@ pub use config::{ConfigDiff, ConfigSnapshot, SnapshotFile};
 pub use diagnostics::{DiagnosticCheck, DiagnosticReport, DiagnosticSeverity};
 pub use luci::{LuCiClient, normalize_router_endpoint};
 pub use model::{InterfaceStatus, RouterProfile, RouterStatus, SystemStatus};
+pub use operations::{ConfirmationLevel, OperationApproval, RouterOperation};
 pub use ssh::{KnownHost, TrustDecision, TrustedHostStore};
 pub use traffic::{TrafficRate, TrafficSample, TrafficSeries};
 

@@ -149,3 +149,32 @@ fn normalizes_router_endpoint_to_ubus_without_query_or_fragment() {
 fn rejects_empty_router_endpoint() {
     assert!(crate::normalize_router_endpoint("  ").is_err());
 }
+
+#[test]
+fn high_risk_operations_require_snapshot_and_exact_typed_confirmation() {
+    use crate::{OperationApproval, RouterOperation};
+
+    let missing_snapshot = OperationApproval {
+        operation: RouterOperation::UpgradeFirmware,
+        router_id: "router".into(),
+        snapshot_id: None,
+        typed_phrase: Some("升级固件".into()),
+    };
+    assert!(missing_snapshot.validate().is_err());
+
+    let wrong_phrase = OperationApproval {
+        operation: RouterOperation::ApplyFirewall,
+        router_id: "router".into(),
+        snapshot_id: Some("snapshot-1".into()),
+        typed_phrase: Some("确认".into()),
+    };
+    assert!(wrong_phrase.validate().is_err());
+
+    let approved = OperationApproval {
+        operation: RouterOperation::ApplyFirewall,
+        router_id: "router".into(),
+        snapshot_id: Some("snapshot-1".into()),
+        typed_phrase: Some("应用防火墙配置".into()),
+    };
+    assert!(approved.validate().is_ok());
+}
