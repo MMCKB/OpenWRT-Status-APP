@@ -76,3 +76,11 @@ jobs:
           path: rust/target/dx/openwrt-mobile/release/android/app/app/build/outputs/bundle/release/*.aab
           if-no-files-found: error
           retention-days: 14
+
+      - name: Upload directly installable ARM64 APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: openwrt-status-rust-arm64-apk
+          path: rust/target/dx/openwrt-mobile/release/android/app/app/build/outputs/apk/debug/*.apk
+          if-no-files-found: error
+          retention-days: 14

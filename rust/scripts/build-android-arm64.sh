@@ -49,7 +49,10 @@ grep -q '<monochrome android:drawable="@drawable/openwrt_launcher_monochrome"' \
   "${RESOURCES}/mipmap-anydpi-v26/ic_launcher.xml"
 
 # 重新运行 Gradle，使上述版本控制资源进入最终 AAB，而不是仅停留在生成目录中。
+# 同时生成 Android debug keystore 签名的 APK，供 ARM64 设备直接侧载测试；
+# Play 发布仍应使用上方的 release AAB。
 cd "${ANDROID_PROJECT}"
-./gradlew --no-daemon :app:bundleRelease
+./gradlew --no-daemon :app:bundleRelease :app:assembleDebug
 
 find "${ANDROID_APP}/build/outputs/bundle/release" -type f -name '*.aab' -print
+find "${ANDROID_APP}/build/outputs/apk/debug" -type f -name '*.apk' -print
