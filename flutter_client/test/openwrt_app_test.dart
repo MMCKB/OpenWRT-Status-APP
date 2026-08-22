@@ -3,14 +3,15 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:openwrt_status_flutter/openwrt_app.dart';
 
 void main() {
-  testWidgets('renders the default-branch-inspired status dashboard', (
+  testWidgets('shows no router preview when native library is unavailable', (
     tester,
   ) async {
     await tester.pumpWidget(const OpenWrtStatusApp());
+    await tester.pumpAndSettle();
 
-    expect(find.text('当前路由器'), findsOneWidget);
-    expect(find.text('OpenWrt 主路由'), findsOneWidget);
-    expect(find.text('实时流量'), findsOneWidget);
+    expect(find.text('Rust 原生库不可用'), findsOneWidget);
+    expect(find.text('OpenWrt 主路由'), findsNothing);
+    expect(find.text('预览数据'), findsNothing);
   });
 
   testWidgets('switches to settings through bottom navigation', (tester) async {
@@ -22,17 +23,5 @@ void main() {
     expect(find.text('外观'), findsOneWidget);
     expect(find.text('跟随系统'), findsOneWidget);
     expect(find.text('状态刷新间隔'), findsOneWidget);
-  });
-
-  test('keeps Rust preview payloads distinct from live router state', () {
-    final preview = DashboardPreview.fromJson({
-      'source': 'preview',
-      'online': true,
-      'interfaces': const [],
-      'traffic': const [],
-    });
-
-    expect(preview.isPreview, isTrue);
-    expect(preview.online, isTrue);
   });
 }

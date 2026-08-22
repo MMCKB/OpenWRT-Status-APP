@@ -1,8 +1,8 @@
 import 'dart:async';
-import 'dart:convert';
 
 import 'package:flutter/material.dart';
 
+import 'router_controller.dart';
 import 'rust_bridge.dart';
 
 enum AppThemeMode { system, light, dark }
@@ -80,15 +80,129 @@ class RootShell extends StatefulWidget {
 
 class _RootShellState extends State<RootShell> {
   int _tab = 0;
+  late final RouterController _router;
+
+  @override
+  void initState() {
+    super.initState();
+    _router = RouterController(bridge: RustNativeBridge.tryLoad());
+    _router.addListener(_onRouterChanged);
+    _router.initialize();
+  }
+
+  void _onRouterChanged() {
+    if (mounted) setState(() {});
+  }
+
+  @override
+  void dispose() {
+    _router
+      ..removeListener(_onRouterChanged)
+      ..dispose();
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
     final pages = [
-      StatusScreen(onOpenRouters: () => setState(() => _tab = 1)),
-      const RoutersScreen(),
-      const ControlScreen(),
-      const ServicesScreen(),
-      const ToolsScreen(),
+      LiveStatusScreen(
+        controller: _router,
+        onOpenRouters: () => setState(() => _tab = 1),
+      ),
+      LiveRoutersScreen(controller: _router),
+      LiveReadScreen(
+        controller: _router,
+        title: '控制中心',
+        subtitle: '网络、无线、防火墙、DHCP 与软件包',
+        actions: const [
+          ReadAction(
+            Icons.wifi_outlined,
+            '无线网络',
+            'wireless_snapshot',
+            '读取无线射频、SSID 与客户端状态',
+          ),
+          ReadAction(
+            Icons.security_outlined,
+            '防火墙',
+            'firewall_snapshot',
+            '读取防火墙规则和 UPnP 状态',
+          ),
+          ReadAction(
+            Icons.device_hub_outlined,
+            'DHCP 租约',
+            'dhcp_leases',
+            '读取 DHCPv4、DHCPv6 与邻居表',
+          ),
+          ReadAction(
+            Icons.inventory_2_outlined,
+            '已安装软件包',
+            'package_list',
+            '读取 opkg 已安装软件包列表',
+          ),
+        ],
+      ),
+      LiveReadScreen(
+        controller: _router,
+        title: '服务健康',
+        subtitle: '服务、容器与当前运行状态',
+        actions: const [
+          ReadAction(
+            Icons.monitor_heart_outlined,
+            '服务快照',
+            'service_snapshot',
+            '读取 OpenClash、AdGuard Home、DDNS 等服务状态',
+          ),
+          ReadAction(
+            Icons.widgets_outlined,
+            'Docker 容器',
+            'docker_snapshot',
+            '读取 Docker 容器与镜像状态',
+          ),
+        ],
+        managedActions: const [
+          ManagedAction(Icons.restart_alt, '重启 DNS 服务', 'restart_service', {
+            'kind': 'service',
+            'service': 'dnsmasq',
+            'action': 'restart',
+          }, '会通过已验证 SSH 会话重启 dnsmasq。'),
+          ManagedAction(Icons.restart_alt, '重启 DHCPv6 服务', 'restart_service', {
+            'kind': 'service',
+            'service': 'odhcpd',
+            'action': 'restart',
+          }, '会通过已验证 SSH 会话重启 odhcpd。'),
+        ],
+      ),
+      LiveReadScreen(
+        controller: _router,
+        title: '工具',
+        subtitle: '诊断、日志、NAT 与性能测试',
+        actions: const [
+          ReadAction(
+            Icons.health_and_safety_outlined,
+            '系统健康检查',
+            'system_health',
+            '执行受限 Ping、DNS、温度与磁盘检查',
+          ),
+          ReadAction(
+            Icons.description_outlined,
+            '系统日志',
+            'logs',
+            '读取并过滤路由器系统日志',
+          ),
+          ReadAction(
+            Icons.public_outlined,
+            'NAT 检测',
+            'nat_detection',
+            '读取公网地址与路由信息',
+          ),
+          ReadAction(
+            Icons.speed_outlined,
+            '磁盘性能测试',
+            'disk_speed_benchmark',
+            '执行受限临时磁盘测试',
+          ),
+        ],
+      ),
       SettingsScreen(
         current: widget.themeMode,
         onChanged: widget.onThemeChanged,
@@ -145,419 +259,6 @@ class _RootShellState extends State<RootShell> {
       ),
     );
   }
-}
-
-class StatusScreen extends StatefulWidget {
-  const StatusScreen({required this.onOpenRouters, super.key});
-  final VoidCallback onOpenRouters;
-
-  @override
-  State<StatusScreen> createState() => _StatusScreenState();
-}
-
-class _StatusScreenState extends State<StatusScreen> {
-  final RustNativeBridge? _rust = RustNativeBridge.tryLoad();
-  DateTime _updatedAt = DateTime.now();
-  bool _refreshing = false;
-
-  DashboardPreview get _dashboard {
-    final rust = _rust;
-    if (rust == null) return DashboardPreview.fallback;
-    try {
-      return DashboardPreview.fromJson(
-        jsonDecode(rust.dashboardPreviewJson) as Map<String, dynamic>,
-      );
-    } on FormatException {
-      return DashboardPreview.fallback;
-    }
-  }
-
-  Future<void> _refresh() async {
-    if (_refreshing) return;
-    setState(() => _refreshing = true);
-    await Future<void>.delayed(const Duration(milliseconds: 700));
-    if (mounted) {
-      setState(() {
-        _updatedAt = DateTime.now();
-        _refreshing = false;
-      });
-    }
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final colors = Theme.of(context).colorScheme;
-    final dark = Theme.of(context).brightness == Brightness.dark;
-    final softPrimary = dark
-        ? const Color(0xFF1C485C)
-        : const Color(0xFFE6F5F4);
-    final rustLoaded = _rust != null;
-    final rustVersion = _rust?.versionJson;
-    final dashboard = _dashboard;
-    return RefreshIndicator(
-      onRefresh: _refresh,
-      color: colors.primary,
-      child: ListView(
-        physics: const AlwaysScrollableScrollPhysics(),
-        padding: const EdgeInsets.fromLTRB(20, 22, 20, 18),
-        children: [
-          Row(
-            children: [
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      '当前路由器',
-                      style: TextStyle(
-                        color: muted(context),
-                        fontSize: 12,
-                        fontWeight: FontWeight.w700,
-                        letterSpacing: .4,
-                      ),
-                    ),
-                    const SizedBox(height: 4),
-                    Text(
-                      dashboard.routerName,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: TextStyle(
-                        color: colors.onSurface,
-                        fontSize: 28,
-                        fontWeight: FontWeight.w800,
-                      ),
-                    ),
-                    const SizedBox(height: 4),
-                    Text(
-                      dashboard.endpoint,
-                      style: TextStyle(color: muted(context), fontSize: 13),
-                    ),
-                  ],
-                ),
-              ),
-              const SizedBox(width: 14),
-              Column(
-                children: [
-                  IconButton.filledTonal(
-                    tooltip: '刷新状态',
-                    onPressed: _refresh,
-                    style: IconButton.styleFrom(
-                      backgroundColor: softPrimary,
-                      foregroundColor: colors.primary,
-                      minimumSize: const Size(46, 46),
-                    ),
-                    icon: _refreshing
-                        ? SizedBox(
-                            width: 21,
-                            height: 21,
-                            child: CircularProgressIndicator(
-                              strokeWidth: 2.2,
-                              color: colors.primary,
-                            ),
-                          )
-                        : const Icon(Icons.refresh_rounded),
-                  ),
-                  const SizedBox(height: 4),
-                  Text(
-                    _refreshing ? '刷新中' : '已更新',
-                    style: TextStyle(
-                      color: muted(context),
-                      fontSize: 11,
-                      fontWeight: FontWeight.w700,
-                    ),
-                  ),
-                ],
-              ),
-            ],
-          ),
-          const SizedBox(height: 20),
-          AppCard(
-            child: Row(
-              children: [
-                Container(
-                  width: 56,
-                  height: 56,
-                  decoration: BoxDecoration(
-                    color: softPrimary,
-                    borderRadius: BorderRadius.circular(18),
-                  ),
-                  child: Icon(Icons.router, color: colors.primary, size: 29),
-                ),
-                const SizedBox(width: 14),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      StatusPill(
-                        label: dashboard.isPreview
-                            ? '预览数据'
-                            : dashboard.online
-                            ? '在线'
-                            : '连接失败',
-                        color: dashboard.isPreview
-                            ? warning
-                            : dashboard.online
-                            ? success
-                            : colors.error,
-                      ),
-                      const SizedBox(height: 7),
-                      Text(
-                        dashboard.hostname,
-                        style: TextStyle(
-                          color: colors.onSurface,
-                          fontWeight: FontWeight.w800,
-                          fontSize: 18,
-                        ),
-                      ),
-                      const SizedBox(height: 2),
-                      Text(
-                        '${dashboard.model} · ${dashboard.isPreview ? 'Rust 预览' : 'Rust 原生状态'}',
-                        style: TextStyle(color: muted(context), fontSize: 13),
-                      ),
-                    ],
-                  ),
-                ),
-              ],
-            ),
-          ),
-          const SizedBox(height: 12),
-          TrafficCard(updatedAt: _updatedAt, traffic: dashboard.traffic),
-          const SizedBox(height: 12),
-          Row(
-            children: [
-              Expanded(
-                child: MetricTile(
-                  icon: Icons.timer_outlined,
-                  label: '运行时间',
-                  value: dashboard.uptime,
-                  accent: success,
-                ),
-              ),
-              const SizedBox(width: 10),
-              Expanded(
-                child: MetricTile(
-                  icon: Icons.speed_outlined,
-                  label: '系统负载',
-                  value: dashboard.load,
-                  caption: '1 / 5 / 15 分钟',
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 10),
-          Row(
-            children: [
-              Expanded(
-                child: MetricTile(
-                  icon: Icons.memory_outlined,
-                  label: '内存',
-                  value: dashboard.memory,
-                  caption: '486 MB 可用',
-                ),
-              ),
-              const SizedBox(width: 10),
-              Expanded(
-                child: MetricTile(
-                  icon: Icons.system_update_alt_outlined,
-                  label: '固件',
-                  value: dashboard.firmware,
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 18),
-          SectionCard(
-            title: '网络接口',
-            action: '${dashboard.interfaces.length} 个',
-            child: Column(
-              children: [
-                for (final (index, item) in dashboard.interfaces.indexed) ...[
-                  InterfaceRow(
-                    name: item.name,
-                    address: item.address,
-                    connected: item.connected,
-                  ),
-                  if (index < dashboard.interfaces.length - 1)
-                    const Divider(height: 1),
-                ],
-              ],
-            ),
-          ),
-          const SizedBox(height: 14),
-          SectionCard(
-            title: '无线网络',
-            action: '2 个',
-            child: const Column(
-              children: [
-                WirelessRow(
-                  ssid: 'OpenWrt-5G',
-                  detail: 'radio0 · 信道 149',
-                  clients: '6 台',
-                ),
-                Divider(height: 1),
-                WirelessRow(
-                  ssid: 'OpenWrt-2.4G',
-                  detail: 'radio1 · 信道 6',
-                  clients: '3 台',
-                ),
-              ],
-            ),
-          ),
-          const SizedBox(height: 14),
-          Container(
-            padding: const EdgeInsets.all(12),
-            decoration: BoxDecoration(
-              color: dark ? const Color(0xFF59451F) : const Color(0xFFFFF4DD),
-              borderRadius: BorderRadius.circular(12),
-            ),
-            child: Text(
-              rustLoaded
-                  ? dashboard.isPreview
-                        ? 'Rust 原生库已加载：$rustVersion。当前是离线预览载荷，尚未发起 LuCI 请求，所有状态均不可视为真实路由器状态。'
-                        : 'Rust 原生库已加载：$rustVersion。状态来自已验证的 Rust 核心请求。'
-                  : 'Rust 原生库尚未随当前调试运行复制到 APK；界面安全降级为预览数据，不会伪造真实路由器状态。',
-              style: TextStyle(color: warning, fontSize: 13, height: 1.45),
-            ),
-          ),
-          const SizedBox(height: 14),
-          Text(
-            '上次刷新于 ${formatTime(_updatedAt)} · 支持下拉或手动刷新',
-            textAlign: TextAlign.center,
-            style: TextStyle(color: muted(context), fontSize: 12),
-          ),
-          const SizedBox(height: 12),
-          OutlinedButton.icon(
-            onPressed: widget.onOpenRouters,
-            icon: const Icon(Icons.router_outlined),
-            label: const Text('管理路由器档案'),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class RoutersScreen extends StatelessWidget {
-  const RoutersScreen({super.key});
-  @override
-  Widget build(BuildContext context) => AppPage(
-    title: '路由器',
-    subtitle: '多个路由器档案与连接状态',
-    actions: [
-      IconButton(onPressed: () {}, icon: const Icon(Icons.add_circle_outline)),
-    ],
-    children: const [
-      RouterCard(
-        name: 'OpenWrt 主路由',
-        endpoint: 'http://192.168.1.1/luci',
-        online: true,
-        current: true,
-      ),
-      SizedBox(height: 12),
-      RouterCard(
-        name: '客厅 AP',
-        endpoint: 'http://192.168.1.2/luci',
-        online: false,
-        current: false,
-      ),
-      SizedBox(height: 18),
-      SectionCard(
-        title: '安全说明',
-        child: Padding(
-          padding: EdgeInsets.all(14),
-          child: Text('密码和私钥不会写入档案。SSH 主机指纹必须由用户明确确认后才能继续连接。'),
-        ),
-      ),
-    ],
-  );
-}
-
-class ControlScreen extends StatelessWidget {
-  const ControlScreen({super.key});
-  @override
-  Widget build(BuildContext context) => AppPage(
-    title: '控制中心',
-    subtitle: '常用 OpenWrt 管理入口',
-    children: const [
-      ActionGrid(
-        items: [
-          ActionItem(Icons.wifi_outlined, '无线网络', 'SSID、客户端与信道'),
-          ActionItem(Icons.security_outlined, '防火墙', '规则与端口转发'),
-          ActionItem(Icons.device_hub_outlined, 'DHCP 租约', '静态租约与设备'),
-          ActionItem(Icons.inventory_2_outlined, '软件包', 'opkg 安装与卸载'),
-          ActionItem(Icons.folder_outlined, '文件管理', 'SFTP 浏览与传输'),
-          ActionItem(Icons.system_update_outlined, '固件升级', '校验与安全门禁'),
-        ],
-      ),
-      SizedBox(height: 18),
-      SectionCard(
-        title: '高风险操作',
-        child: Padding(
-          padding: EdgeInsets.all(14),
-          child: Text('网络、无线、防火墙、固件和恢复操作均需由 Rust 核心验证快照与精确确认文本。'),
-        ),
-      ),
-    ],
-  );
-}
-
-class ServicesScreen extends StatelessWidget {
-  const ServicesScreen({super.key});
-  @override
-  Widget build(BuildContext context) => AppPage(
-    title: '服务健康',
-    subtitle: '服务、容器与日志状态',
-    children: const [
-      ServiceCard(
-        icon: Icons.shield_outlined,
-        name: 'OpenClash',
-        description: '代理与规则服务',
-        healthy: true,
-      ),
-      SizedBox(height: 10),
-      ServiceCard(
-        icon: Icons.dns_outlined,
-        name: 'AdGuard Home',
-        description: 'DNS 与广告过滤',
-        healthy: true,
-      ),
-      SizedBox(height: 10),
-      ServiceCard(
-        icon: Icons.cloud_outlined,
-        name: 'DDNS',
-        description: '动态域名更新',
-        healthy: false,
-      ),
-      SizedBox(height: 10),
-      ServiceCard(
-        icon: Icons.widgets_outlined,
-        name: 'Docker',
-        description: '容器与镜像管理',
-        healthy: true,
-      ),
-    ],
-  );
-}
-
-class ToolsScreen extends StatelessWidget {
-  const ToolsScreen({super.key});
-  @override
-  Widget build(BuildContext context) => AppPage(
-    title: '工具',
-    subtitle: '诊断、维护与安全远程访问',
-    children: const [
-      ActionGrid(
-        items: [
-          ActionItem(Icons.health_and_safety_outlined, '网络诊断', 'Ping、DNS、路由'),
-          ActionItem(Icons.terminal_outlined, 'SSH 终端', '显式确认后执行'),
-          ActionItem(Icons.description_outlined, '系统日志', '读取与安全过滤'),
-          ActionItem(Icons.bolt_outlined, 'Wake-on-LAN', '局域网设备唤醒'),
-          ActionItem(Icons.groups_outlined, '批量操作', '跨路由器任务'),
-          ActionItem(Icons.speed_outlined, '性能测试', '网络与磁盘基准'),
-        ],
-      ),
-    ],
-  );
 }
 
 class SettingsScreen extends StatelessWidget {
@@ -618,7 +319,7 @@ class SettingsScreen extends StatelessWidget {
         child: ListTile(
           leading: Icon(Icons.info_outline),
           title: Text('Flutter UI + Rust 核心'),
-          subtitle: Text('Rust-Dev 重构预览'),
+          subtitle: Text('Flutter UI + Rust 原生核心'),
         ),
       ),
     ],
@@ -806,53 +507,6 @@ class MetricTile extends StatelessWidget {
               style: TextStyle(fontSize: 11, color: muted(context)),
             ),
           ),
-      ],
-    ),
-  );
-}
-
-class TrafficCard extends StatelessWidget {
-  const TrafficCard({
-    required this.updatedAt,
-    required this.traffic,
-    super.key,
-  });
-  final DateTime updatedAt;
-  final List<TrafficPreview> traffic;
-
-  @override
-  Widget build(BuildContext context) => AppCard(
-    child: Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Row(
-          children: [
-            Icon(
-              Icons.insights_outlined,
-              color: Theme.of(context).colorScheme.primary,
-            ),
-            const SizedBox(width: 8),
-            const Text(
-              '实时流量',
-              style: TextStyle(fontWeight: FontWeight.w800, fontSize: 16),
-            ),
-            const Spacer(),
-            Text('按需刷新', style: TextStyle(fontSize: 11, color: muted(context))),
-          ],
-        ),
-        const SizedBox(height: 14),
-        if (traffic.isEmpty)
-          Text('尚无可显示的流量采样。', style: TextStyle(color: muted(context)))
-        else
-          for (final (index, item) in traffic.indexed) ...[
-            TrafficRow(name: item.name, down: item.down, up: item.up),
-            if (index < traffic.length - 1) const Divider(height: 20),
-          ],
-        const SizedBox(height: 4),
-        Text(
-          '刷新时间 ${formatTime(updatedAt)} · 仅在用户刷新后更新',
-          style: TextStyle(color: muted(context), fontSize: 11),
-        ),
       ],
     ),
   );
@@ -1149,131 +803,6 @@ class ActionItem {
   final String detail;
 }
 
-class DashboardPreview {
-  const DashboardPreview({
-    required this.source,
-    required this.routerName,
-    required this.endpoint,
-    required this.online,
-    required this.hostname,
-    required this.model,
-    required this.uptime,
-    required this.load,
-    required this.memory,
-    required this.firmware,
-    required this.interfaces,
-    required this.traffic,
-  });
-
-  final String source;
-  final String routerName;
-  final String endpoint;
-  final bool online;
-  final String hostname;
-  final String model;
-  final String uptime;
-  final String load;
-  final String memory;
-  final String firmware;
-  final List<InterfacePreview> interfaces;
-  final List<TrafficPreview> traffic;
-
-  bool get isPreview => source != 'live';
-
-  factory DashboardPreview.fromJson(Map<String, dynamic> json) =>
-      DashboardPreview(
-        source: json['source'] as String? ?? fallback.source,
-        routerName: json['routerName'] as String? ?? fallback.routerName,
-        endpoint: json['endpoint'] as String? ?? fallback.endpoint,
-        online: json['online'] as bool? ?? fallback.online,
-        hostname: json['hostname'] as String? ?? fallback.hostname,
-        model: json['model'] as String? ?? fallback.model,
-        uptime: json['uptime'] as String? ?? fallback.uptime,
-        load: json['load'] as String? ?? fallback.load,
-        memory: json['memory'] as String? ?? fallback.memory,
-        firmware: json['firmware'] as String? ?? fallback.firmware,
-        interfaces: (json['interfaces'] as List<dynamic>? ?? const [])
-            .whereType<Map<String, dynamic>>()
-            .map(InterfacePreview.fromJson)
-            .toList(growable: false),
-        traffic: (json['traffic'] as List<dynamic>? ?? const [])
-            .whereType<Map<String, dynamic>>()
-            .map(TrafficPreview.fromJson)
-            .toList(growable: false),
-      );
-
-  static const fallback = DashboardPreview(
-    source: 'fallback',
-    routerName: 'OpenWrt 主路由',
-    endpoint: 'http://192.168.1.1/luci',
-    online: false,
-    hostname: '尚未连接路由器',
-    model: '本地预览模式',
-    uptime: '—',
-    load: '—',
-    memory: '未报告',
-    firmware: '未报告',
-    interfaces: [
-      InterfacePreview(
-        name: 'br-lan',
-        address: 'IPv4 192.168.1.1 · IPv6 fd00::1',
-        connected: true,
-      ),
-      InterfacePreview(
-        name: 'wan',
-        address: 'IPv4 100.64.0.2 · IPv6 —',
-        connected: true,
-      ),
-      InterfacePreview(
-        name: 'wwan',
-        address: 'IPv4 未分配 · IPv6 —',
-        connected: false,
-      ),
-    ],
-    traffic: [
-      TrafficPreview(name: 'br-lan', down: '1.82 MB/s', up: '420 KB/s'),
-      TrafficPreview(name: 'wan', down: '842 KB/s', up: '113 KB/s'),
-    ],
-  );
-}
-
-class InterfacePreview {
-  const InterfacePreview({
-    required this.name,
-    required this.address,
-    required this.connected,
-  });
-
-  final String name;
-  final String address;
-  final bool connected;
-
-  factory InterfacePreview.fromJson(Map<String, dynamic> json) =>
-      InterfacePreview(
-        name: json['name'] as String? ?? '未命名接口',
-        address: json['address'] as String? ?? '未报告地址',
-        connected: json['connected'] as bool? ?? false,
-      );
-}
-
-class TrafficPreview {
-  const TrafficPreview({
-    required this.name,
-    required this.down,
-    required this.up,
-  });
-
-  final String name;
-  final String down;
-  final String up;
-
-  factory TrafficPreview.fromJson(Map<String, dynamic> json) => TrafficPreview(
-    name: json['name'] as String? ?? '未知接口',
-    down: json['down'] as String? ?? '—',
-    up: json['up'] as String? ?? '—',
-  );
-}
-
 const success = Color(0xFF1B9A6A);
 const warning = Color(0xFFB06C00);
 Color muted(BuildContext context) =>
@@ -1282,3 +811,918 @@ Color muted(BuildContext context) =>
     : const Color(0xFF64748B);
 String formatTime(DateTime value) =>
     '${value.hour.toString().padLeft(2, '0')}:${value.minute.toString().padLeft(2, '0')}';
+
+class LiveStatusScreen extends StatelessWidget {
+  const LiveStatusScreen({
+    required this.controller,
+    required this.onOpenRouters,
+    super.key,
+  });
+
+  final RouterController controller;
+  final VoidCallback onOpenRouters;
+
+  @override
+  Widget build(BuildContext context) {
+    if (!controller.initialized || controller.loadingProfiles) {
+      return const _LiveStatePage(
+        icon: Icons.sync,
+        title: '正在加载路由器档案',
+        detail: 'Rust 原生库正在读取应用专属目录中的非机密档案。',
+      );
+    }
+    if (!controller.nativeAvailable) {
+      return const _LiveStatePage(
+        icon: Icons.memory_outlined,
+        title: 'Rust 原生库不可用',
+        detail: '当前运行未加载 libopenwrt_ffi.so，应用不会展示模拟状态。',
+      );
+    }
+    final profile = controller.activeProfile;
+    if (profile == null) {
+      return _LiveStatePage(
+        icon: Icons.router_outlined,
+        title: '尚未添加路由器',
+        detail: '请先创建路由器档案并输入 LuCI 连接资料；状态页不会使用默认地址或示例数据。',
+        action: OutlinedButton.icon(
+          onPressed: onOpenRouters,
+          icon: const Icon(Icons.add_circle_outline),
+          label: const Text('添加路由器'),
+        ),
+      );
+    }
+    final status = controller.status;
+    if (status == null) {
+      return _LiveStatePage(
+        icon: controller.loadingStatus
+            ? Icons.sync
+            : Icons.admin_panel_settings_outlined,
+        title: controller.loadingStatus ? '正在读取路由器状态' : '尚未建立 LuCI 连接',
+        detail:
+            controller.lastError ??
+            '请在“路由器”页输入此档案的 LuCI 密码后连接。密码只用于当前内存中的 Rust 请求。',
+        action: OutlinedButton.icon(
+          onPressed: onOpenRouters,
+          icon: const Icon(Icons.router_outlined),
+          label: const Text('打开路由器档案'),
+        ),
+      );
+    }
+    return _RealStatusDashboard(
+      controller: controller,
+      profile: profile,
+      status: status,
+      onOpenRouters: onOpenRouters,
+    );
+  }
+}
+
+class _LiveStatePage extends StatelessWidget {
+  const _LiveStatePage({
+    required this.icon,
+    required this.title,
+    required this.detail,
+    this.action,
+  });
+
+  final IconData icon;
+  final String title;
+  final String detail;
+  final Widget? action;
+
+  @override
+  Widget build(BuildContext context) => Center(
+    child: Padding(
+      padding: const EdgeInsets.all(24),
+      child: AppCard(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(icon, size: 36, color: Theme.of(context).colorScheme.primary),
+            const SizedBox(height: 14),
+            Text(
+              title,
+              textAlign: TextAlign.center,
+              style: const TextStyle(fontSize: 19, fontWeight: FontWeight.w800),
+            ),
+            const SizedBox(height: 8),
+            Text(
+              detail,
+              textAlign: TextAlign.center,
+              style: TextStyle(color: muted(context), height: 1.45),
+            ),
+            if (action != null) ...[const SizedBox(height: 18), action!],
+          ],
+        ),
+      ),
+    ),
+  );
+}
+
+class _RealStatusDashboard extends StatelessWidget {
+  const _RealStatusDashboard({
+    required this.controller,
+    required this.profile,
+    required this.status,
+    required this.onOpenRouters,
+  });
+
+  final RouterController controller;
+  final RouterProfileData profile;
+  final RouterStatusData status;
+  final VoidCallback onOpenRouters;
+
+  @override
+  Widget build(BuildContext context) {
+    final system = status.system;
+    final colors = Theme.of(context).colorScheme;
+    final dark = Theme.of(context).brightness == Brightness.dark;
+    final hostname = system['hostname'] as String? ?? '路由器未报告主机名';
+    final model = system['model'] as String? ?? '路由器未报告型号';
+    final firmware = system['firmware'] as String? ?? '未报告';
+    final uptime = _formatUptime(system['uptime_seconds'] as int?);
+    final load = _formatLoad(system['load_1']);
+    final memory = _formatMemory(
+      system['memory_available_bytes'] as int?,
+      system['memory_total_bytes'] as int?,
+    );
+    return RefreshIndicator(
+      onRefresh: controller.fetchStatus,
+      color: colors.primary,
+      child: ListView(
+        physics: const AlwaysScrollableScrollPhysics(),
+        padding: const EdgeInsets.fromLTRB(20, 22, 20, 18),
+        children: [
+          Row(
+            children: [
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      '当前路由器',
+                      style: TextStyle(
+                        color: muted(context),
+                        fontSize: 12,
+                        fontWeight: FontWeight.w700,
+                        letterSpacing: .4,
+                      ),
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      profile.name,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        color: colors.onSurface,
+                        fontSize: 28,
+                        fontWeight: FontWeight.w800,
+                      ),
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      profile.baseUrl,
+                      style: TextStyle(color: muted(context), fontSize: 13),
+                    ),
+                  ],
+                ),
+              ),
+              IconButton.filledTonal(
+                tooltip: '刷新真实状态',
+                onPressed: controller.loadingStatus
+                    ? null
+                    : controller.fetchStatus,
+                icon: controller.loadingStatus
+                    ? const SizedBox(
+                        width: 20,
+                        height: 20,
+                        child: CircularProgressIndicator(strokeWidth: 2),
+                      )
+                    : const Icon(Icons.refresh_rounded),
+              ),
+            ],
+          ),
+          const SizedBox(height: 20),
+          AppCard(
+            child: Row(
+              children: [
+                Container(
+                  width: 56,
+                  height: 56,
+                  decoration: BoxDecoration(
+                    color: dark
+                        ? const Color(0xFF1C485C)
+                        : const Color(0xFFE6F5F4),
+                    borderRadius: BorderRadius.circular(18),
+                  ),
+                  child: Icon(Icons.router, color: colors.primary, size: 29),
+                ),
+                const SizedBox(width: 14),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      StatusPill(
+                        label: status.online ? '在线' : '连接失败',
+                        color: status.online ? success : colors.error,
+                      ),
+                      const SizedBox(height: 7),
+                      Text(
+                        hostname,
+                        style: const TextStyle(
+                          fontWeight: FontWeight.w800,
+                          fontSize: 18,
+                        ),
+                      ),
+                      const SizedBox(height: 2),
+                      Text(
+                        '$model · $firmware',
+                        style: TextStyle(color: muted(context), fontSize: 13),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 12),
+          Row(
+            children: [
+              Expanded(
+                child: MetricTile(
+                  icon: Icons.timer_outlined,
+                  label: '运行时间',
+                  value: uptime,
+                  accent: success,
+                ),
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: MetricTile(
+                  icon: Icons.speed_outlined,
+                  label: '系统负载',
+                  value: load,
+                  caption: 'LuCI system.info',
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 10),
+          Row(
+            children: [
+              Expanded(
+                child: MetricTile(
+                  icon: Icons.memory_outlined,
+                  label: '内存',
+                  value: memory,
+                ),
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: MetricTile(
+                  icon: Icons.system_update_alt_outlined,
+                  label: '固件',
+                  value: firmware,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 14),
+          SectionCard(
+            title: '网络接口',
+            action: '${status.interfaces.length} 个',
+            child: status.interfaces.isEmpty
+                ? Padding(
+                    padding: const EdgeInsets.all(16),
+                    child: Text(
+                      '该路由器未返回接口数据。',
+                      style: TextStyle(color: muted(context)),
+                    ),
+                  )
+                : Column(
+                    children: [
+                      for (final (index, item)
+                          in status.interfaces.indexed) ...[
+                        InterfaceRow(
+                          name: item['name'] as String? ?? '未命名接口',
+                          address: _interfaceAddress(item),
+                          connected: item['up'] as bool? ?? false,
+                        ),
+                        if (index < status.interfaces.length - 1)
+                          const Divider(height: 1),
+                      ],
+                    ],
+                  ),
+          ),
+          const SizedBox(height: 14),
+          SectionCard(
+            title: '接口计数',
+            child: status.interfaces.isEmpty
+                ? Padding(
+                    padding: const EdgeInsets.all(16),
+                    child: Text(
+                      '没有接口计数可显示。',
+                      style: TextStyle(color: muted(context)),
+                    ),
+                  )
+                : Column(
+                    children: [
+                      for (final (index, item)
+                          in status.interfaces.take(6).indexed) ...[
+                        Padding(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 15,
+                            vertical: 11,
+                          ),
+                          child: Row(
+                            children: [
+                              Expanded(
+                                child: Text(
+                                  item['name'] as String? ?? '接口',
+                                  style: const TextStyle(
+                                    fontWeight: FontWeight.w700,
+                                  ),
+                                ),
+                              ),
+                              Text(
+                                '↓ ${_formatBytes(item['rx_bytes'] as int?)}',
+                                style: TextStyle(
+                                  color: colors.primary,
+                                  fontSize: 12,
+                                ),
+                              ),
+                              const SizedBox(width: 10),
+                              Text(
+                                '↑ ${_formatBytes(item['tx_bytes'] as int?)}',
+                                style: TextStyle(
+                                  color: colors.primary,
+                                  fontSize: 12,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                        if (index < status.interfaces.take(6).length - 1)
+                          const Divider(height: 1),
+                      ],
+                    ],
+                  ),
+          ),
+          if (status.warnings.isNotEmpty) ...[
+            const SizedBox(height: 14),
+            SectionCard(
+              title: '路由器提示',
+              child: Padding(
+                padding: const EdgeInsets.all(16),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    for (final warningText in status.warnings)
+                      Padding(
+                        padding: const EdgeInsets.only(bottom: 6),
+                        child: Text(
+                          warningText,
+                          style: TextStyle(color: warning),
+                        ),
+                      ),
+                  ],
+                ),
+              ),
+            ),
+          ],
+          const SizedBox(height: 14),
+          Text(
+            '真实 LuCI 数据更新于 ${formatTime(status.fetchedAt)}',
+            textAlign: TextAlign.center,
+            style: TextStyle(color: muted(context), fontSize: 12),
+          ),
+          const SizedBox(height: 12),
+          OutlinedButton.icon(
+            onPressed: onOpenRouters,
+            icon: const Icon(Icons.router_outlined),
+            label: const Text('管理路由器档案'),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class LiveRoutersScreen extends StatefulWidget {
+  const LiveRoutersScreen({required this.controller, super.key});
+  final RouterController controller;
+
+  @override
+  State<LiveRoutersScreen> createState() => _LiveRoutersScreenState();
+}
+
+class _LiveRoutersScreenState extends State<LiveRoutersScreen> {
+  final _name = TextEditingController(text: '我的 OpenWrt');
+  final _endpoint = TextEditingController(text: 'http://192.168.1.1');
+  final _username = TextEditingController(text: 'root');
+  final _password = TextEditingController();
+  final _sshPassword = TextEditingController();
+  final _sshPort = TextEditingController(text: '22');
+  String? _editingId;
+  bool _submitting = false;
+
+  @override
+  void dispose() {
+    _name.dispose();
+    _endpoint.dispose();
+    _username.dispose();
+    _password.dispose();
+    _sshPassword.dispose();
+    _sshPort.dispose();
+    super.dispose();
+  }
+
+  void _edit(RouterProfileData profile) {
+    setState(() {
+      _editingId = profile.id;
+      _name.text = profile.name;
+      _endpoint.text = profile.baseUrl;
+      _username.text = profile.username;
+      _password.clear();
+      _sshPassword.clear();
+      _sshPort.text = profile.sshPort.toString();
+    });
+  }
+
+  Future<void> _saveAndConnect() async {
+    final port = int.tryParse(_sshPort.text.trim());
+    if (port == null || port < 1 || port > 65535) {
+      _showMessage('SSH 端口必须介于 1 到 65535。');
+      return;
+    }
+    if (_password.text.isEmpty) {
+      _showMessage('请输入 LuCI 密码后再连接；密码不会写入档案。');
+      return;
+    }
+    setState(() => _submitting = true);
+    final id = _editingId ?? 'router-${DateTime.now().microsecondsSinceEpoch}';
+    final profile = RouterProfileData(
+      id: id,
+      name: _name.text.trim(),
+      baseUrl: _endpoint.text.trim(),
+      username: _username.text.trim(),
+      sshPort: port,
+    );
+    final saved = await widget.controller.saveProfile(
+      profile,
+      luciPassword: _password.text,
+      sshPassword: _sshPassword.text,
+    );
+    if (saved) {
+      await widget.controller.fetchStatus(password: _password.text);
+      if (mounted && widget.controller.lastError == null) {
+        _showMessage('已通过 Rust 原生核心读取真实 LuCI 状态。');
+      }
+    }
+    if (mounted) {
+      setState(() => _submitting = false);
+      if (widget.controller.lastError != null) {
+        _showMessage(widget.controller.lastError!);
+      }
+    }
+  }
+
+  void _showMessage(String message) {
+    ScaffoldMessenger.of(context)
+        .showSnackBar(SnackBar(content: Text(message)));
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final controller = widget.controller;
+    return ListView(
+      padding: const EdgeInsets.fromLTRB(20, 22, 20, 18),
+      children: [
+        Text(
+          '路由器',
+          style: TextStyle(
+            fontSize: 28,
+            fontWeight: FontWeight.w800,
+            color: Theme.of(context).colorScheme.onSurface,
+          ),
+        ),
+        const SizedBox(height: 4),
+        Text(
+          '真实档案与 LuCI 连接',
+          style: TextStyle(color: muted(context), fontSize: 13),
+        ),
+        const SizedBox(height: 20),
+        SectionCard(
+          title: '已保存档案',
+          action: '${controller.profiles.length} 个',
+          child: controller.profiles.isEmpty
+              ? Padding(
+                  padding: const EdgeInsets.all(16),
+                  child: Text(
+                    '尚未保存路由器档案。',
+                    style: TextStyle(color: muted(context)),
+                  ),
+                )
+              : Column(
+                  children: [
+                    for (final (index, profile)
+                        in controller.profiles.indexed) ...[
+                      InkWell(
+                        onTap: () async {
+                          await controller.selectProfile(profile.id);
+                          _edit(profile);
+                        },
+                        child: RouterCard(
+                          name: profile.name,
+                          endpoint: profile.baseUrl,
+                          online:
+                              controller.status?.routerId == profile.id &&
+                              controller.status?.online == true,
+                          current: controller.activeRouterId == profile.id,
+                        ),
+                      ),
+                      if (index < controller.profiles.length - 1)
+                        const Divider(height: 1),
+                    ],
+                  ],
+                ),
+        ),
+        const SizedBox(height: 14),
+        SectionCard(
+          title: _editingId == null ? '添加路由器' : '编辑路由器',
+          child: Padding(
+            padding: const EdgeInsets.all(16),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                _RouterField(label: '显示名称', controller: _name),
+                _RouterField(
+                  label: 'LuCI 地址',
+                  controller: _endpoint,
+                  keyboardType: TextInputType.url,
+                ),
+                _RouterField(label: 'LuCI 用户名', controller: _username),
+                _RouterField(
+                  label: 'LuCI 密码',
+                  controller: _password,
+                  obscureText: true,
+                ),
+                _RouterField(
+                  label: 'SSH 密码（管理功能需要）',
+                  controller: _sshPassword,
+                  obscureText: true,
+                ),
+                _RouterField(
+                  label: 'SSH 端口',
+                  controller: _sshPort,
+                  keyboardType: TextInputType.number,
+                ),
+                Text(
+                  '密码仅用于当前连接；Rust 档案库不会写入密码、私钥、令牌或 Cookie。',
+                  style: TextStyle(
+                    color: muted(context),
+                    fontSize: 12,
+                    height: 1.4,
+                  ),
+                ),
+                const SizedBox(height: 14),
+                FilledButton.icon(
+                  onPressed: _submitting ? null : _saveAndConnect,
+                  icon: _submitting
+                      ? const SizedBox(
+                          width: 18,
+                          height: 18,
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        )
+                      : const Icon(Icons.link),
+                  label: Text(_submitting ? '正在连接' : '保存并连接'),
+                ),
+                if (_editingId != null) ...[
+                  const SizedBox(height: 8),
+                  TextButton(
+                    onPressed: () async {
+                      final id = _editingId;
+                      if (id == null) return;
+                      await controller.removeProfile(id);
+                      if (mounted) {
+                        setState(() {
+                          _editingId = null;
+                          _password.clear();
+                        });
+                      }
+                    },
+                    child: const Text('删除当前档案'),
+                  ),
+                ],
+              ],
+            ),
+          ),
+        ),
+        const SizedBox(height: 14),
+        const SectionCard(
+          title: 'SSH 安全说明',
+          child: Padding(
+            padding: EdgeInsets.all(16),
+            child: Text(
+              '未知或变化的 SSH 主机密钥必须显示精确 SHA-256 指纹，并由用户明确确认；应用不会自动接受主机密钥。',
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _RouterField extends StatelessWidget {
+  const _RouterField({
+    required this.label,
+    required this.controller,
+    this.keyboardType,
+    this.obscureText = false,
+  });
+
+  final String label;
+  final TextEditingController controller;
+  final TextInputType? keyboardType;
+  final bool obscureText;
+
+  @override
+  Widget build(BuildContext context) => Padding(
+    padding: const EdgeInsets.only(bottom: 12),
+    child: TextField(
+      controller: controller,
+      obscureText: obscureText,
+      keyboardType: keyboardType,
+      autocorrect: false,
+      enableSuggestions: !obscureText,
+      decoration: InputDecoration(
+        labelText: label,
+        border: const OutlineInputBorder(),
+      ),
+    ),
+  );
+}
+
+String _interfaceAddress(Map<String, dynamic> item) {
+  final ipv4 = (item['ipv4'] as List<dynamic>? ?? const []).whereType<String>();
+  final ipv6 = (item['ipv6'] as List<dynamic>? ?? const []).whereType<String>();
+  final addresses = [...ipv4, ...ipv6];
+  if (addresses.isNotEmpty) return addresses.join(' · ');
+  return item['device'] as String? ?? '未报告地址';
+}
+
+String _formatUptime(int? seconds) {
+  if (seconds == null) return '未报告';
+  final days = seconds ~/ 86400;
+  final hours = (seconds % 86400) ~/ 3600;
+  final minutes = (seconds % 3600) ~/ 60;
+  if (days > 0) return '$days 天 $hours 时';
+  if (hours > 0) return '$hours 小时 $minutes 分';
+  return '$minutes 分';
+}
+
+String _formatLoad(Object? value) {
+  final load = value is num ? value : null;
+  return load == null ? '未报告' : load.toStringAsFixed(2);
+}
+
+String _formatMemory(int? available, int? total) {
+  if (available == null || total == null || total <= 0) return '未报告';
+  final used = ((total - available) / total * 100).clamp(0, 100).round();
+  return '$used% 已用';
+}
+
+String _formatBytes(int? bytes) {
+  if (bytes == null) return '—';
+  if (bytes < 1024) return '$bytes B';
+  if (bytes < 1024 * 1024) return '${(bytes / 1024).toStringAsFixed(1)} KB';
+  if (bytes < 1024 * 1024 * 1024) {
+    return '${(bytes / (1024 * 1024)).toStringAsFixed(1)} MB';
+  }
+  return '${(bytes / (1024 * 1024 * 1024)).toStringAsFixed(1)} GB';
+}
+
+class ReadAction {
+  const ReadAction(this.icon, this.title, this.command, this.detail);
+
+  final IconData icon;
+  final String title;
+  final String command;
+  final String detail;
+}
+
+class ManagedAction {
+  const ManagedAction(
+    this.icon,
+    this.title,
+    this.operation,
+    this.command,
+    this.detail,
+  );
+
+  final IconData icon;
+  final String title;
+  final String operation;
+  final Map<String, Object?> command;
+  final String detail;
+}
+
+class LiveReadScreen extends StatefulWidget {
+  const LiveReadScreen({
+    required this.controller,
+    required this.title,
+    required this.subtitle,
+    required this.actions,
+    this.managedActions = const [],
+    super.key,
+  });
+
+  final RouterController controller;
+  final String title;
+  final String subtitle;
+  final List<ReadAction> actions;
+  final List<ManagedAction> managedActions;
+
+  @override
+  State<LiveReadScreen> createState() => _LiveReadScreenState();
+}
+
+class _LiveReadScreenState extends State<LiveReadScreen> {
+  bool _loading = false;
+  String? _output;
+  String? _error;
+  String? _selectedTitle;
+
+  Future<void> _run(ReadAction action) async {
+    setState(() {
+      _loading = true;
+      _error = null;
+      _output = null;
+      _selectedTitle = action.title;
+    });
+    final result = await widget.controller.sshRead(
+      action.command,
+      query: action.command == 'logs' ? 'system' : null,
+    );
+    if (!mounted) return;
+    setState(() {
+      _loading = false;
+      if (result.isSuccess) {
+        final value = result.value as Map<String, dynamic>? ?? const {};
+        final stdout = value['stdout'] as String? ?? '';
+        final stderr = value['stderr'] as String? ?? '';
+        _output = [
+          stdout,
+          if (stderr.isNotEmpty) '\n[stderr]\n$stderr',
+        ].where((part) => part.isNotEmpty).join();
+        if (_output!.isEmpty) _output = '路由器未返回可显示内容。';
+      } else {
+        _error = result.message;
+      }
+    });
+  }
+
+  Future<void> _runManaged(ManagedAction action) async {
+    final accepted = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: Text(action.title),
+        content: Text('${action.detail}\n\n请确认后继续。'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('取消'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('确认执行'),
+          ),
+        ],
+      ),
+    );
+    if (accepted != true || !mounted) return;
+    setState(() {
+      _loading = true;
+      _error = null;
+      _output = null;
+      _selectedTitle = action.title;
+    });
+    final result = await widget.controller.sshManaged(
+      operation: action.operation,
+      command: action.command,
+      singleConfirmed: true,
+    );
+    if (!mounted) return;
+    setState(() {
+      _loading = false;
+      if (result.isSuccess) {
+        final value = result.value as Map<String, dynamic>? ?? const {};
+        _output = [
+          value['stdout'] as String? ?? '',
+          value['stderr'] as String? ?? '',
+        ].where((part) => part.isNotEmpty).join('\n');
+        if (_output!.isEmpty) _output = '路由器未返回可显示内容。';
+      } else {
+        _error = result.message;
+      }
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) => AppPage(
+    title: widget.title,
+    subtitle: widget.subtitle,
+    children: [
+      SectionCard(
+        title: '真实路由器查询',
+        child: Column(
+          children: [
+            for (final (index, action) in widget.actions.indexed) ...[
+              ListTile(
+                onTap: _loading ? null : () => _run(action),
+                leading: Icon(
+                  action.icon,
+                  color: Theme.of(context).colorScheme.primary,
+                ),
+                title: Text(action.title),
+                subtitle: Text(action.detail),
+                trailing: _loading && _selectedTitle == action.title
+                    ? const SizedBox(
+                        width: 20,
+                        height: 20,
+                        child: CircularProgressIndicator(strokeWidth: 2),
+                      )
+                    : const Icon(Icons.chevron_right),
+              ),
+              if (index < widget.actions.length - 1) const Divider(height: 1),
+            ],
+          ],
+        ),
+      ),
+      if (widget.managedActions.isNotEmpty) ...[
+        const SizedBox(height: 14),
+        SectionCard(
+          title: '受控管理操作',
+          child: Column(
+            children: [
+              for (final (index, action) in widget.managedActions.indexed) ...[
+                ListTile(
+                  onTap: _loading ? null : () => _runManaged(action),
+                  leading: Icon(
+                    action.icon,
+                    color: Theme.of(context).colorScheme.error,
+                  ),
+                  title: Text(action.title),
+                  subtitle: Text('需要单次确认 · ${action.detail}'),
+                  trailing: const Icon(Icons.chevron_right),
+                ),
+                if (index < widget.managedActions.length - 1)
+                  const Divider(height: 1),
+              ],
+            ],
+          ),
+        ),
+      ],
+      const SizedBox(height: 14),
+      if (_error != null)
+        SectionCard(
+          title: '查询失败',
+          child: Padding(
+            padding: const EdgeInsets.all(16),
+            child: Text(
+              _error!,
+              style: TextStyle(color: Theme.of(context).colorScheme.error),
+            ),
+          ),
+        )
+      else if (_output != null)
+        SectionCard(
+          title: _selectedTitle ?? '查询结果',
+          child: Padding(
+            padding: const EdgeInsets.all(16),
+            child: SelectionArea(
+              child: Text(
+                _output!,
+                style: const TextStyle(
+                  fontFamily: 'monospace',
+                  fontSize: 12,
+                  height: 1.4,
+                ),
+              ),
+            ),
+          ),
+        )
+      else
+        SectionCard(
+          title: '尚未执行查询',
+          child: Padding(
+            padding: const EdgeInsets.all(16),
+            child: Text(
+              '选择上方入口后，Rust 将通过已验证的 SSH 会话执行受限只读命令。未提供 SSH 密码或未确认主机指纹时，不会生成任何模拟结果。',
+              style: TextStyle(color: muted(context), height: 1.45),
+            ),
+          ),
+        ),
+    ],
+  );
+}
