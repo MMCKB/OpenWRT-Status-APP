@@ -5,6 +5,7 @@
 
 pub mod config;
 pub mod diagnostics;
+pub mod luci;
 pub mod model;
 pub mod ssh;
 pub mod traffic;
@@ -14,6 +15,7 @@ mod tests;
 
 pub use config::{ConfigDiff, ConfigSnapshot, SnapshotFile};
 pub use diagnostics::{DiagnosticCheck, DiagnosticReport, DiagnosticSeverity};
+pub use luci::{LuCiClient, normalize_router_endpoint};
 pub use model::{InterfaceStatus, RouterProfile, RouterStatus, SystemStatus};
 pub use ssh::{KnownHost, TrustDecision, TrustedHostStore};
 pub use traffic::{TrafficRate, TrafficSample, TrafficSeries};
@@ -24,6 +26,14 @@ pub enum CoreError {
     InvalidRouterUrl(String),
     #[error("采样时间必须递增")]
     NonMonotonicSample,
+    #[error("无法访问路由器：{0}")]
+    Transport(String),
+    #[error("路由器返回 HTTP {0}")]
+    Http(u16),
+    #[error("路由器拒绝 RPC 请求：{0}")]
+    Rpc(String),
+    #[error("路由器返回了无法识别的响应：{0}")]
+    InvalidResponse(String),
     #[error("配置快照不属于当前路由器")]
     SnapshotRouterMismatch,
     #[error("SSH 主机指纹已变化，需要用户重新确认")]

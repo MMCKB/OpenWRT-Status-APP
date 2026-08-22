@@ -136,3 +136,16 @@ fn diagnostics_summarize_highest_severity() {
     assert_eq!(report.highest_severity(), DiagnosticSeverity::Error);
     assert!(report.summary().contains('1'));
 }
+
+#[test]
+fn normalizes_router_endpoint_to_ubus_without_query_or_fragment() {
+    let endpoint = crate::normalize_router_endpoint("192.168.1.1/luci?unsafe=yes#ignored").unwrap();
+    assert_eq!(endpoint.as_str(), "http://192.168.1.1/luci/ubus");
+    let endpoint = crate::normalize_router_endpoint("https://router.example/ubus/").unwrap();
+    assert_eq!(endpoint.as_str(), "https://router.example/ubus");
+}
+
+#[test]
+fn rejects_empty_router_endpoint() {
+    assert!(crate::normalize_router_endpoint("  ").is_err());
+}
