@@ -7,7 +7,8 @@ use std::time::Duration as StdDuration;
 
 use dioxus::prelude::*;
 use openwrt_core::{
-    InterfaceTrafficRate, InterfaceTrafficTracker, LuCiClient, RouterProfile, RouterStatus,
+    ConfirmationLevel, InterfaceTrafficRate, InterfaceTrafficTracker, LuCiClient, RouterOperation,
+    RouterProfile, RouterStatus,
 };
 use tokio::time::sleep;
 
@@ -531,12 +532,116 @@ fn RouterList(
 
 #[component]
 fn ServicesPanel() -> Element {
-    rsx! { section { class: "section-card", h2 { "服务健康" } p { "计划覆盖服务、Docker、DDNS、VPN、日志与配置状态。" } } }
+    let services = [
+        ("OpenClash", "代理与规则服务"),
+        ("AdGuard Home", "DNS 与广告过滤"),
+        ("PassWall", "代理服务"),
+        ("PassWall2", "代理服务"),
+        ("DDNS", "动态域名更新"),
+        ("UPnP", "自动端口映射"),
+        ("Docker", "容器与镜像管理"),
+    ];
+    rsx! {
+        section { class: "section-card",
+            h2 { "服务与容器" }
+            p { class: "section-note", "服务状态、日志、重启和 Docker 命令均通过受验证 SSH 会话下发；重启需要单次确认。" }
+            div { class: "management-list",
+                for (name, detail) in services {
+                    ManagementRow {
+                        title: name,
+                        detail,
+                        operation: RouterOperation::RestartService,
+                    }
+                }
+            }
+        }
+    }
 }
 
 #[component]
 fn ToolsPanel() -> Element {
-    rsx! { section { class: "section-card", h2 { "工具" } p { "计划覆盖诊断、SSH、SFTP、文件、固件、软件包、防火墙、Wake-on-LAN 与批量操作。" } } }
+    let tools = [
+        (
+            "网络诊断",
+            "Ping、DNS、路由与磁盘/温度健康检查",
+            RouterOperation::RunDiagnostics,
+        ),
+        (
+            "SSH 终端",
+            "显式终端命令；始终显示专用确认",
+            RouterOperation::ExecuteTerminal,
+        ),
+        (
+            "SFTP 文件管理",
+            "浏览、上传、下载、重命名、写入与删除",
+            RouterOperation::WriteFile,
+        ),
+        (
+            "无线与 DHCP",
+            "Wi-Fi、租约、客户端与网络应用",
+            RouterOperation::ApplyWireless,
+        ),
+        (
+            "防火墙与端口转发",
+            "规则、UPnP 和端口映射",
+            RouterOperation::ApplyFirewall,
+        ),
+        (
+            "软件包管理",
+            "opkg 查询、安装和卸载",
+            RouterOperation::InstallPackage,
+        ),
+        (
+            "固件升级",
+            "校验 /tmp 中的 sysupgrade 固件后执行",
+            RouterOperation::UpgradeFirmware,
+        ),
+        (
+            "Wake-on-LAN",
+            "向目标 MAC 发送唤醒报文",
+            RouterOperation::SendWakeOnLan,
+        ),
+        (
+            "批量操作",
+            "跨路由器诊断与配置快照任务",
+            RouterOperation::CreateConfigSnapshot,
+        ),
+    ];
+    rsx! {
+        section { class: "section-card",
+            h2 { "管理工具" }
+            p { class: "section-note", "核心层已为以下入口定义受限命令、输入校验、主机指纹验证和高风险审批。界面执行器将只调用这些计划，不接受任意命令绕过。" }
+            div { class: "management-list",
+                for (title, detail, operation) in tools {
+                    ManagementRow { title, detail, operation }
+                }
+            }
+        }
+    }
+}
+
+#[component]
+fn ManagementRow(title: &'static str, detail: &'static str, operation: RouterOperation) -> Element {
+    let safety = operation_safety_text(operation);
+    rsx! {
+        article { class: "management-row",
+            div { strong { "{title}" } p { "{detail}" } }
+            span { class: "safety-badge", "{safety}" }
+        }
+    }
+}
+
+fn operation_safety_text(operation: RouterOperation) -> String {
+    let confirmation = match operation.confirmation_level() {
+        ConfirmationLevel::None => "无需确认",
+        ConfirmationLevel::SingleConfirm => "需单次确认",
+        ConfirmationLevel::TypedConfirm => "需精确文本确认",
+    };
+    if operation.requires_snapshot() {
+        format!("{confirmation} · 需快照")
+    } else {
+        confirmation.to_owned()
+    }
 }
 
 #[component]
@@ -612,6 +717,6 @@ h1 { margin: 4px 0; font-size: 28px; } h2 { margin: 0 0 12px; font-size: 18px; }
 .progress-track { height: 4px; margin-top: 10px; overflow: hidden; border-radius: 8px; background: #e7eef2; }.progress-fill { height: 100%; border-radius: inherit; background: #007e7a; transition: width 220ms ease; }
 .interface-row { padding: 12px 0; border-top: 1px solid #e7eef2; }.interface-row > div { flex: 1; }.interface-row strong { display: block; }
 .tab-bar { position: fixed; right: 0; bottom: 0; left: 0; justify-content: space-around; padding: 10px; border-top: 1px solid #d9e5ea; background: #fff; }.tab, .refresh-button, .primary, .settings-actions button { border: 0; border-radius: 12px; padding: 10px 12px; background: transparent; color: inherit; }.tab.selected, .primary { background: #007e7a; color: white; }.refresh-button { background: #e6f5f4; color: #005f5c; }
-.profile-list { display: grid; gap: 8px; margin-bottom: 12px; }.profile-row { display: grid; grid-template-columns: minmax(0, 1fr) auto auto; gap: 8px; align-items: center; padding: 10px; border: 1px solid #d9e5ea; border-radius: 12px; }.profile-row p { margin: 3px 0 0; color: #6b7c93; font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }.secondary { border: 1px solid #ccdbe3; border-radius: 10px; padding: 8px 10px; background: transparent; color: inherit; font: inherit; }.danger { color: #b12f2f; }.field-label { display: block; margin: 14px 0 6px; color: #5d6e82; font-size: 13px; font-weight: 600; }.text-input { width: 100%; border: 1px solid #ccdbe3; border-radius: 10px; padding: 10px 12px; background: transparent; color: inherit; font: inherit; }.primary { display: inline-block; margin-top: 16px; }.state-card p, .warning-card p { line-height: 1.45; }.error-state { border-color: #c74444; }
-.theme-dark .hero-card, .theme-dark .traffic-card, .theme-dark .metric-card, .theme-dark .section-card, .theme-dark .tab-bar { background: #13212b; border-color: #294a60; }.theme-dark .metric-label, .theme-dark .metric-detail, .theme-dark .endpoint, .theme-dark .eyebrow, .theme-dark .interface-row p, .theme-dark .section-note, .theme-dark .traffic-state, .theme-dark .traffic-empty { color: #afc2d1; }.theme-dark .text-input, .theme-dark .secondary, .theme-dark .profile-row { border-color: #466475; } .theme-dark .profile-row p { color: #afc2d1; }
+.management-list { display: grid; gap: 8px; }.management-row { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 12px; align-items: center; padding: 11px 0; border-top: 1px solid #e7eef2; }.management-row p { margin: 3px 0 0; color: #6b7c93; font-size: 12px; line-height: 1.4; }.safety-badge { border-radius: 99px; padding: 5px 8px; background: #e6f5f4; color: #005f5c; font-size: 11px; white-space: nowrap; }.profile-list { display: grid; gap: 8px; margin-bottom: 12px; }.profile-row { display: grid; grid-template-columns: minmax(0, 1fr) auto auto; gap: 8px; align-items: center; padding: 10px; border: 1px solid #d9e5ea; border-radius: 12px; }.profile-row p { margin: 3px 0 0; color: #6b7c93; font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }.secondary { border: 1px solid #ccdbe3; border-radius: 10px; padding: 8px 10px; background: transparent; color: inherit; font: inherit; }.danger { color: #b12f2f; }.field-label { display: block; margin: 14px 0 6px; color: #5d6e82; font-size: 13px; font-weight: 600; }.text-input { width: 100%; border: 1px solid #ccdbe3; border-radius: 10px; padding: 10px 12px; background: transparent; color: inherit; font: inherit; }.primary { display: inline-block; margin-top: 16px; }.state-card p, .warning-card p { line-height: 1.45; }.error-state { border-color: #c74444; }
+.theme-dark .hero-card, .theme-dark .traffic-card, .theme-dark .metric-card, .theme-dark .section-card, .theme-dark .tab-bar { background: #13212b; border-color: #294a60; }.theme-dark .metric-label, .theme-dark .metric-detail, .theme-dark .endpoint, .theme-dark .eyebrow, .theme-dark .interface-row p, .theme-dark .section-note, .theme-dark .traffic-state, .theme-dark .traffic-empty { color: #afc2d1; }.theme-dark .text-input, .theme-dark .secondary, .theme-dark .profile-row { border-color: #466475; } .theme-dark .profile-row p, .theme-dark .management-row p { color: #afc2d1; }.theme-dark .safety-badge { background: #174c4a; color: #c9f2ef; }
 "#;
