@@ -1,6 +1,6 @@
 # OpenWrt 路由器状态
 
-> **面向 OpenWrt 的 Android 本地网络管理工具**
+> **面向 OpenWrt 的 Android 本地网络管理工具**（Vibe Coding）
 
 [![GitHub Release](https://img.shields.io/github/v/release/MMCKB/OpenWRT-Status-APP?display_name=tag&style=for-the-badge&logo=android&logoColor=white&label=Release)](https://github.com/MMCKB/OpenWRT-Status-APP/releases)
 [![Android 构建](https://img.shields.io/github/actions/workflow/status/MMCKB/OpenWRT-Status-APP/build-android.yml/Build%20and%20release%20Android%20APKs?branch=main&style=for-the-badge&logo=githubactions&logoColor=white&label=Android%20Build)](https://github.com/MMCKB/OpenWRT-Status-APP/actions/workflows/build-android.yml)
