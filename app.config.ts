@@ -97,6 +97,24 @@ const config: ExpoConfig = {
     "expo-document-picker",
     "./plugins/with-openwrt-ssh",
     [
+      "react-native-android-widget",
+      {
+        widgets: [
+          {
+            name: "OpenWrtStatusWidget",
+            label: "OpenWrt 状态",
+            description: "显示路由器在线状态与实时上下行速率,点击可刷新。",
+            minWidth: "180dp",
+            minHeight: "60dp",
+            targetCellWidth: 2,
+            targetCellHeight: 2,
+            resizeMode: "none|vertical",
+            updatePeriodMillis: 1800000,
+          },
+        ],
+      },
+    ],
+    [
       "expo-secure-store",
       {
         configureAndroidBackup: true,

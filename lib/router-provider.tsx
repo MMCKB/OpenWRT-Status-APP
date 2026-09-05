@@ -27,6 +27,7 @@ import {
   saveSettings,
   saveSshPassword,
 } from "@/lib/router-storage";
+import { refreshOpenWrtWidgetFromApp } from "@/lib/widget-bridge";
 import type {
   RouterProfile,
   RouterSettings,
@@ -147,6 +148,7 @@ export function RouterProvider({ children }: { children: ReactNode }) {
           status.fetchedAt,
         );
       }
+      void refreshOpenWrtWidgetFromApp();
       const updated = profiles.map((profile) =>
         profile.id === selectedProfile.id
           ? { ...profile, lastConnectedAt: status.fetchedAt }

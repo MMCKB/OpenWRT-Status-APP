@@ -23,8 +23,9 @@
 | 实时网络     | 每秒级可选刷新、多 WAN/LAN 独立上下行速率曲线、完整图表与紧凑数据两种显示方式、诊断与 WAN 重连。              |
 | SSH 与文件   | 应用内嵌 SSH 终端、密码/keyboard-interactive 认证、文件浏览、上传下载、复制移动、重命名、文本编辑和权限修改。 |
 | OpenWrt 管理 | OpenWrt 25.12 `apk` 软件包管理、固件上传升级、配置备份恢复、DHCP 与静态租约、无线 SSID 与信道优化。           |
-| 服务与安全   | OpenClash、AdGuard Home、Docker 容器、日志中心、防火墙区域、端口转发、UPnP、设备拉黑和 Wake-on-LAN。          |
+| 服务与安全   | OpenClash、AdGuard Home、Docker 容器、日志中心、防火墙区域、端口转发、UPnP、设备拉黑、Wake-on-LAN、WireGuard 管理(状态/Peer/客户端配置二维码)、OpenClash 节点面板(测速与切换)和 AdGuard Home 拦截统计。 |
 | 诊断与更新   | 弱信号设备分析、性能基准与自定义域名 Ping、GitHub Release 固件检查、下载和二次确认更新。                      |
+| 桌面小组件   | OpenWrt 状态 Widget:在线状态、实时上下行速率与内存占用,支持点击刷新与 30 分钟自动更新。                      |
 | 使用体验     | 简体中文界面、浅色/深色/跟随系统主题、应用内主题弹窗、安全区适配和 Android 返回导航。                         |
 
 ## 安装 APK

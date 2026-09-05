@@ -46,6 +46,24 @@ const tools = [
     target: "/wake-on-lan",
   },
   {
+    title: "WireGuard",
+    description: "查看接口与 Peer 状态,增删 Peer 并生成官方客户端配置二维码。",
+    icon: "vpn-key",
+    target: "/wireguard",
+  },
+  {
+    title: "OpenClash 面板",
+    description: "查看代理组、节点测速并切换节点,基于 Clash API。",
+    icon: "hub",
+    target: "/clash-panel",
+  },
+  {
+    title: "AdGuard Home",
+    description: "查看 DNS 拦截统计、查询排行与保护状态。",
+    icon: "shield",
+    target: "/adguard-panel",
+  },
+  {
     title: "网络诊断",
     description: "按 WAN 执行 Ping、DNS、路由追踪和端口连通性检查。",
     icon: "network-check",
