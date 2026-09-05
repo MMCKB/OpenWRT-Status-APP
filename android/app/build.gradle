@@ -32,7 +32,6 @@ react {
     //   The list of variants to that are debuggable. For those we're going to
     //   skip the bundling of the JS bundle and the assets. By default is just 'debug'.
     //   If you add flavors like lite, prod, etc. you'll have to list your debuggableVariants.
-    debuggableVariants = ["debug"]
     // debuggableVariants = ["liteDebug", "prodDebug"]
 
     /* Bundling */
@@ -105,22 +104,15 @@ android {
             keyAlias 'androiddebugkey'
             keyPassword 'android'
         }
-        release {
-            // CI 恢复的持久发布证书;release 与旧版同签名身份,支持覆盖安装。
-            storeFile file('openwrt-status-release.keystore')
-            storePassword System.getenv('ANDROID_RELEASE_KEYSTORE_PASSWORD')
-            keyAlias System.getenv('ANDROID_RELEASE_KEY_ALIAS')
-            keyPassword System.getenv('ANDROID_RELEASE_KEY_PASSWORD')
-        }
     }
     buildTypes {
         debug {
             signingConfig signingConfigs.debug
         }
         release {
-            signingConfig signingConfigs.release
             // Caution! In production, you need to generate your own keystore file.
             // see https://reactnative.dev/docs/signed-apk-android.
+            signingConfig signingConfigs.debug
             def enableShrinkResources = findProperty('android.enableShrinkResourcesInReleaseBuilds') ?: 'false'
             shrinkResources enableShrinkResources.toBoolean()
             minifyEnabled enableMinifyInReleaseBuilds
