@@ -37,29 +37,20 @@ public class OpenWrtSshModule extends ReactContextBaseJavaModule {
   @ReactMethod
   public void connect(String host, double port, String username, String password, String key, Promise promise) {
     executor.execute(() -> {
-      Session session = null;
       try {
-        if (password == null || password.trim().isEmpty()) {
-          throw new Exception("SSH 密码为空。请在路由器资料中单独填写 SSH 密码，或确认其与 LuCI 密码相同。");
-        }
         disconnectInternal(key);
         JSch jsch = new JSch();
-        session = jsch.getSession(username, host, (int) port);
+        Session session = jsch.getSession(username, host, (int) port);
         session.setPassword(password);
         Properties options = new Properties();
         options.put("StrictHostKeyChecking", "no");
-        options.put("PreferredAuthentications", "keyboard-interactive,password");
+        options.put("PreferredAuthentications", "password");
         session.setConfig(options);
         session.connect(15000);
         sessions.put(key, session);
         promise.resolve(null);
       } catch (Exception error) {
-        if (session != null && session.isConnected()) session.disconnect();
-        String detail = error.getMessage() == null ? "未知认证错误" : error.getMessage();
-        if (detail.contains("Auth fail for methods") || detail.contains("Auth cancel")) {
-          detail = "SSH 认证失败：路由器允许 publickey/password 登录，但当前 SSH 用户名或密码被拒绝。应用已依次尝试密码与键盘交互认证。请在“路由器 > 编辑”中确认 SSH 用户名、SSH 密码和端口；若路由器仅允许公钥登录，请先在路由器启用密码登录或配置授权公钥。原始提示：" + detail;
-        }
-        promise.reject("SSH_CONNECT_FAILED", detail, error);
+        promise.reject("SSH_CONNECT_FAILED", error.getMessage(), error);
       }
     });
   }
@@ -124,14 +115,6 @@ public class OpenWrtSshModule extends ReactContextBaseJavaModule {
   @ReactMethod
   public void disconnect(String key) {
     executor.execute(() -> disconnectInternal(key));
-  }
-
-  @ReactMethod
-  public void isConnected(String key, Promise promise) {
-    executor.execute(() -> {
-      Session session = sessions.get(key);
-      promise.resolve(session != null && session.isConnected());
-    });
   }
 
   @ReactMethod

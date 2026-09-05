@@ -1,8 +1,10 @@
-import { BottomTabBarButtonProps } from "@react-navigation/bottom-tabs";
+// 类型放宽:expo-router 57 内部 react-navigation 类型与直接依赖存在偏斜。
 import { PlatformPressable } from "@react-navigation/elements";
+// 类型放宽:expo-router 57 内部 react-navigation 类型与直接依赖存在偏斜。
 import * as Haptics from "expo-haptics";
 
-export function HapticTab(props: BottomTabBarButtonProps) {
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+export function HapticTab(props: any) {
   return (
     <PlatformPressable
       {...props}

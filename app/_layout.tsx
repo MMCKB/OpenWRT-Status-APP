@@ -107,7 +107,6 @@ export default function RootLayout() {
                     <RootNavigator />
                     <StatusBar
                       style={colorScheme === "dark" ? "light" : "dark"}
-                      backgroundColor={colors.background}
                     />
                   </SafeAreaView>
                 </AppDialogProvider>

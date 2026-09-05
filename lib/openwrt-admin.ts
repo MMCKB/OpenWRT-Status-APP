@@ -179,6 +179,11 @@ export const MANAGED_OPENWRT_SERVICES = [
   "dropbear",
 ] as const;
 
+/** 确定性的码点序比较,避免 locale/ICU 版本导致的排序差异。 */
+function cmpStr(left: string, right: string) {
+  return left < right ? -1 : left > right ? 1 : 0;
+}
+
 function cleanQuoted(value: string) {
   return value.trim().replace(/^['"]|['"]$/g, "");
 }
@@ -282,7 +287,7 @@ export function parseConnectedClients(output: string): ConnectedClient[] {
   return [...byMac.values()].sort(
     (a, b) =>
       Number(b.online) - Number(a.online) ||
-      (a.hostname ?? a.mac).localeCompare(b.hostname ?? b.mac),
+      cmpStr(a.hostname ?? a.mac, b.hostname ?? b.mac),
   );
 }
 
@@ -322,7 +327,7 @@ function parseDynamicDhcpLeases(output: string): DhcpLease[] {
     });
   }
   return [...leases.values()].sort((a, b) =>
-    (a.hostname ?? a.mac).localeCompare(b.hostname ?? b.mac),
+    cmpStr(a.hostname ?? a.mac, b.hostname ?? b.mac),
   );
 }
 
@@ -378,7 +383,7 @@ export function parseDhcpLeaseSnapshot(output: string): DhcpLeaseSnapshot {
   return {
     dynamic,
     static: staticLeases.sort((a, b) =>
-      (a.hostname ?? a.mac).localeCompare(b.hostname ?? b.mac),
+      cmpStr(a.hostname ?? a.mac, b.hostname ?? b.mac),
     ),
   };
 }
@@ -478,7 +483,7 @@ export function parseWolCandidates(output: string): WolDevice[] {
     });
   }
   return [...candidates.values()].sort((a, b) =>
-    (a.hostname ?? a.mac).localeCompare(b.hostname ?? b.mac),
+    cmpStr(a.hostname ?? a.mac, b.hostname ?? b.mac),
   );
 }
 
@@ -560,7 +565,7 @@ export function parseWolDevices(output: string): WolDevice[] {
     });
   }
   return [...targets.values()].sort((a, b) =>
-    (a.hostname ?? a.mac).localeCompare(b.hostname ?? b.mac),
+    cmpStr(a.hostname ?? a.mac, b.hostname ?? b.mac),
   );
 }
 
@@ -606,7 +611,7 @@ export function parseWifiNetworkBindings(output: string): string[] {
     const match = line.match(/^__WIFI_NETWORK__\|([A-Za-z0-9_.-]{1,32})$/);
     if (match) bindings.add(match[1]);
   }
-  return [...bindings].sort((left, right) => left.localeCompare(right));
+  return [...bindings].sort((left, right) => cmpStr(left, right));
 }
 
 export function buildWifiToggleCommand(section: string, enabled: boolean) {
@@ -774,7 +779,7 @@ export function parseWeakSignalClients(output: string): WeakSignalClient[] {
       (a, b) =>
         weight[a.quality] - weight[b.quality] ||
         (a.signalDbm ?? 1) - (b.signalDbm ?? 1) ||
-        (a.hostname ?? a.mac).localeCompare(b.hostname ?? b.mac),
+        cmpStr(a.hostname ?? a.mac, b.hostname ?? b.mac),
     );
 }
 
@@ -856,7 +861,7 @@ export function parseWirelessOptimizationSnapshot(
     networks.push(...readScanNetworks(mappedRadio, scan.raw));
   }
   return {
-    radios: [...radios.values()].sort((a, b) => a.name.localeCompare(b.name)),
+    radios: [...radios.values()].sort((a, b) => cmpStr(a.name, b.name)),
     networks,
   };
 }
@@ -1124,7 +1129,7 @@ export function parseDockerSnapshot(output: string): DockerSnapshot {
     available: true,
     containers: [...containers.values()].sort(
       (a, b) =>
-        Number(b.running) - Number(a.running) || a.name.localeCompare(b.name),
+        Number(b.running) - Number(a.running) || cmpStr(a.name, b.name),
     ),
   };
 }

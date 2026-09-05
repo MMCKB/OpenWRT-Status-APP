@@ -52,7 +52,6 @@ const config: ExpoConfig = {
   icon: "./assets/images/icon.png",
   scheme: env.scheme,
   userInterfaceStyle: "automatic",
-  newArchEnabled: true,
   ios: {
     supportsTablet: true,
     bundleIdentifier: env.iosBundleId,
@@ -70,7 +69,6 @@ const config: ExpoConfig = {
       foregroundImage: "./assets/images/android-icon-foreground.png",
       monochromeImage: "./assets/images/android-icon-monochrome.png",
     },
-    edgeToEdgeEnabled: true,
     versionCode: 25,
     package: env.androidPackage,
     permissions: ["POST_NOTIFICATIONS"],
