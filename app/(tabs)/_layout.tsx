@@ -17,6 +17,7 @@ export default function TabLayout() {
       backBehavior="history"
       screenOptions={{
         tabBarActiveTintColor: colors.tint,
+        tabBarInactiveTintColor: colors.muted,
         headerShown: false,
         sceneStyle: { backgroundColor: colors.background },
         tabBarButton: HapticTab,
