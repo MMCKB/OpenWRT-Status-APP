@@ -51,11 +51,14 @@ class DashboardViewModel : ViewModel() {
         val status: RouterStatus? = null,
         val error: String? = null,
         val refreshing: Boolean = false,
+        val rateHistory: List<com.app.openwrtstatusapp.core.traffic.TrafficRate> = emptyList(),
     )
 
     private val _state = MutableStateFlow(UiState())
     val state: StateFlow<UiState> = _state
     private var inFlight = false
+    private val previousSnapshots = mutableMapOf<String, com.app.openwrtstatusapp.core.traffic.TrafficSnapshot>()
+    private var interfaceSelection: List<String> = emptyList()
 
     init {
         viewModelScope.launch {
@@ -65,6 +68,7 @@ class DashboardViewModel : ViewModel() {
                 val selected = profiles.find { it.id == settings.selectedRouterId }
                 _state.update { it.copy(selectedRouter = selected) }
                 if (selected != null && settings.refreshIntervalSeconds > 0) {
+                    interfaceSelection = settings.trafficInterfaceIds
                     refresh(selected)
                     delay(settings.refreshIntervalSeconds.coerceAtMost(3600) * 1000L)
                 } else {
@@ -90,7 +94,32 @@ class DashboardViewModel : ViewModel() {
             val status = AppGraph.ubusClient.fetchRouterStatus(
                 profile.id, profile.baseUrl, profile.username, password,
             )
-            _state.update { it.copy(status = status, error = null) }
+            // 速率计算:优先使用独立的流量接口,回退到状态页接口计数。
+            val traffic = runCatching {
+                AppGraph.ubusClient.fetchRouterTraffic(profile.baseUrl, profile.username, password)
+            }.getOrNull()
+            val interfaces = traffic?.interfaces ?: status.interfaces
+            val snapshots = com.app.openwrtstatusapp.core.traffic.TrafficMonitor.makeTrafficInterfaceSnapshots(
+                interfaces, System.currentTimeMillis(), interfaceSelection,
+            )
+            val rates = snapshots.mapNotNull { snapshot ->
+                val rate = com.app.openwrtstatusapp.core.traffic.TrafficMonitor.calculateTrafficRate(
+                    previousSnapshots[snapshot.id],
+                    com.app.openwrtstatusapp.core.traffic.TrafficSnapshot(
+                        snapshot.timestamp, snapshot.rxBytes, snapshot.txBytes, snapshot.source,
+                    ),
+                )
+                previousSnapshots[snapshot.id] = com.app.openwrtstatusapp.core.traffic.TrafficSnapshot(
+                    snapshot.timestamp, snapshot.rxBytes, snapshot.txBytes, snapshot.source,
+                )
+                rate
+            }
+            val nextHistory = if (rates.isNotEmpty()) {
+                (_state.value.rateHistory + rates.first()).takeLast(60)
+            } else {
+                _state.value.rateHistory
+            }
+            _state.update { it.copy(status = status, error = null, rateHistory = nextHistory) }
         } catch (error: Exception) {
             _state.update { it.copy(error = error.message ?: "未知错误") }
         } finally {
@@ -126,7 +155,7 @@ fun DashboardScreen(
         when {
             selected == null -> EmptyState(onGoRouters)
             error != null && status == null -> ErrorState(error, onGoRouters)
-            status != null -> StatusContent(status)
+            status != null -> StatusContent(status, state.rateHistory)
         }
     }
 }
@@ -154,8 +183,15 @@ private fun ErrorState(message: String, retry: () -> Unit) {
 }
 
 @Composable
-private fun StatusContent(status: RouterStatus) {
+private fun StatusContent(status: RouterStatus, rateHistory: List<com.app.openwrtstatusapp.core.traffic.TrafficRate>) {
     LazyColumn(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+        item {
+            Card(Modifier.fillMaxWidth()) {
+                Column(Modifier.padding(16.dp)) {
+                    com.app.openwrtstatusapp.ui.hubs.TrafficRateChart(rateHistory)
+                }
+            }
+        }
         item {
             Card(Modifier.fillMaxWidth()) {
                 Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {

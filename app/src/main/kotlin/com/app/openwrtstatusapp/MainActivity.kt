@@ -7,6 +7,8 @@ import androidx.activity.enableEdgeToEdge
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Apps
+import androidx.compose.material.icons.filled.Build
 import androidx.compose.material.icons.filled.Dashboard
 import androidx.compose.material.icons.filled.Router
 import androidx.compose.material.icons.filled.Settings
@@ -56,15 +58,15 @@ private data class Tab(val route: String, val label: String, val icon: ImageVect
 
 private val tabs = listOf(
     Tab("dashboard", "状态", Icons.Filled.Dashboard),
+    Tab("toolsHub", "工具", Icons.Filled.Build),
+    Tab("servicesHub", "服务", Icons.Filled.Apps),
     Tab("routers", "路由器", Icons.Filled.Router),
-    Tab("ssh", "SSH", Icons.Filled.Terminal),
     Tab("settings", "设置", Icons.Filled.Settings),
 )
 
 @Composable
 fun OpenWrtApp() {
     val nav = rememberNavController()
-    // 设置页的主题选项(扩展字段 themeMode):"system" | "light" | "dark"
     Scaffold(
         bottomBar = {
             NavigationBar {
@@ -91,7 +93,15 @@ fun OpenWrtApp() {
             startDestination = "dashboard",
             modifier = Modifier.padding(padding),
         ) {
-            composable("dashboard") { DashboardScreen(onGoRouters = { nav.navigate("routers") }) }
+            composable("dashboard") {
+                DashboardScreen(onGoRouters = { nav.navigate("routers") })
+            }
+            composable("toolsHub") {
+                com.app.openwrtstatusapp.ui.hubs.ToolsHubScreen { route -> nav.navigate(route) }
+            }
+            composable("servicesHub") {
+                com.app.openwrtstatusapp.ui.hubs.ServicesHubScreen { route -> nav.navigate(route) }
+            }
             composable("routers") {
                 RoutersScreen(
                     onEdit = { profileId -> nav.navigate("routerForm?profileId=$profileId") },
@@ -105,6 +115,33 @@ fun OpenWrtApp() {
             }
             composable("ssh") { SshScreen() }
             composable("settings") { SettingsScreen() }
+
+            // 工具
+            composable("diagnostics") { com.app.openwrtstatusapp.ui.tools.DiagnosticsScreen() }
+            composable("quickActions") { com.app.openwrtstatusapp.ui.tools.QuickActionsScreen() }
+            composable("natDetection") { com.app.openwrtstatusapp.ui.tools.NatDetectionScreen() }
+            composable("wol") { com.app.openwrtstatusapp.ui.tools.WakeOnLanScreen() }
+            composable("diskSpeed") { com.app.openwrtstatusapp.ui.tools.DiskSpeedScreen() }
+            composable("benchmark") { com.app.openwrtstatusapp.ui.tools.PerformanceBenchmarkScreen() }
+            composable("files") { com.app.openwrtstatusapp.ui.files.FilesScreen() }
+            composable("bulk") { com.app.openwrtstatusapp.ui.network.BulkOperationsScreen() }
+
+            // 服务
+            composable("servicesHealth") { com.app.openwrtstatusapp.ui.services.ServicesHealthScreen() }
+            composable("proxyServices") { com.app.openwrtstatusapp.ui.services.ProxyServicesScreen() }
+            composable("docker") { com.app.openwrtstatusapp.ui.services.DockerScreen() }
+            composable("logs") { com.app.openwrtstatusapp.ui.services.LogsScreen() }
+            composable("packages") { com.app.openwrtstatusapp.ui.packages.PackagesScreen() }
+            composable("systemAdmin") { com.app.openwrtstatusapp.ui.system.SystemAdminScreen() }
+            composable("firewall") { com.app.openwrtstatusapp.ui.network.FirewallScreen() }
+            composable("dhcpLeases") { com.app.openwrtstatusapp.ui.network.DhcpLeasesScreen() }
+            composable("clients") { com.app.openwrtstatusapp.ui.network.ClientsScreen() }
+            composable("wirelessManager") { com.app.openwrtstatusapp.ui.network.WirelessManagerScreen() }
+            composable("wirelessOptimizer") { com.app.openwrtstatusapp.ui.network.WirelessOptimizerScreen() }
+            composable("weakSignal") { com.app.openwrtstatusapp.ui.network.WeakSignalScreen() }
+            composable("maintenance") { com.app.openwrtstatusapp.ui.tools.MaintenanceToolsScreen() }
+            composable("firmwareRelease") { com.app.openwrtstatusapp.ui.firmware.FirmwareReleaseScreen() }
+            composable("guestNetwork") { com.app.openwrtstatusapp.ui.tools.GuestNetworkScreen() }
         }
     }
 }
