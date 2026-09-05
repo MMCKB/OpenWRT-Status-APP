@@ -1,5 +1,5 @@
 // 类型放宽:expo-router 57 内部 react-navigation 类型与直接依赖存在偏斜。
-import { PlatformPressable } from "@react-navigation/elements";
+import { PlatformPressable } from "expo-router/react-navigation";
 // 类型放宽:expo-router 57 内部 react-navigation 类型与直接依赖存在偏斜。
 import * as Haptics from "expo-haptics";
 
