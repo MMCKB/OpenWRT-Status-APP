@@ -278,9 +278,10 @@ function withOpenWrtSsh(config) {
           "$2}",
         ].join("\n"),
       );
+      // release 块内的 signingConfig 紧跟 RN 模板的 APk 签名注释,以此作为唯一锚点。
       gradleContents = gradleContents.replace(
-        /signingConfig signingConfigs\.debug(?=[\s\S]*\bminifyEnabled)/,
-        "signingConfig signingConfigs.release",
+        "// see https://reactnative.dev/docs/signed-apk-android.\n            signingConfig signingConfigs.debug",
+        "// see https://reactnative.dev/docs/signed-apk-android.\n            signingConfig signingConfigs.release",
       );
     }
     modConfig.modResults.contents = gradleContents;
