@@ -1,88 +1,26 @@
-# Learn more https://docs.github.com/en/get-started/getting-started-with-git/ignoring-files
-
-# dependencies
-node_modules/
-
-# Expo
-.expo/
-dist/
-web-build/
-expo-env.d.ts
-
-# Native
-.kotlin/
-*.orig.*
-*.keystore
-*.jks
-*.p8
-*.p12
-*.key
-*.mobileprovision
-
-# Metro
-.metro-health-check*
-
-# debug
-npm-debug.*
-yarn-debug.*
-yarn-error.*
-
-# macOS
-.DS_Store
-*.pem
-
-# local env files
-.env
-.env.*
-.env*.local
-
-# typescript
-*.tsbuildinfo
-
-app-example
-
-# generated iOS folder
-/ios
-
-# Android local configuration, build caches, native intermediates, and signing material
-/android/.gradle/
-/android/build/
-/android/app/build/
-/android/.cxx/
-/android/app/.cxx/
-/android/local.properties
-/android/app/debug.keystore
-/android/app/release.keystore
+# Gradle
+.gradle/
+build/
+local.properties
 
 # IDE
-.vscode/
 .idea/
-*.swp
-*.swo
-*~
+*.iml
+*.ipr
+*.iws
 
-# Logs
-logs
-*.log
+# Kotlin
+.kotlin/
+
+# Android
+captures/
+*.apk.idsig
+*.hprof
+
+# Keystore(勿提交)
+*.keystore
+*.jks
 
 # OS
+.DS_Store
 Thumbs.db
-
-# Build files
-*.tgz
-*.tar.gz
-.cache/
-/apk-output/
-release-artifacts/
-*.apk
-*.aab
-
-# Webdev artifacts (checkpoint zips, migrations, etc.)
-.webdev/
-.project-config.json
-/public/download/openwrt-status-debug.apk
-public/download/*.apk
-
-# Local project-management records (not part of the public source repository)
-/todo.md
-/design.md

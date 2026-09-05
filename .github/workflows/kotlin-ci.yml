@@ -1,0 +1,53 @@
+name: Kotlin Android CI
+
+on:
+  push:
+    branches:
+      - Kotlin-Dev
+  pull_request:
+    branches:
+      - Kotlin-Dev
+  workflow_dispatch:
+
+# 仅需要读取仓库;构建产物通过 artifact 上传,不直接发 Release。
+permissions:
+  contents: read
+
+concurrency:
+  group: kotlin-ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    name: Test and build
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v4
+
+      - name: Run core unit tests
+        run: ./gradlew :core:test --stacktrace
+
+      - name: Build APKs
+        run: ./gradlew :app:assembleDebug :app:assembleRelease --stacktrace
+
+      - name: Upload debug APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: app-debug
+          path: app/build/outputs/apk/debug/app-debug.apk
+
+      - name: Upload release APK (unsigned)
+        uses: actions/upload-artifact@v4
+        with:
+          name: app-release-unsigned
+          path: app/build/outputs/apk/release/app-release-unsigned.apk
