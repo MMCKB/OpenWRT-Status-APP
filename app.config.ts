@@ -69,6 +69,10 @@ const config: ExpoConfig = {
       foregroundImage: "./assets/images/android-icon-foreground.png",
       monochromeImage: "./assets/images/android-icon-monochrome.png",
     },
+    // Android 13+ 预测性返回手势的系统级总开关（manifest enableOnBackInvokedCallback）。
+    // 运行时还受设置页“预测性返回手势”开关控制：关闭时 JS 会接管根屏返回，
+    // 立即退出应用并跳过系统预测动画，行为与旧版一致。
+    predictiveBackGestureEnabled: true,
     versionCode: 25,
     package: env.androidPackage,
     permissions: ["POST_NOTIFICATIONS"],

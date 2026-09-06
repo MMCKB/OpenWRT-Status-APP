@@ -16,6 +16,7 @@ const defaultSettings: RouterSettings = {
   trafficInterfaceIds: [],
   statusTrafficView: "full",
   diagnosticOutputDisplay: "both",
+  predictiveBackEnabled: false,
 };
 
 function passwordKey(routerId: string) {
@@ -91,6 +92,10 @@ export async function loadSettings(): Promise<RouterSettings> {
         decoded.diagnosticOutputDisplay === "dialog"
           ? decoded.diagnosticOutputDisplay
           : defaultSettings.diagnosticOutputDisplay,
+      predictiveBackEnabled:
+        typeof decoded.predictiveBackEnabled === "boolean"
+          ? decoded.predictiveBackEnabled
+          : defaultSettings.predictiveBackEnabled,
     };
   } catch {
     return defaultSettings;

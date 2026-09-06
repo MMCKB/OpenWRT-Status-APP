@@ -18,6 +18,8 @@ export interface RouterSettings {
   statusTrafficView: "full" | "compact";
   /** Where manually executed diagnostic command results are shown. */
   diagnosticOutputDisplay: "page" | "dialog" | "both";
+  /** Android 13+ predictive back gesture. Off keeps the legacy instant-exit behavior at the root screen. */
+  predictiveBackEnabled: boolean;
 }
 
 export interface SystemStatus {

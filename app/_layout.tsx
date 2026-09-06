@@ -1,11 +1,11 @@
 import "@/global.css";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { Stack } from "expo-router";
+import { router, Stack } from "expo-router";
 import { StatusBar } from "expo-status-bar";
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { BackHandler, Platform } from "react-native";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
 import "react-native-reanimated";
-import { Platform } from "react-native";
 import "@/lib/_core/nativewind-pressable";
 import { ThemeProvider } from "@/lib/theme-provider";
 import { useThemeContext } from "@/lib/theme-provider";
@@ -145,8 +145,29 @@ export default function RootLayout() {
   );
 }
 
+import { useRouterStore } from "@/lib/router-provider";
+
 function RootNavigator() {
   const colors = useColors();
+  const { settings } = useRouterStore();
+  const predictiveBackEnabled = settings.predictiveBackEnabled;
+
+  // 关闭预测性返回时接管根屏返回：立即退出应用，保持旧版的即时退出行为。
+  // 开启时不注册监听，让系统接管返回事件并播放预测动画（Android 13+）。
+  // 二级页面的返回由导航栈处理，监听器只在根屏生效。
+  useEffect(() => {
+    if (Platform.OS === "web" || predictiveBackEnabled) return;
+    const subscription = BackHandler.addEventListener(
+      "hardwareBackPress",
+      () => {
+        if (router.canGoBack()) return false;
+        BackHandler.exitApp();
+        return true;
+      },
+    );
+    return () => subscription.remove();
+  }, [predictiveBackEnabled]);
+
   return (
     <Stack
       screenOptions={{

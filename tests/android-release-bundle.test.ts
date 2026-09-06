@@ -88,7 +88,7 @@ describe("Android Release JavaScript bundle", () => {
     expect(gradle).toContain("ANDROID_RELEASE_KEYSTORE_PASSWORD");
   });
 
-  it("当前源码包含服务、管理权扩展和密码显示，且不保留已取消的返回手势与定时重启功能", () => {
+  it("当前源码包含服务、管理权扩展、密码显示与预测性返回开关，且不保留原生返回手势模块与定时重启功能", () => {
     const routerForm = readFileSync(routerFormPath, "utf8");
     const wirelessManager = readFileSync(wirelessManagerPath, "utf8");
     const serviceHealth = readFileSync(serviceHealthPath, "utf8");
@@ -138,7 +138,10 @@ describe("Android Release JavaScript bundle", () => {
     expect(systemAdmin).toContain("全局网络设置");
     expect(systemAdmin).toContain("链路在线");
     expect(firewall).toContain("通信规则");
-    expect(readFileSync(settingsPath, "utf8")).not.toContain("预测性返回手势");
+    expect(readFileSync(settingsPath, "utf8")).toContain("预测性返回手势");
+    expect(readFileSync(settingsPath, "utf8")).toContain(
+      "updatePredictiveBackEnabled",
+    );
     expect(existsSync(resolve(projectRoot, "lib/native-back-gesture.ts"))).toBe(
       false,
     );
@@ -151,7 +154,10 @@ describe("Android Release JavaScript bundle", () => {
       ),
     ).toBe(false);
     expect(mainActivity).not.toContain("setPredictiveBackEnabled");
-    expect(routerProvider).not.toContain("predictiveBackEnabled");
+    expect(routerProvider).toContain("updatePredictiveBackEnabled");
+    expect(readFileSync(expoConfigPath, "utf8")).toContain(
+      "predictiveBackGestureEnabled: true",
+    );
     expect(sshPackage).toContain("new OpenWrtNatModule(reactContext)");
     expect(natModule).toContain('return "OpenWrtNat"');
     expect(natModule).toContain("stun.l.google.com");
