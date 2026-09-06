@@ -14,6 +14,7 @@ public class OpenWrtSshPackage implements ReactPackage {
     List<NativeModule> modules = new ArrayList<>();
     modules.add(new OpenWrtSshModule(reactContext));
     modules.add(new OpenWrtNatModule(reactContext));
+    modules.add(new OpenWrtPredictiveBackModule(reactContext));
     return modules;
   }
 

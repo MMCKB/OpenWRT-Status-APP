@@ -1,6 +1,6 @@
 import "@/global.css";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { router, Stack } from "expo-router";
+import { router, Stack, useRootNavigationState } from "expo-router";
 import { StatusBar } from "expo-status-bar";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { BackHandler, Platform } from "react-native";
@@ -146,15 +146,80 @@ export default function RootLayout() {
 }
 
 import { useRouterStore } from "@/lib/router-provider";
+import {
+  setPredictiveBackAtRoot,
+  setPredictiveMode,
+} from "@/lib/native-predictive-back";
 
 function RootNavigator() {
   const colors = useColors();
+  return (
+    <>
+      <PredictiveBackController />
+      <Stack
+        screenOptions={{
+          headerShown: false,
+          contentStyle: { backgroundColor: colors.background },
+          animation: "default",
+          gestureEnabled: false,
+        }}
+      >
+        <Stack.Screen name="(tabs)" />
+        <Stack.Screen name="files" />
+        <Stack.Screen name="firmware" />
+        <Stack.Screen name="packages" />
+        <Stack.Screen name="clients" />
+        <Stack.Screen name="dhcp-leases" />
+        <Stack.Screen name="wake-on-lan" />
+        <Stack.Screen name="diagnostics" />
+        <Stack.Screen name="nat-detection" />
+        <Stack.Screen name="disk-speed" />
+        <Stack.Screen name="wireless-manager" />
+        <Stack.Screen name="wireless-optimizer" />
+        <Stack.Screen name="weak-signal" />
+        <Stack.Screen name="docker" />
+        <Stack.Screen name="performance-benchmark" />
+        <Stack.Screen name="firmware-release" />
+        <Stack.Screen name="maintenance-tools" />
+        <Stack.Screen name="system-admin" />
+        <Stack.Screen name="quick-actions" />
+        <Stack.Screen name="services-health" />
+        <Stack.Screen name="service-config" />
+        <Stack.Screen name="logs" />
+        <Stack.Screen name="firewall" />
+        <Stack.Screen name="bulk-operations" />
+        <Stack.Screen name="about" />
+        <Stack.Screen name="oauth/callback" />
+      </Stack>
+    </>
+  );
+}
+
+/**
+ * 预测性返回手势控制器。
+ *
+ * 开启：原生侧停用 ReactActivity 的常启用返回回调（它会压制系统预测动画），
+ * 并注册非根屏转发器——根屏交还系统播放预测动画（Android 13+），二级屏由
+ * 转发器把返回事件送回 JS 弹栈。
+ *
+ * 关闭：恢复 RN 回调，JS 在根屏消费返回并立即退出应用，与旧版行为一致。
+ */
+function PredictiveBackController() {
   const { settings } = useRouterStore();
   const predictiveBackEnabled = settings.predictiveBackEnabled;
+  const navigationState = useRootNavigationState();
 
-  // 关闭预测性返回时接管根屏返回：立即退出应用，保持旧版的即时退出行为。
-  // 开启时不注册监听，让系统接管返回事件并播放预测动画（Android 13+）。
-  // 二级页面的返回由导航栈处理，监听器只在根屏生效。
+  useEffect(() => {
+    if (Platform.OS === "web") return;
+    setPredictiveMode(predictiveBackEnabled);
+  }, [predictiveBackEnabled]);
+
+  useEffect(() => {
+    if (Platform.OS === "web" || !predictiveBackEnabled) return;
+    setPredictiveBackAtRoot(!router.canGoBack());
+  }, [predictiveBackEnabled, navigationState]);
+
+  // 关闭模式下的根屏即时退出：返回事件经 RN 回调送达 JS，无人消费时退出。
   useEffect(() => {
     if (Platform.OS === "web" || predictiveBackEnabled) return;
     const subscription = BackHandler.addEventListener(
@@ -168,41 +233,5 @@ function RootNavigator() {
     return () => subscription.remove();
   }, [predictiveBackEnabled]);
 
-  return (
-    <Stack
-      screenOptions={{
-        headerShown: false,
-        contentStyle: { backgroundColor: colors.background },
-        animation: "default",
-        gestureEnabled: false,
-      }}
-    >
-      <Stack.Screen name="(tabs)" />
-      <Stack.Screen name="files" />
-      <Stack.Screen name="firmware" />
-      <Stack.Screen name="packages" />
-      <Stack.Screen name="clients" />
-      <Stack.Screen name="dhcp-leases" />
-      <Stack.Screen name="wake-on-lan" />
-      <Stack.Screen name="diagnostics" />
-      <Stack.Screen name="nat-detection" />
-      <Stack.Screen name="disk-speed" />
-      <Stack.Screen name="wireless-manager" />
-      <Stack.Screen name="wireless-optimizer" />
-      <Stack.Screen name="weak-signal" />
-      <Stack.Screen name="docker" />
-      <Stack.Screen name="performance-benchmark" />
-      <Stack.Screen name="firmware-release" />
-      <Stack.Screen name="maintenance-tools" />
-      <Stack.Screen name="system-admin" />
-      <Stack.Screen name="quick-actions" />
-      <Stack.Screen name="services-health" />
-      <Stack.Screen name="service-config" />
-      <Stack.Screen name="logs" />
-      <Stack.Screen name="firewall" />
-      <Stack.Screen name="bulk-operations" />
-      <Stack.Screen name="about" />
-      <Stack.Screen name="oauth/callback" />
-    </Stack>
-  );
+  return null;
 }

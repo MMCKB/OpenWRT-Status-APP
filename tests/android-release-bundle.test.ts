@@ -142,6 +142,18 @@ describe("Android Release JavaScript bundle", () => {
     expect(readFileSync(settingsPath, "utf8")).toContain(
       "updatePredictiveBackEnabled",
     );
+    const predictiveModulePath = resolve(
+      projectRoot,
+      "android/app/src/main/java/com/openwrtstatus/ssh/OpenWrtPredictiveBackModule.java",
+    );
+    expect(existsSync(predictiveModulePath)).toBe(true);
+    expect(readFileSync(predictiveModulePath, "utf8")).toContain(
+      "setReactActivityCallbackEnabled",
+    );
+    expect(sshPackage).toContain("OpenWrtPredictiveBackModule");
+    expect(
+      existsSync(resolve(projectRoot, "lib/native-predictive-back.ts")),
+    ).toBe(true);
     expect(existsSync(resolve(projectRoot, "lib/native-back-gesture.ts"))).toBe(
       false,
     );
