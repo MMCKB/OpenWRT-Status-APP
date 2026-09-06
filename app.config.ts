@@ -47,7 +47,7 @@ const config: ExpoConfig = {
       projectId: "c4d4af65-fe2b-4803-8ba9-5efecb95d126",
     },
   },
-  version: "1.0.29",
+  version: "1.0.30",
   orientation: "portrait",
   icon: "./assets/images/icon.png",
   scheme: env.scheme,
@@ -73,7 +73,7 @@ const config: ExpoConfig = {
     // 运行时还受设置页“预测性返回手势”开关控制：关闭时 JS 会接管根屏返回，
     // 立即退出应用并跳过系统预测动画，行为与旧版一致。
     predictiveBackGestureEnabled: true,
-    versionCode: 25,
+    versionCode: 26,
     package: env.androidPackage,
     permissions: ["POST_NOTIFICATIONS"],
     intentFilters: [

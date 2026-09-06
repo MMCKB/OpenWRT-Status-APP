@@ -53,9 +53,9 @@ describe("Android Release JavaScript bundle", () => {
     const gradleVersion = gradle.match(/versionName\s+"([0-9.]+)"/)?.[1];
     const gradleVersionCode = gradle.match(/versionCode\s+(\d+)/)?.[1];
 
-    expect(expoVersion).toBe("1.0.29");
+    expect(expoVersion).toBe("1.0.30");
     expect(expoVersion).toBe(gradleVersion);
-    expect(expoVersionCode).toBe("25");
+    expect(expoVersionCode).toBe("26");
     expect(expoVersionCode).toBe(gradleVersionCode);
   });
 
