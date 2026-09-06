@@ -12,11 +12,12 @@ const SOURCE_FILES = {
   "OpenWrtPredictiveBackModule.java": `package ${JAVA_PACKAGE};
 
 import android.app.Activity;
+import androidx.activity.ComponentActivity;
 import androidx.activity.OnBackPressedCallback;
 import com.facebook.react.bridge.ReactApplicationContext;
 import com.facebook.react.bridge.ReactContextBaseJavaModule;
 import com.facebook.react.bridge.ReactMethod;
-import com.facebook.react.common.UiThreadUtil;
+import com.facebook.react.bridge.UiThreadUtil;
 import com.facebook.react.modules.core.DeviceEventManagerModule;
 import java.lang.reflect.Field;
 
@@ -58,7 +59,8 @@ public class OpenWrtPredictiveBackModule extends ReactContextBaseJavaModule {
 
   private void refresh() {
     Activity activity = getCurrentActivity();
-    if (activity == null) return;
+    if (!(activity instanceof ComponentActivity)) return;
+    ComponentActivity componentActivity = (ComponentActivity) activity;
     setReactActivityCallbackEnabled(activity, !predictiveMode);
     if (!predictiveMode) {
       if (forwarder != null) {
@@ -88,7 +90,7 @@ public class OpenWrtPredictiveBackModule extends ReactContextBaseJavaModule {
             }
           };
       forwarderActivity = activity;
-      activity.getOnBackPressedDispatcher().addCallback(activity, forwarder);
+      componentActivity.getOnBackPressedDispatcher().addCallback(componentActivity, forwarder);
     }
     forwarder.setEnabled(!atRoot);
   }
