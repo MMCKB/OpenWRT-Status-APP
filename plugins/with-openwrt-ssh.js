@@ -14,11 +14,12 @@ const SOURCE_FILES = {
 import android.app.Activity;
 import androidx.activity.ComponentActivity;
 import androidx.activity.OnBackPressedCallback;
+import com.facebook.react.bridge.Arguments;
 import com.facebook.react.bridge.ReactApplicationContext;
 import com.facebook.react.bridge.ReactContextBaseJavaModule;
 import com.facebook.react.bridge.ReactMethod;
 import com.facebook.react.bridge.UiThreadUtil;
-import com.facebook.react.modules.core.DeviceEventManagerModule;
+import com.facebook.react.bridge.WritableMap;
 import java.io.File;
 import java.io.FileWriter;
 import java.lang.reflect.Field;
@@ -99,9 +100,11 @@ public class OpenWrtPredictiveBackModule extends ReactContextBaseJavaModule {
                 return;
               }
               logState("back forwarded-to-js");
-              getReactApplicationContext()
-                  .getJSModule(DeviceEventManagerModule.RCTDeviceEventEmitter.class)
-                  .emit("hardwareBackPress", null);
+              // 与 RN DeviceEventManagerModule.emitHardwareBackPressed 完全一致的
+              // 载荷与通道，保证 expo-router 的 BackHandler 监听可靠收到。
+              WritableMap payload = Arguments.createMap();
+              payload.putDouble("timeStamp", System.nanoTime() / 1_000_000.0);
+              getReactApplicationContext().emitDeviceEvent("hardwareBackPress", payload);
             }
           };
       forwarderActivity = activity;

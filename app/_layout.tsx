@@ -1,6 +1,11 @@
 import "@/global.css";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { router, Stack, useRootNavigationState } from "expo-router";
+import {
+  router,
+  Stack,
+  useRootNavigationState,
+  useSegments,
+} from "expo-router";
 import { StatusBar } from "expo-status-bar";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { BackHandler, Platform } from "react-native";
@@ -208,16 +213,24 @@ function PredictiveBackController() {
   const { settings } = useRouterStore();
   const predictiveBackEnabled = settings.predictiveBackEnabled;
   const navigationState = useRootNavigationState();
+  const segments = useSegments();
 
   useEffect(() => {
     if (Platform.OS === "web") return;
     setPredictiveMode(predictiveBackEnabled);
   }, [predictiveBackEnabled]);
 
+  // 根屏状态必须与导航严格同步：根屏禁用转发器交给系统播放预测动画，二级屏
+  // 启用转发器把返回送回 JS 弹栈。若 atRoot 残留为 true，二级屏返回会被系统
+  // 直接结束应用（回桌面）。navigationState 与 segments 双信号触发，并在
+  // 200ms 后复检一次，覆盖导航提交与转场动画的时序差。
   useEffect(() => {
     if (Platform.OS === "web" || !predictiveBackEnabled) return;
-    setPredictiveBackAtRoot(!router.canGoBack());
-  }, [predictiveBackEnabled, navigationState]);
+    const sync = () => setPredictiveBackAtRoot(!router.canGoBack());
+    sync();
+    const timer = setTimeout(sync, 200);
+    return () => clearTimeout(timer);
+  }, [predictiveBackEnabled, navigationState, segments]);
 
   // 关闭模式下的根屏即时退出：返回事件经 RN 回调送达 JS，无人消费时退出。
   useEffect(() => {

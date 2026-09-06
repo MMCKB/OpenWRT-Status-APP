@@ -1,0 +1,85 @@
+{
+  "total_count": 4,
+  "artifacts": [
+    {
+      "id": 9983880238,
+      "node_id": "MDg6QXJ0aWZhY3Q5OTgzODgwMjM4",
+      "name": "openwrt-status-x86",
+      "size_in_bytes": 34649131,
+      "url": "https://api.github.com/repos/MMCKB/OpenWRT-Status-APP/actions/artifacts/9983880238",
+      "archive_download_url": "https://api.github.com/repos/MMCKB/OpenWRT-Status-APP/actions/artifacts/9983880238/zip",
+      "expired": false,
+      "digest": "sha256:d41f08c74f1b4fdf56354b4c303cd7194e1034720d15c26e356eb6bd2c04905e",
+      "created_at": "2026-09-06T06:13:29Z",
+      "updated_at": "2026-09-06T06:13:29Z",
+      "expires_at": "2026-09-20T06:13:27Z",
+      "workflow_run": {
+        "id": 34015236057,
+        "repository_id": 1337948709,
+        "head_repository_id": 1337948709,
+        "head_branch": "SDK-Dev",
+        "head_sha": "4b82aa42ab4f3eaaf84ba162b9f4e2a51e7b5a78"
+      }
+    },
+    {
+      "id": 9983879578,
+      "node_id": "MDg6QXJ0aWZhY3Q5OTgzODc5NTc4",
+      "name": "openwrt-status-arm64-v8a",
+      "size_in_bytes": 34018068,
+      "url": "https://api.github.com/repos/MMCKB/OpenWRT-Status-APP/actions/artifacts/9983879578",
+      "archive_download_url": "https://api.github.com/repos/MMCKB/OpenWRT-Status-APP/actions/artifacts/9983879578/zip",
+      "expired": false,
+      "digest": "sha256:8b13f34bee6d77a00a5ca8c57fbed4994a1822f3ac38591f6ef405234c99efe6",
+      "created_at": "2026-09-06T06:13:25Z",
+      "updated_at": "2026-09-06T06:13:25Z",
+      "expires_at": "2026-09-20T06:13:23Z",
+      "workflow_run": {
+        "id": 34015236057,
+        "repository_id": 1337948709,
+        "head_repository_id": 1337948709,
+        "head_branch": "SDK-Dev",
+        "head_sha": "4b82aa42ab4f3eaaf84ba162b9f4e2a51e7b5a78"
+      }
+    },
+    {
+      "id": 9983871656,
+      "node_id": "MDg6QXJ0aWZhY3Q5OTgzODcxNjU2",
+      "name": "openwrt-status-x86_64",
+      "size_in_bytes": 34486739,
+      "url": "https://api.github.com/repos/MMCKB/OpenWRT-Status-APP/actions/artifacts/9983871656",
+      "archive_download_url": "https://api.github.com/repos/MMCKB/OpenWRT-Status-APP/actions/artifacts/9983871656/zip",
+      "expired": false,
+      "digest": "sha256:fc41ce06a56c67df45ec3156d7785ab69216d66e33b57a265b658b7ea10de5c7",
+      "created_at": "2026-09-06T06:12:47Z",
+      "updated_at": "2026-09-06T06:12:47Z",
+      "expires_at": "2026-09-20T06:12:44Z",
+      "workflow_run": {
+        "id": 34015236057,
+        "repository_id": 1337948709,
+        "head_repository_id": 1337948709,
+        "head_branch": "SDK-Dev",
+        "head_sha": "4b82aa42ab4f3eaaf84ba162b9f4e2a51e7b5a78"
+      }
+    },
+    {
+      "id": 9983828894,
+      "node_id": "MDg6QXJ0aWZhY3Q5OTgzODI4ODk0",
+      "name": "openwrt-status-armeabi-v7a",
+      "size_in_bytes": 32962380,
+      "url": "https://api.github.com/repos/MMCKB/OpenWRT-Status-APP/actions/artifacts/9983828894",
+      "archive_download_url": "https://api.github.com/repos/MMCKB/OpenWRT-Status-APP/actions/artifacts/9983828894/zip",
+      "expired": false,
+      "digest": "sha256:85447640fdc8aecf4e5f3b311d77c7613c48a6db7e3d150351aebf56c04a57e1",
+      "created_at": "2026-09-06T06:09:20Z",
+      "updated_at": "2026-09-06T06:09:20Z",
+      "expires_at": "2026-09-20T06:09:18Z",
+      "workflow_run": {
+        "id": 34015236057,
+        "repository_id": 1337948709,
+        "head_repository_id": 1337948709,
+        "head_branch": "SDK-Dev",
+        "head_sha": "4b82aa42ab4f3eaaf84ba162b9f4e2a51e7b5a78"
+      }
+    }
+  ]
+}
