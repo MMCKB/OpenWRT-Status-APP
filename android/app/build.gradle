@@ -9,9 +9,10 @@ def projectRoot = rootDir.getAbsoluteFile().getParentFile().getAbsolutePath()
  * By default you don't need to apply any configuration, just uncomment the lines you need.
  */
 react {
+    debuggableVariants = ["debug"]
     entryFile = file(["node", "-e", "require('expo/scripts/resolveAppEntry')", projectRoot, "android", "absolute"].execute(null, rootDir).text.trim())
     reactNativeDir = new File(["node", "--print", "require.resolve('react-native/package.json')"].execute(null, rootDir).text.trim()).getParentFile().getAbsoluteFile()
-    hermesCommand = new File(["node", "--print", "require.resolve('react-native/package.json')"].execute(null, rootDir).text.trim()).getParentFile().getAbsolutePath() + "/sdks/hermesc/%OS-BIN%/hermesc"
+    hermesCommand = new File(["node", "--print", "require.resolve('hermes-compiler/package.json', { paths: [require.resolve('react-native/package.json')] })"].execute(null, rootDir).text.trim()).getParentFile().getAbsolutePath() + "/hermesc/%OS-BIN%/hermesc"
     codegenDir = new File(["node", "--print", "require.resolve('@react-native/codegen/package.json', { paths: [require.resolve('react-native/package.json')] })"].execute(null, rootDir).text.trim()).getParentFile().getAbsoluteFile()
 
     enableBundleCompression = (findProperty('android.enableBundleCompression') ?: false).toBoolean()
@@ -33,9 +34,6 @@ react {
     //   skip the bundling of the JS bundle and the assets. By default is just 'debug'.
     //   If you add flavors like lite, prod, etc. you'll have to list your debuggableVariants.
     // debuggableVariants = ["liteDebug", "prodDebug"]
-    // Release must not be listed here. The React Native Gradle plugin then embeds
-    // a bundle generated from the checked-out source for every production APK.
-    debuggableVariants = ["debug"]
 
     /* Bundling */
     //   A list containing the node command and its flags. Default is just 'node'.
@@ -95,8 +93,8 @@ android {
         applicationId 'com.app.openwrtstatusapp'
         minSdkVersion rootProject.ext.minSdkVersion
         targetSdkVersion rootProject.ext.targetSdkVersion
-        versionCode 25
-        versionName "1.0.29"
+        versionCode 27
+        versionName "1.0.31"
 
         buildConfigField "String", "REACT_NATIVE_RELEASE_LEVEL", "\"${findProperty('reactNativeReleaseLevel') ?: 'stable'}\""
     }
@@ -107,20 +105,21 @@ android {
             keyAlias 'androiddebugkey'
             keyPassword 'android'
         }
-        release {
-            // CI restores this persistent certificate from GitHub Actions Secrets.
-            // Keeping the release variant on the same identity enables in-place APK upgrades.
-            storeFile file('openwrt-status-release.keystore')
-            storePassword System.getenv('ANDROID_RELEASE_KEYSTORE_PASSWORD')
-            keyAlias System.getenv('ANDROID_RELEASE_KEY_ALIAS')
-            keyPassword System.getenv('ANDROID_RELEASE_KEY_PASSWORD')
-        }
+      release {
+        // CI 恢复的持久发布证书;release 与旧版同签名身份,支持覆盖安装。
+        storeFile file('openwrt-status-release.keystore')
+        storePassword System.getenv('ANDROID_RELEASE_KEYSTORE_PASSWORD')
+        keyAlias System.getenv('ANDROID_RELEASE_KEY_ALIAS')
+        keyPassword System.getenv('ANDROID_RELEASE_KEY_PASSWORD')
+      }
     }
     buildTypes {
         debug {
             signingConfig signingConfigs.debug
         }
         release {
+            // Caution! In production, you need to generate your own keystore file.
+            // see https://reactnative.dev/docs/signed-apk-android.
             signingConfig signingConfigs.release
             def enableShrinkResources = findProperty('android.enableShrinkResourcesInReleaseBuilds') ?: 'false'
             shrinkResources enableShrinkResources.toBoolean()

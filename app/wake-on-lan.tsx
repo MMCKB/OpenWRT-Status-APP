@@ -359,7 +359,7 @@ const styles = StyleSheet.create({
   pressed: { opacity: 0.72 },
   disabled: { opacity: 0.5 },
   modalRoot: { flex: 1, justifyContent: "center", padding: 20 },
-  modalBackdrop: { ...StyleSheet.absoluteFillObject, backgroundColor: "rgba(5, 11, 18, 0.62)" },
+  modalBackdrop: { position: "absolute", top: 0, left: 0, right: 0, bottom: 0, backgroundColor: "rgba(5, 11, 18, 0.62)" },
   modalCard: { maxHeight: "78%", borderRadius: 22, padding: 18, borderWidth: 1 },
   modalHeader: { flexDirection: "row", alignItems: "flex-start", gap: 12, marginBottom: 14 },
   modalTitleCopy: { flex: 1, gap: 4 },

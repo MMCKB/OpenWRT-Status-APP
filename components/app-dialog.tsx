@@ -94,7 +94,7 @@ export function AppDialogProvider({ children }: { children: ReactNode }) {
 
 const styles = StyleSheet.create({
   modalRoot: { flex: 1, justifyContent: "center", padding: 24 },
-  backdrop: { ...StyleSheet.absoluteFillObject, backgroundColor: "rgba(5, 11, 18, 0.62)" },
+  backdrop: { position: "absolute", top: 0, left: 0, right: 0, bottom: 0, backgroundColor: "rgba(5, 11, 18, 0.62)" },
   card: { width: "100%", maxWidth: 420, alignSelf: "center", borderRadius: 24, padding: 22, borderWidth: 1, shadowColor: "#000000", shadowOpacity: 0.24, shadowRadius: 24, shadowOffset: { width: 0, height: 12 }, elevation: 10 },
   iconWell: { width: 44, height: 44, borderRadius: 14, alignItems: "center", justifyContent: "center", marginBottom: 14 },
   title: { fontSize: 18, fontWeight: "800", lineHeight: 25 },

@@ -47,12 +47,11 @@ const config: ExpoConfig = {
       projectId: "c4d4af65-fe2b-4803-8ba9-5efecb95d126",
     },
   },
-  version: "1.0.29",
+  version: "1.0.31",
   orientation: "portrait",
   icon: "./assets/images/icon.png",
   scheme: env.scheme,
   userInterfaceStyle: "automatic",
-  newArchEnabled: true,
   ios: {
     supportsTablet: true,
     bundleIdentifier: env.iosBundleId,
@@ -70,8 +69,11 @@ const config: ExpoConfig = {
       foregroundImage: "./assets/images/android-icon-foreground.png",
       monochromeImage: "./assets/images/android-icon-monochrome.png",
     },
-    edgeToEdgeEnabled: true,
-    versionCode: 25,
+    // Android 13+ 预测性返回手势的系统级总开关（manifest enableOnBackInvokedCallback）。
+    // 运行时还受设置页“预测性返回手势”开关控制：关闭时 JS 会接管根屏返回，
+    // 立即退出应用并跳过系统预测动画，行为与旧版一致。
+    predictiveBackGestureEnabled: true,
+    versionCode: 27,
     package: env.androidPackage,
     permissions: ["POST_NOTIFICATIONS"],
     intentFilters: [
@@ -98,6 +100,24 @@ const config: ExpoConfig = {
     "expo-system-ui",
     "expo-document-picker",
     "./plugins/with-openwrt-ssh",
+    [
+      "react-native-android-widget",
+      {
+        widgets: [
+          {
+            name: "OpenWrtStatusWidget",
+            label: "OpenWrt 状态",
+            description: "显示路由器在线状态与实时上下行速率,点击可刷新。",
+            minWidth: "180dp",
+            minHeight: "60dp",
+            targetCellWidth: 2,
+            targetCellHeight: 2,
+            resizeMode: "none|vertical",
+            updatePeriodMillis: 1800000,
+          },
+        ],
+      },
+    ],
     [
       "expo-secure-store",
       {

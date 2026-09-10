@@ -86,3 +86,9 @@ public/download/*.apk
 # Local project-management records (not part of the public source repository)
 /todo.md
 /design.md
+
+# 本地构建残留
+app/build/
+core/build/
+build-log*.txt
+bundle-log.txt

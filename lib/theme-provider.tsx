@@ -1,7 +1,7 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { createContext, useCallback, useContext, useEffect, useMemo, useState } from "react";
 import { AppState, Appearance, View } from "react-native";
-import { colorScheme as nativewindColorScheme, vars } from "nativewind";
+import { vars } from "nativewind";
 import * as SystemUI from "expo-system-ui";
 
 import { SchemeColors, type ColorScheme } from "@/constants/theme";
@@ -29,10 +29,12 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
   const colorScheme = resolveColorScheme(themePreference, systemScheme);
 
   const applyScheme = useCallback((scheme: ColorScheme, preference: ThemePreference) => {
-    // `set("light" | "dark")` delegates to React Native Appearance and pins
-    // its value. In system mode that prevented Appearance from observing later
-    // Android uiMode changes. Keep NativeWind in automatic mode instead.
-    nativewindColorScheme.set(preference === "system" ? "system" : scheme);
+    // 重要:不要把显式主题同步到 react-native-css-interop 的 colorScheme.set()。
+    // 它会一路调用 RN 0.86 的 AppearanceModule.setColorScheme →
+    // AppCompatDelegate.setDefaultNightMode,导致 Activity 被重建:
+    // 闪屏重放、导航栈回到首页,且重建后 RN Appearance 与真实配置不一致。
+    // 本应用全部颜色经 useColors()/CSS 变量驱动,无需原生外观参与;
+    // 保留 nativewind 默认的 system 模式即可(不使用 dark: 变体)。
     if (typeof document !== "undefined") {
       const root = document.documentElement;
       root.dataset.theme = scheme;

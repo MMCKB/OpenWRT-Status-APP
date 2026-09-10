@@ -1,6 +1,13 @@
 import MaterialIcons from "@expo/vector-icons/MaterialIcons";
 import { useRouter } from "expo-router";
-import { Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
+import {
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  Switch,
+  Text,
+  View,
+} from "react-native";
 
 import { SectionCard, sharedStyles } from "@/components/status-ui";
 import { useColors } from "@/hooks/use-colors";
@@ -43,6 +50,7 @@ export default function SettingsScreen() {
     updateTrafficInterfaceIds,
     updateStatusTrafficView,
     updateDiagnosticOutputDisplay,
+    updatePredictiveBackEnabled,
     selectedStatus,
   } = useRouterStore();
   const { colorScheme, themePreference, setThemePreference } =
@@ -119,6 +127,28 @@ export default function SettingsScreen() {
                 </Pressable>
               );
             })}
+          </View>
+        </SectionCard>
+        <SectionCard title="返回手势">
+          <View style={styles.navigationRow}>
+            <View style={styles.infoText}>
+              <Text style={[styles.infoTitle, { color: colors.foreground }]}>
+                预测性返回手势
+              </Text>
+              <Text style={[styles.infoDescription, { color: colors.muted }]}>
+                Android 13
+                及以上，在首页返回时预览回到桌面的动画，并启用系统级返回手势管线。关闭后返回立即退出应用，与旧版一致。改动即时生效。
+              </Text>
+            </View>
+            <Switch
+              value={settings.predictiveBackEnabled}
+              onValueChange={(value) => void updatePredictiveBackEnabled(value)}
+              trackColor={{
+                false: colors.border,
+                true: colors.primary,
+              }}
+              thumbColor="#FFFFFF"
+            />
           </View>
         </SectionCard>
         <SectionCard title="状态刷新">

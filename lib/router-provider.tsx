@@ -27,6 +27,7 @@ import {
   saveSettings,
   saveSshPassword,
 } from "@/lib/router-storage";
+import { refreshOpenWrtWidgetFromApp } from "@/lib/widget-bridge";
 import type {
   RouterProfile,
   RouterSettings,
@@ -66,6 +67,7 @@ interface RouterContextValue {
   updateDiagnosticOutputDisplay: (
     display: "page" | "dialog" | "both",
   ) => Promise<void>;
+  updatePredictiveBackEnabled: (enabled: boolean) => Promise<void>;
   getSelectedCredentials: () => Promise<{
     luciPassword: string | null;
     sshPassword: string;
@@ -86,6 +88,7 @@ export function RouterProvider({ children }: { children: ReactNode }) {
     trafficInterfaceIds: [],
     statusTrafficView: "full",
     diagnosticOutputDisplay: "both",
+    predictiveBackEnabled: false,
   });
   const [selectedStatus, setSelectedStatus] = useState<RouterStatus | null>(
     null,
@@ -147,6 +150,7 @@ export function RouterProvider({ children }: { children: ReactNode }) {
           status.fetchedAt,
         );
       }
+      void refreshOpenWrtWidgetFromApp();
       const updated = profiles.map((profile) =>
         profile.id === selectedProfile.id
           ? { ...profile, lastConnectedAt: status.fetchedAt }
@@ -377,6 +381,15 @@ export function RouterProvider({ children }: { children: ReactNode }) {
     [settings],
   );
 
+  const updatePredictiveBackEnabled = useCallback(
+    async (enabled: boolean) => {
+      const next = { ...settings, predictiveBackEnabled: enabled };
+      setSettings(next);
+      await saveSettings(next);
+    },
+    [settings],
+  );
+
   const getSelectedCredentials = useCallback(async () => {
     if (!selectedProfile) return null;
     const [luciPassword, sshPassword] = await Promise.all([
@@ -406,6 +419,7 @@ export function RouterProvider({ children }: { children: ReactNode }) {
       updateTrafficInterfaceIds,
       updateStatusTrafficView,
       updateDiagnosticOutputDisplay,
+      updatePredictiveBackEnabled,
       getSelectedCredentials,
     }),
     [
@@ -425,6 +439,7 @@ export function RouterProvider({ children }: { children: ReactNode }) {
       updateTrafficInterfaceIds,
       updateStatusTrafficView,
       updateDiagnosticOutputDisplay,
+      updatePredictiveBackEnabled,
       getSelectedCredentials,
     ],
   );
