@@ -92,3 +92,10 @@ app/build/
 core/build/
 build-log*.txt
 bundle-log.txt
+
+# 调试/构建产物,禁止入库
+diagapk/
+diag*.zip
+diag*-art.json
+*.apk
+*.bak
